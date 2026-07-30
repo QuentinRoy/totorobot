@@ -1,5 +1,4 @@
-import {expectTypeOf, test} from 'vitest';
-import assert from 'node:assert';
+import {expect, expectTypeOf, test} from 'vitest';
 import {
   type Service,
   createMachine,
@@ -90,17 +89,24 @@ test('types nested machine', () => {
 
   const s = interpret(stoplight, console.log);
 
-  assert.equal(s.machine.current, 'green')
+  // Preserve QUnit assert.equal's loose equality semantics.
+  expect.soft(s.machine.current == 'green').toBe(true)
   s.send("next")
-  assert.equal(s.machine.current, 'yellow')
+  // Preserve QUnit assert.equal's loose equality semantics.
+  expect.soft(s.machine.current == 'yellow').toBe(true)
   s.send("next")
-  assert.equal(s.machine.current, 'red')
-  assert.equal(s.child?.machine.current, 'walk')
+  // Preserve QUnit assert.equal's loose equality semantics.
+  expect.soft(s.machine.current == 'red').toBe(true)
+  // Preserve QUnit assert.equal's loose equality semantics.
+  expect.soft(s.child?.machine.current == 'walk').toBe(true)
   s.child?.send("startBlinking")
-  assert.equal(s.child?.machine.current, 'blink')
+  // Preserve QUnit assert.equal's loose equality semantics.
+  expect.soft(s.child?.machine.current == 'blink').toBe(true)
   s.child?.send("finishBlinking")
-  assert.equal(s.child, undefined)
-  assert.equal(s.machine.current, "green")
+  // Preserve QUnit assert.equal's loose equality semantics.
+  expect.soft(s.child == undefined).toBe(true)
+  // Preserve QUnit assert.equal's loose equality semantics.
+  expect.soft(s.machine.current == "green").toBe(true)
 
   type Params = Parameters<Service<typeof stoplight>['send']>;
   type EventParam = Params[0];
