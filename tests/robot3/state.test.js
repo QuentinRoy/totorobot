@@ -1,8 +1,9 @@
 import { createMachine, defineMachine, interpret, invoke, reduce, state, transition } from 'totorobot';
+import { describe, expect, test } from 'vitest';
 
-QUnit.module('States', hooks => {
-  QUnit.test('Basic state change', assert => {
-    assert.expect(5);
+describe('States', () => {
+  test('Basic state change', () => {
+    expect.assertions(5);
     let machine = defineMachine().create('one', ({ state, transition }) => ({
       one: state(
         transition('ping', 'two')
@@ -12,16 +13,19 @@ QUnit.module('States', hooks => {
       )
     }));
     let service = interpret(machine, {}, service => {
-      assert.ok(true, 'Callback called');
+      expect.soft(true, 'Callback called').toBeTruthy();
     });
-    assert.equal(service.snapshot.state, 'one');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.snapshot.state == 'one').toBe(true);
     service.send({ type: 'ping' });
-    assert.equal(service.snapshot.state, 'two');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.snapshot.state == 'two').toBe(true);
     service.send({ type: 'pong' });
-    assert.equal(service.snapshot.state, 'one');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.snapshot.state == 'one').toBe(true);
   });
 
-  QUnit.test('Data can be passed into the initial context', assert => {
+  test('Data can be passed into the initial context', () => {
     let machine = defineMachine().create('one', ({ state }) => ({
       one: state()
     }));
@@ -30,10 +34,11 @@ QUnit.module('States', hooks => {
       foo: 'bar'
     });
 
-    assert.equal(service.snapshot.context.foo, 'bar', 'works!');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.snapshot.context.foo == 'bar', 'works!').toBe(true);
   });
 
-  QUnit.test('First argument sets the initial state', assert => {
+  test('First argument sets the initial state', () => {
     let machine = defineMachine().create('two', ({ state, transition }) => ({
       one: state(transition('next', 'two')),
       two: state(transition('next', 'three')),
@@ -41,18 +46,21 @@ QUnit.module('States', hooks => {
     }));
 
     let service = interpret(machine, {});
-    assert.equal(service.snapshot.state, 'two', 'in the initial state');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.snapshot.state == 'two', 'in the initial state').toBe(true);
 
     machine = defineMachine().create('two', ({ state, transition }) => ({
       one: state(transition('next', 'two')),
       two: state(),
     }));
     service = interpret(machine, {});
-    assert.equal(service.snapshot.state, 'two', 'in the initial state');
-    assert.equal(service.machine.state.value.final, true, 'in the final state');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.snapshot.state == 'two', 'in the initial state').toBe(true);
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.machine.state.value.final == true, 'in the final state').toBe(true);
   });
 
-  QUnit.test('Child machines receive the event used to invoke them', assert => {
+  test('Child machines receive the event used to invoke them', () => {
     let child = createMachine({
       final: state()
     }, (ctx, ev) => ({ count: ev.count }));
@@ -72,6 +80,7 @@ QUnit.module('States', hooks => {
     });
     let service = interpret(parent, () => {});
     service.send({ type: 'next', count: 14 });
-    assert.equal(service.context.count, 14, 'event sent through');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.context.count == 14, 'event sent through').toBe(true);
   });
 });
