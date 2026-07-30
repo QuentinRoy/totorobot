@@ -1,9 +1,10 @@
 import { createMachine, defineMachine, immediate, interpret, invoke, reduce, state, state as final, transition } from 'totorobot';
+import { describe, expect, test } from 'vitest';
 
-QUnit.module('Invoke', hooks => {
-  QUnit.module('Promise');
+describe('Invoke', () => {
+  describe('Promise', () => {
 
-  QUnit.test('Goes to the "done" event when complete', async assert => {
+  test('Goes to the "done" event when complete', async () => {
     let machine = defineMachine().create('one', ({ invoke, reduce, state, transition }) => ({
       one: state(transition('click', 'two')),
       two: invoke(
@@ -20,11 +21,13 @@ QUnit.module('Invoke', hooks => {
     let service = interpret(machine, {age: 0});
     service.send({ type: 'click' });
     await Promise.resolve();
-    assert.equal(service.snapshot.context.age, 13, 'Invoked');
-    assert.equal(service.snapshot.state, 'three', 'now in the next state');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.snapshot.context.age == 13, 'Invoked').toBe(true);
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.snapshot.state == 'three', 'now in the next state').toBe(true);
   });
   
-  QUnit.test('Goes to the "error" event when there is an error', async assert => {
+  test('Goes to the "error" event when there is an error', async () => {
     let machine = defineMachine().create('one', ({ invoke, reduce, state, transition }) => ({
       one: state(transition('click', 'two')),
       two: invoke(
@@ -41,10 +44,11 @@ QUnit.module('Invoke', hooks => {
     let service = interpret(machine, {age: 0});
     service.send({ type: 'click' });
     await Promise.resolve(); await Promise.resolve();
-    assert.equal(service.snapshot.context.error.message, 'oh no', 'Got the right error');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.snapshot.context.error.message == 'oh no', 'Got the right error').toBe(true);
   });
   
-  QUnit.test('The initial state can be an invoke', async assert => {
+  test('The initial state can be an invoke', async () => {
     let machine = defineMachine().create('one', ({ invoke, reduce, state }) => ({
       one: invoke(
         () => Promise.resolve(2),
@@ -57,11 +61,13 @@ QUnit.module('Invoke', hooks => {
   
     let service = interpret(machine, { age: 0 });
     await Promise.resolve();
-    assert.equal(service.snapshot.context.age, 2, 'Invoked immediately');
-    assert.equal(service.snapshot.state, 'two', 'in the new state');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.snapshot.context.age == 2, 'Invoked immediately').toBe(true);
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.snapshot.state == 'two', 'in the new state').toBe(true);
   });
 
-  QUnit.test('Should not fire "done" event when state changes', async assert => {
+  test('Should not fire "done" event when state changes', async () => {
     const wait = ms => () => new Promise(resolve => setTimeout(resolve, ms));
 
     let machine = createMachine({
@@ -80,10 +86,11 @@ QUnit.module('Invoke', hooks => {
     service.send('click');
     service.send('click');
     await wait(15)()
-    assert.equal(service.machine.current, 'three', 'now in the next state');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.machine.current == 'three', 'now in the next state').toBe(true);
   });
 
-  QUnit.test('Should fire "done" when context changes', async assert => {
+  test('Should fire "done" when context changes', async () => {
     const wait = ms => () => new Promise(resolve => setTimeout(resolve, ms));
 
     let machine = createMachine({
@@ -101,14 +108,17 @@ QUnit.module('Invoke', hooks => {
     service.send('click');
     service.send('click');
     await wait(15)()
-    assert.equal(service.context.value, 2, 'value should be 2');
-    assert.equal(service.machine.current, 'three', 'now in the correct state');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.context.value == 2, 'value should be 2').toBe(true);
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.machine.current == 'three', 'now in the correct state').toBe(true);
+  });
   });
 
-  QUnit.module('Machine');
+  describe('Machine', () => {
 
-  QUnit.test('Can invoke a child machine', async assert => {
-    assert.expect(4);
+  test('Can invoke a child machine', async () => {
+    expect.assertions(4);
     let one = createMachine({
       nestedOne: state(
         transition('go', 'nestedTwo')
@@ -128,24 +138,28 @@ QUnit.module('Invoke', hooks => {
     let service = interpret(two, thisService => {
       switch(c) {
         case 0:
-          assert.equal(service.machine.current, 'two');
+          // Preserve QUnit assert.equal's loose equality semantics.
+          expect.soft(service.machine.current == 'two').toBe(true);
           break;
         case 1:
-          assert.notEqual(thisService, service, 'second time a different service');
+          // Preserve QUnit assert.notEqual's loose inequality semantics.
+          expect.soft(thisService != service, 'second time a different service').toBe(true);
           break;
         case 2:
-          assert.equal(service.machine.current, 'three', 'now in three state');
+          // Preserve QUnit assert.equal's loose equality semantics.
+          expect.soft(service.machine.current == 'three', 'now in three state').toBe(true);
           break;
       }
       c++;
     });
     service.send('go');
     service.child.send('go');
-    assert.equal(c, 3, 'there were 3 transitions');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(c == 3, 'there were 3 transitions').toBe(true);
   });
 
-  QUnit.test('Can invoke a dynamic child machine', async assert => {
-    assert.expect(10);
+  test('Can invoke a dynamic child machine', async () => {
+    expect.assertions(10);
     let dynamicMachines = [
       createMachine({
       nestedOne: state(
@@ -180,25 +194,34 @@ QUnit.module('Invoke', hooks => {
     let service = interpret(root, thisService => {
       switch(c) {
         case 0:
-          assert.equal(service.machine.current, 'two');
+          // Preserve QUnit assert.equal's loose equality semantics.
+          expect.soft(service.machine.current == 'two').toBe(true);
           break;
         case 1:
-          assert.notEqual(thisService, service, 'second time a different service');
-          assert.equal(thisService.machine.current, 'nestedTwo');
+          // Preserve QUnit assert.notEqual's loose inequality semantics.
+          expect.soft(thisService != service, 'second time a different service').toBe(true);
+          // Preserve QUnit assert.equal's loose equality semantics.
+          expect.soft(thisService.machine.current == 'nestedTwo').toBe(true);
           break;
         case 2:
-          assert.equal(thisService, service, 'equal service');
-          assert.equal(service.machine.current, 'three', 'now in three state');
+          // Preserve QUnit assert.equal's loose equality semantics.
+          expect.soft(thisService == service, 'equal service').toBe(true);
+          // Preserve QUnit assert.equal's loose equality semantics.
+          expect.soft(service.machine.current == 'three', 'now in three state').toBe(true);
           break;
         case 3:
-          assert.equal(service.machine.current, 'four');
+          // Preserve QUnit assert.equal's loose equality semantics.
+          expect.soft(service.machine.current == 'four').toBe(true);
           break;
         case 4:
-          assert.notEqual(thisService, service, 'third time a different service');
-          assert.equal(thisService.machine.current, 'nestedFour');
+          // Preserve QUnit assert.notEqual's loose inequality semantics.
+          expect.soft(thisService != service, 'third time a different service').toBe(true);
+          // Preserve QUnit assert.equal's loose equality semantics.
+          expect.soft(thisService.machine.current == 'nestedFour').toBe(true);
           break;  
         case 5:
-          assert.equal(service.machine.current, 'five', 'now in five state');
+          // Preserve QUnit assert.equal's loose equality semantics.
+          expect.soft(service.machine.current == 'five', 'now in five state').toBe(true);
           break;
       }
       c++;
@@ -207,10 +230,11 @@ QUnit.module('Invoke', hooks => {
     service.child.send('go');
     service.send('go');
     service.child.send('go');
-    assert.equal(c, 6, 'there were 6 transitions');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(c == 6, 'there were 6 transitions').toBe(true);
   });
 
-  QUnit.test('Child machines receive events from their parents', async assert => {
+  test('Child machines receive events from their parents', async () => {
     const action = fn =>
     reduce((ctx, ev) => {
       fn(ctx, ev);
@@ -252,10 +276,10 @@ QUnit.module('Invoke', hooks => {
 
     await wait(50)();
 
-    assert.deepEqual(service.context.stuff, [1, 2]);
+    expect.soft(service.context.stuff).toEqual([1, 2]);
   });
 
-  QUnit.test('Service does not have a child when not in an invoked state', assert => {
+  test('Service does not have a child when not in an invoked state', () => {
     const child = createMachine({
       nestedOne: state(
         transition('next', 'nestedTwo')
@@ -270,14 +294,14 @@ QUnit.module('Invoke', hooks => {
     });
 
     let service = interpret(parent, () => {});
-    assert.ok(service.child, 'there is a child service');
+    expect.soft(service.child, 'there is a child service').toBeTruthy();
 
     service.child.send('next');
-    assert.notOk(service.child, 'No longer a child');
+    expect.soft(service.child, 'No longer a child').toBeFalsy();
   });
 
-  QUnit.test('Multi level nested machines resolve in correct order', async assert => {
-    assert.expect(18);
+  test('Multi level nested machines resolve in correct order', async () => {
+    expect.assertions(18);
 
     const four = createMachine({
       init: state(
@@ -323,37 +347,51 @@ QUnit.module('Invoke', hooks => {
     let service = interpret(one, thisService => {
       switch (c) {
         case 0:
-          assert.equal(service.machine.current, 'start', 'initial state');
+          // Preserve QUnit assert.equal's loose equality semantics.
+          expect.soft(service.machine.current == 'start', 'initial state').toBe(true);
           break;
         case 1:
-          assert.notEqual(thisService.machine.states, service.machine.states, 'second time a different service');
-          assert.ok(service.child, 'has child');
-          assert.equal(service.child.machine.current, 'start');
+          // Preserve QUnit assert.notEqual's loose inequality semantics.
+          expect.soft(thisService.machine.states != service.machine.states, 'second time a different service').toBe(true);
+          expect.soft(service.child, 'has child').toBeTruthy();
+          // Preserve QUnit assert.equal's loose equality semantics.
+          expect.soft(service.child.machine.current == 'start').toBe(true);
           break;
         case 2:
-          assert.ok(service.child.child, 'has grand child');
-          assert.equal(service.child.machine.current, 'start');
-          assert.equal(service.child.child.machine.current, 'start');
+          expect.soft(service.child.child, 'has grand child').toBeTruthy();
+          // Preserve QUnit assert.equal's loose equality semantics.
+          expect.soft(service.child.machine.current == 'start').toBe(true);
+          // Preserve QUnit assert.equal's loose equality semantics.
+          expect.soft(service.child.child.machine.current == 'start').toBe(true);
           break;
         case 3:
-          assert.ok(service.child.child.child, 'has grand grand child');
-          assert.equal(service.child.child.machine.current, 'start');
-          assert.equal(service.child.child.child.machine.current, 'start');
+          expect.soft(service.child.child.child, 'has grand grand child').toBeTruthy();
+          // Preserve QUnit assert.equal's loose equality semantics.
+          expect.soft(service.child.child.machine.current == 'start').toBe(true);
+          // Preserve QUnit assert.equal's loose equality semantics.
+          expect.soft(service.child.child.child.machine.current == 'start').toBe(true);
           break;
         case 4:
-          assert.equal(service.child.child.child.machine.current, 'done');
+          // Preserve QUnit assert.equal's loose equality semantics.
+          expect.soft(service.child.child.child.machine.current == 'done').toBe(true);
           break;
         case 5:
-          assert.equal(service.child.child.machine.current, 'done');
-          assert.equal(service.child.child.child, undefined, 'child is removed when resolved');
+          // Preserve QUnit assert.equal's loose equality semantics.
+          expect.soft(service.child.child.machine.current == 'done').toBe(true);
+          // Preserve QUnit assert.equal's loose equality semantics.
+          expect.soft(service.child.child.child == undefined, 'child is removed when resolved').toBe(true);
           break;
         case 6:
-          assert.equal(service.child.machine.current, 'done');
-          assert.equal(service.child.child, undefined, 'child is removed when resolved');
+          // Preserve QUnit assert.equal's loose equality semantics.
+          expect.soft(service.child.machine.current == 'done').toBe(true);
+          // Preserve QUnit assert.equal's loose equality semantics.
+          expect.soft(service.child.child == undefined, 'child is removed when resolved').toBe(true);
           break;
         case 7:
-          assert.equal(service.machine.current, 'done');
-          assert.equal(service.child, undefined, 'child is removed when resolved');
+          // Preserve QUnit assert.equal's loose equality semantics.
+          expect.soft(service.machine.current == 'done').toBe(true);
+          // Preserve QUnit assert.equal's loose equality semantics.
+          expect.soft(service.child == undefined, 'child is removed when resolved').toBe(true);
           break;
       }
       c++;
@@ -363,11 +401,12 @@ QUnit.module('Invoke', hooks => {
     service.child.child.send('START') // machine tree
     service.child.child.child.send('START') // machine four
     service.child.child.child.send('DONE') // machine four
-    assert.equal(c, 8, 'there were 6 transitions');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(c == 8, 'there were 6 transitions').toBe(true);
   });
 
-  QUnit.test('Invoking a machine that immediately finishes', async assert => {
-    assert.expect(3);
+  test('Invoking a machine that immediately finishes', async () => {
+    expect.assertions(3);
     const expectations = [ 'nestedTwo', 'three', 'three' ];
 
     const child = createMachine({
@@ -388,9 +427,11 @@ QUnit.module('Invoke', hooks => {
     });
 
     let service = interpret(parent, s => {
-      assert.equal(s.machine.current, expectations.shift());
+      // Preserve QUnit assert.equal's loose equality semantics.
+      expect.soft(s.machine.current == expectations.shift()).toBe(true);
     });
 
     service.send('next');
+  });
   });
 });
