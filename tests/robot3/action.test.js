@@ -1,7 +1,8 @@
 import { defineMachine, interpret } from 'totorobot';
+import { describe, expect, test } from 'vitest';
 
-QUnit.module('Action', () => {
-  QUnit.test('Can be used to do side-effects', assert => {
+describe('Action', () => {
+  test('Can be used to do side-effects', () => {
     let count = 0;
     let orig = {};
     let machine = defineMachine().create('one', ({ action, state, transition }) => ({
@@ -15,7 +16,9 @@ QUnit.module('Action', () => {
     let service = interpret(machine, orig);
     service.send({ type: 'ping' });
 
-    assert.equal(service.snapshot.context, orig, 'context stays the same');
-    assert.equal(count, 1, 'side-effect performed');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.snapshot.context == orig, 'context stays the same').toBe(true);
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(count == 1, 'side-effect performed').toBe(true);
   });
 });
