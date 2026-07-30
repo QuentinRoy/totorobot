@@ -20,18 +20,18 @@ event's payload:
 
 ```ts
 type AuthSpec = {
-  states: {
-    idle: { error: string | null; attempts: number }
-    authenticating: {
-      username: string
-      password: string
-      attempts: number
-    }
-    authenticated: { username: string; token: string }
-  }
-  events: {
-    login: { username: string; password: string }
-  }
+	states: {
+		idle: { error: string | null; attempts: number }
+		authenticating: {
+			username: string
+			password: string
+			attempts: number
+		}
+		authenticated: { username: string; token: string }
+	}
+	events: {
+		login: { username: string; password: string }
+	}
 }
 ```
 
@@ -40,47 +40,47 @@ state map:
 
 ```ts
 const authMachine = defineMachine<AuthSpec>().create(
-  "idle",
-  ({ state, transition, invoke, guard, reduce }) => ({
-    idle: state(
-      transition(
-        "login",
-        "authenticating",
-        guard((_context, event) => event.username.trim().length > 0),
-        reduce((context, event) => ({
-          username: event.username,
-          password: event.password,
-          attempts: context.attempts + 1,
-        })),
-      ),
-    ),
+	'idle',
+	({ state, transition, invoke, guard, reduce }) => ({
+		idle: state(
+			transition(
+				'login',
+				'authenticating',
+				guard((_context, event) => event.username.trim().length > 0),
+				reduce((context, event) => ({
+					username: event.username,
+					password: event.password,
+					attempts: context.attempts + 1,
+				})),
+			),
+		),
 
-    authenticating: invoke(
-      (context) => login(context.username, context.password),
-      ({ done, error }) => [
-        done(
-          "authenticated",
-          reduce((context, result) => ({
-            username: context.username,
-            token: result.token,
-          })),
-        ),
-        error(
-          "idle",
-          reduce((context, invokeError) => ({
-            error:
-              invokeError instanceof Error
-                ? invokeError.message
-                : String(invokeError),
-            attempts: context.attempts,
-          })),
-        ),
-      ],
-    ),
+		authenticating: invoke(
+			(context) => login(context.username, context.password),
+			({ done, error }) => [
+				done(
+					'authenticated',
+					reduce((context, result) => ({
+						username: context.username,
+						token: result.token,
+					})),
+				),
+				error(
+					'idle',
+					reduce((context, invokeError) => ({
+						error:
+							invokeError instanceof Error
+								? invokeError.message
+								: String(invokeError),
+						attempts: context.attempts,
+					})),
+				),
+			],
+		),
 
-    // As in Robot3, a state with no transitions is terminal.
-    authenticated: state(),
-  }),
+		// As in Robot3, a state with no transitions is terminal.
+		authenticated: state(),
+	}),
 )
 
 const service = interpret(authMachine, { error: null, attempts: 0 })
@@ -126,7 +126,7 @@ is not meaningful. It also pipelines multiple reducers, with each reducer
 receiving the previous reducer's output.
 
 That pipeline cannot be represented honestly when context belongs to states:
-the input of reducer *n* depends on the output of reducer *n - 1*. Typing every
+the input of reducer _n_ depends on the output of reducer _n - 1_. Typing every
 reducer as if it received the source state's context would compile but disagree
 with runtime behavior.
 
@@ -148,8 +148,14 @@ documentation convention.
 
 ```ts
 invoke(source, ({ done, error }) => [
-  done("success", reduce((_context, result) => result)),
-  error("failure", reduce((_context, invokeError) => ({ invokeError }))),
+	done(
+		'success',
+		reduce((_context, result) => result),
+	),
+	error(
+		'failure',
+		reduce((_context, invokeError) => ({ invokeError })),
+	),
 ])
 ```
 
@@ -179,9 +185,9 @@ with `false`. Keeping actions separate avoids both constraints.
 ```ts
 const current = service.current
 
-if (current.state === "idle") {
-  current.context.attempts
-  current.send({ type: "login", username: "q", password: "secret" })
+if (current.state === 'idle') {
+	current.context.attempts
+	current.send({ type: 'login', username: 'q', password: 'secret' })
 }
 ```
 
@@ -195,21 +201,21 @@ transition.
 
 The test suite includes rejected examples for each compile-time guarantee.
 
-| Mistake | Result |
-|---|---|
-| Reducer returns the wrong target context | Rejected at `reduce(...)` |
-| Reducer reads context absent from its source state | Rejected |
-| Transition targets an unknown state | Rejected |
-| Transition uses an undeclared event | Rejected |
-| Event payload has the wrong shape | Rejected |
-| Initial state is absent from the spec | Rejected |
-| Initial context does not match the initial state | Rejected |
-| State map has missing or extra states | Rejected |
-| Context field is read without narrowing to its state | Rejected |
-| `service.current.send` receives an event not handled by that state | Rejected |
-| Invocation settlement is sent as a public event | Not part of the event union |
-| Reducer is omitted between incompatible context shapes | Rejected |
-| Transition declares more than one reducer | Rejected by types and runtime |
+| Mistake                                                            | Result                        |
+| ------------------------------------------------------------------ | ----------------------------- |
+| Reducer returns the wrong target context                           | Rejected at `reduce(...)`     |
+| Reducer reads context absent from its source state                 | Rejected                      |
+| Transition targets an unknown state                                | Rejected                      |
+| Transition uses an undeclared event                                | Rejected                      |
+| Event payload has the wrong shape                                  | Rejected                      |
+| Initial state is absent from the spec                              | Rejected                      |
+| Initial context does not match the initial state                   | Rejected                      |
+| State map has missing or extra states                              | Rejected                      |
+| Context field is read without narrowing to its state               | Rejected                      |
+| `service.current.send` receives an event not handled by that state | Rejected                      |
+| Invocation settlement is sent as a public event                    | Not part of the event union   |
+| Reducer is omitted between incompatible context shapes             | Rejected                      |
+| Transition declares more than one reducer                          | Rejected by types and runtime |
 
 ### Error locality
 

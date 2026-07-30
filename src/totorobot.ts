@@ -42,18 +42,22 @@ export interface MachineSpec {
 	readonly events: object
 }
 
-export type StateName<S extends MachineSpec> = keyof S["states"] & string
-export type EventName<S extends MachineSpec> = keyof S["events"]
+export type StateName<S extends MachineSpec> = keyof S['states'] & string
+export type EventName<S extends MachineSpec> = keyof S['events']
 
 /** The context carried by state `K`. */
-export type ContextOf<S extends MachineSpec, K extends StateName<S>> =
-	S["states"][K & keyof S["states"]]
+export type ContextOf<
+	S extends MachineSpec,
+	K extends StateName<S>,
+> = S['states'][K & keyof S['states']]
 
 /** The full event object for event `E`: its `type` plus its declared payload. */
-export type EventObject<S extends MachineSpec, E extends EventName<S>> =
-	E extends unknown
-		? { readonly type: E } & S["events"][E & keyof S["events"]]
-		: never
+export type EventObject<
+	S extends MachineSpec,
+	E extends EventName<S>,
+> = E extends unknown
+	? { readonly type: E } & S['events'][E & keyof S['events']]
+	: never
 
 /** Every event the machine accepts. */
 export type AnyEvent<S extends MachineSpec> = EventObject<S, EventName<S>>
@@ -71,17 +75,17 @@ export type AnyEvent<S extends MachineSpec> = EventObject<S, EventName<S>>
 // ---------------------------------------------------------------------------
 
 export interface ReduceModifier<Context, Event, Output> {
-	readonly kind: "reduce"
+	readonly kind: 'reduce'
 	readonly apply: (context: Context, event: Event) => Output
 }
 
 export interface GuardModifier<Context, Event> {
-	readonly kind: "guard"
+	readonly kind: 'guard'
 	readonly apply: (context: Context, event: Event) => boolean
 }
 
 export interface ActionModifier<Context, Event> {
-	readonly kind: "action"
+	readonly kind: 'action'
 	readonly apply: (context: Context, event: Event) => void
 }
 
@@ -92,8 +96,7 @@ export type Modifier<Context, Event, Output> =
 
 /** Modifiers that leave the context shape alone, so any number may appear. */
 export type ShapeNeutralModifier<Context, Event> =
-	| GuardModifier<Context, Event>
-	| ActionModifier<Context, Event>
+	GuardModifier<Context, Event> | ActionModifier<Context, Event>
 
 /**
  * The modifier list a transition accepts: any number of guards and actions,
@@ -109,18 +112,18 @@ export type ShapeNeutralModifier<Context, Event> =
  * be typed once context is per-state: reducer n's input is reducer n-1's output,
  * and that fold is not expressible through the inference path used here.
  */
-export type TransitionModifiers<Context, Event, Output> =
-	[Context] extends [Output]
-		?
-				| ShapeNeutralModifier<Context, Event>[]
-				| [
-						...ShapeNeutralModifier<Context, Event>[],
-						ReduceModifier<Context, Event, Output>,
-					]
-		: [
+export type TransitionModifiers<Context, Event, Output> = [Context] extends [
+	Output,
+]
+	? | ShapeNeutralModifier<Context, Event>[]
+		| [
 				...ShapeNeutralModifier<Context, Event>[],
 				ReduceModifier<Context, Event, Output>,
-			]
+		  ]
+	: [
+			...ShapeNeutralModifier<Context, Event>[],
+			ReduceModifier<Context, Event, Output>,
+		]
 
 /**
  * Map the source context to the target state's context. At most one per transition.
@@ -129,7 +132,7 @@ export type TransitionModifiers<Context, Event, Output> =
 function reduce<Context, Event, Output>(
 	apply: (context: Context, event: Event) => Output,
 ): ReduceModifier<Context, Event, Output> {
-	return { kind: "reduce", apply }
+	return { kind: 'reduce', apply }
 }
 
 /**
@@ -139,7 +142,7 @@ function reduce<Context, Event, Output>(
 function guard<Context, Event>(
 	apply: (context: Context, event: Event) => boolean,
 ): GuardModifier<Context, Event> {
-	return { kind: "guard", apply }
+	return { kind: 'guard', apply }
 }
 
 /**
@@ -152,7 +155,7 @@ function guard<Context, Event>(
 function action<Context, Event>(
 	apply: (context: Context, event: Event) => void,
 ): ActionModifier<Context, Event> {
-	return { kind: "action", apply }
+	return { kind: 'action', apply }
 }
 
 // ---------------------------------------------------------------------------
@@ -172,16 +175,12 @@ export interface TransitionDefinition<Context, Handled> {
 
 /** A settlement branch of an `invoke` state. */
 export interface SettlementDefinition<Context, Result> {
-	readonly settlement: "done" | "error"
+	readonly settlement: 'done' | 'error'
 	readonly target: string
 	readonly modifiers: readonly Modifier<Context, Result, unknown>[]
 }
 
-export interface StateDefinition<
-	S extends MachineSpec,
-	K,
-	Handled,
-> {
+export interface StateDefinition<S extends MachineSpec, K, Handled> {
 	readonly state?: K
 	readonly handles?: Handled
 	readonly transitions: readonly TransitionDefinition<
@@ -189,8 +188,7 @@ export interface StateDefinition<
 		EventName<S>
 	>[]
 	readonly source:
-		| ((context: never, signal: AbortSignal) => Promise<unknown>)
-		| undefined
+		((context: never, signal: AbortSignal) => Promise<unknown>) | undefined
 	readonly settlements: readonly SettlementDefinition<never, never>[]
 }
 
@@ -201,16 +199,21 @@ type AnyStateDefinition<S extends MachineSpec> = StateDefinition<
 >
 
 /** The events state `K` of a built machine actually handles. */
-export type HandledBy<States, K extends keyof States> =
-	States[K] extends { readonly handles?: infer Handled }
-		? Exclude<Handled, undefined>
-		: never
+export type HandledBy<States, K extends keyof States> = States[K] extends {
+	readonly handles?: infer Handled
+}
+	? Exclude<Handled, undefined>
+	: never
 
 // ---------------------------------------------------------------------------
 // The builder kit
 // ---------------------------------------------------------------------------
 
-export interface InvokeKit<S extends MachineSpec, K extends StateName<S>, Result> {
+export interface InvokeKit<
+	S extends MachineSpec,
+	K extends StateName<S>,
+	Result,
+> {
 	/** Taken when the source promise resolves. `result` is its resolved value. */
 	done: <To extends StateName<S>>(
 		target: To,
@@ -219,7 +222,11 @@ export interface InvokeKit<S extends MachineSpec, K extends StateName<S>, Result
 	/** Taken when the source promise rejects. `error` is `unknown`, as it must be. */
 	error: <To extends StateName<S>>(
 		target: To,
-		...modifiers: TransitionModifiers<ContextOf<S, K>, unknown, ContextOf<S, To>>
+		...modifiers: TransitionModifiers<
+			ContextOf<S, K>,
+			unknown,
+			ContextOf<S, To>
+		>
 	) => SettlementDefinition<ContextOf<S, K>, Result>
 }
 
@@ -341,29 +348,31 @@ const makeInvoke = (
 	source,
 	settlements: settlements({
 		done: (target: string, ...modifiers: unknown[]) => ({
-			settlement: "done",
+			settlement: 'done',
 			target,
 			modifiers,
 		}),
 		error: (target: string, ...modifiers: unknown[]) => ({
-			settlement: "error",
+			settlement: 'error',
 			target,
 			modifiers,
 		}),
 	}),
 })
 
-const invoke = (
-	source: unknown,
-	settlements: (kit: unknown) => unknown[],
-) => makeInvoke(source, settlements)
+const invoke = (source: unknown, settlements: (kit: unknown) => unknown[]) =>
+	makeInvoke(source, settlements)
 
 const kit = {
 	reduce,
 	guard,
 	action,
 	state,
-	transition: (handles: PropertyKey, target: string, ...modifiers: unknown[]) => ({
+	transition: (
+		handles: PropertyKey,
+		target: string,
+		...modifiers: unknown[]
+	) => ({
 		handles,
 		target,
 		modifiers,
@@ -413,7 +422,7 @@ export function defineMachine<S extends MachineSpec>() {
 				] as readonly { readonly modifiers: readonly { kind: string }[] }[]
 				for (const branch of branches) {
 					const reducers = branch.modifiers.filter(
-						(modifier) => modifier.kind === "reduce",
+						(modifier) => modifier.kind === 'reduce',
 					)
 					if (reducers.length > 1) {
 						throw new Error(
@@ -436,7 +445,7 @@ export function defineMachine<S extends MachineSpec>() {
 // ---------------------------------------------------------------------------
 
 interface RuntimeModifier {
-	readonly kind: "reduce" | "guard" | "action"
+	readonly kind: 'reduce' | 'guard' | 'action'
 	readonly apply: (context: unknown, event: unknown) => unknown
 }
 
@@ -444,15 +453,14 @@ interface RuntimeBranch {
 	readonly target: string
 	readonly modifiers: readonly RuntimeModifier[]
 	readonly handles?: PropertyKey
-	readonly settlement?: "done" | "error"
+	readonly settlement?: 'done' | 'error'
 }
 
 interface RuntimeState {
 	readonly transitions: readonly RuntimeBranch[]
 	readonly settlements: readonly RuntimeBranch[]
 	readonly source:
-		| ((context: unknown, signal: AbortSignal) => Promise<unknown>)
-		| undefined
+		((context: unknown, signal: AbortSignal) => Promise<unknown>) | undefined
 }
 
 /**
@@ -480,17 +488,14 @@ export function interpret<
 
 	const runBranch = (branch: RuntimeBranch, event: unknown): boolean => {
 		for (const modifier of branch.modifiers) {
-			if (
-				modifier.kind === "guard" &&
-				!modifier.apply(currentContext, event)
-			) {
+			if (modifier.kind === 'guard' && !modifier.apply(currentContext, event)) {
 				return false
 			}
 		}
 		for (const modifier of branch.modifiers) {
-			if (modifier.kind === "action") modifier.apply(currentContext, event)
+			if (modifier.kind === 'action') modifier.apply(currentContext, event)
 		}
-		const reducer = branch.modifiers.find((m) => m.kind === "reduce")
+		const reducer = branch.modifiers.find((m) => m.kind === 'reduce')
 		epoch++
 		pending?.abort()
 		pending = undefined
@@ -515,15 +520,15 @@ export function interpret<
 		pending = controller
 		definition.source(currentContext, controller.signal).then(
 			(result) => {
-				if (epoch === entered && !stopped) settle("done", result)
+				if (epoch === entered && !stopped) settle('done', result)
 			},
 			(error: unknown) => {
-				if (epoch === entered && !stopped) settle("error", error)
+				if (epoch === entered && !stopped) settle('error', error)
 			},
 		)
 	}
 
-	const settle = (kind: "done" | "error", payload: unknown): void => {
+	const settle = (kind: 'done' | 'error', payload: unknown): void => {
 		const definition = states[currentState]
 		if (!definition) return
 		for (const branch of definition.settlements) {

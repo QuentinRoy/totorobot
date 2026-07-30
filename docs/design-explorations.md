@@ -33,7 +33,7 @@ incorrect context annotation inside one modifier could compile.
 `[key: string]: any` index signature. This compiled:
 
 ```ts
-send({ type: "login", username: 42, password: "secret" })
+send({ type: 'login', username: 42, password: 'secret' })
 ```
 
 It then failed at runtime when the machine called `event.username.trim()`.
@@ -79,13 +79,13 @@ check that reducer well.
 The first prototype declared state context inline:
 
 ```ts
-defineMachine("red", {
-  red: state((transition: TransitionBuilder<{ changes: number }>) => [
-    transition("next", "green", {
-      reduce: (data) => ({ changes: data.changes + 1 }),
-    }),
-  ]),
-  // ...
+defineMachine('red', {
+	red: state((transition: TransitionBuilder<{ changes: number }>) => [
+		transition('next', 'green', {
+			reduce: (data) => ({ changes: data.changes + 1 }),
+		}),
+	]),
+	// ...
 })
 ```
 
@@ -140,46 +140,43 @@ accumulated the states, events, and transitions declared so far.
 
 ```ts
 const authMachine = defineMachine()
-  .state("idle", (state) =>
-    state
-      .data<{
-        error: string | null
-        attempts: number
-      }>()
-      .initial(),
-  )
-  .state("authenticating", (state) =>
-    state.data<{
-      username: string
-      password: string
-      attempts: number
-    }>(),
-  )
-  .state("authenticated", (state) =>
-    state
-      .data<{
-        username: string
-        token: string
-      }>()
-      .final(),
-  )
-  .on(
-    "login",
-    { from: "idle", to: "authenticating" },
-    (transition) =>
-      transition
-        .payload<{
-          username: string
-          password: string
-        }>()
-        .guard((_data, event) => event.username.trim().length > 0)
-        .reduce((data, event) => ({
-          username: event.username,
-          password: event.password,
-          attempts: data.attempts + 1,
-        })),
-  )
-  .build()
+	.state('idle', (state) =>
+		state
+			.data<{
+				error: string | null
+				attempts: number
+			}>()
+			.initial(),
+	)
+	.state('authenticating', (state) =>
+		state.data<{
+			username: string
+			password: string
+			attempts: number
+		}>(),
+	)
+	.state('authenticated', (state) =>
+		state
+			.data<{
+				username: string
+				token: string
+			}>()
+			.final(),
+	)
+	.on('login', { from: 'idle', to: 'authenticating' }, (transition) =>
+		transition
+			.payload<{
+				username: string
+				password: string
+			}>()
+			.guard((_data, event) => event.username.trim().length > 0)
+			.reduce((data, event) => ({
+				username: event.username,
+				password: event.password,
+				attempts: data.attempts + 1,
+			})),
+	)
+	.build()
 ```
 
 This is a discarded API sketch. Its `.data()`, `.initial()`, and `.final()`
@@ -216,35 +213,35 @@ contexts and event payloads as a type before building any edge.
 
 ```ts
 type AuthSpec = {
-  states: {
-    idle: { error: string | null; attempts: number }
-    authenticating: {
-      username: string
-      password: string
-      attempts: number
-    }
-  }
-  events: {
-    login: { username: string; password: string }
-  }
+	states: {
+		idle: { error: string | null; attempts: number }
+		authenticating: {
+			username: string
+			password: string
+			attempts: number
+		}
+	}
+	events: {
+		login: { username: string; password: string }
+	}
 }
 
 const authMachine = defineMachine<AuthSpec>().create(
-  "idle",
-  ({ state, transition, reduce }) => ({
-    idle: state(
-      transition(
-        "login",
-        "authenticating",
-        reduce((context, event) => ({
-          username: event.username,
-          password: event.password,
-          attempts: context.attempts + 1,
-        })),
-      ),
-    ),
-    authenticating: state(),
-  }),
+	'idle',
+	({ state, transition, reduce }) => ({
+		idle: state(
+			transition(
+				'login',
+				'authenticating',
+				reduce((context, event) => ({
+					username: event.username,
+					password: event.password,
+					attempts: context.attempts + 1,
+				})),
+			),
+		),
+		authenticating: state(),
+	}),
 )
 ```
 

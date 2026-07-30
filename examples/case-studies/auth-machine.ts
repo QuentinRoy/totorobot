@@ -1,4 +1,4 @@
-import { defineMachine } from "../../src/totorobot.ts"
+import { defineMachine } from '../../src/totorobot.ts'
 
 /**
  * Example 2: per-state context + a typed async `invoke`.
@@ -8,7 +8,7 @@ import { defineMachine } from "../../src/totorobot.ts"
  * from a state where they would be meaningless.
  */
 export interface LoginEvent {
-	type: "login"
+	type: 'login'
 	username: string
 	password: string
 }
@@ -24,8 +24,8 @@ interface LoginResult {
 
 async function fakeLogin(credentials: Credentials): Promise<LoginResult> {
 	await new Promise((resolve) => setTimeout(resolve, 50))
-	if (credentials.password !== "hunter2") {
-		throw new Error("invalid credentials")
+	if (credentials.password !== 'hunter2') {
+		throw new Error('invalid credentials')
 	}
 	return { token: `token-for-${credentials.username}` }
 }
@@ -37,17 +37,17 @@ type AuthSpec = {
 		authenticated: { username: string; token: string }
 	}
 	events: {
-		login: Omit<LoginEvent, "type">
+		login: Omit<LoginEvent, 'type'>
 	}
 }
 
 export const authMachine = defineMachine<AuthSpec>().create(
-	"idle",
+	'idle',
 	({ state, transition, invoke, guard, reduce }) => ({
 		idle: state(
 			transition(
-				"login",
-				"authenticating",
+				'login',
+				'authenticating',
 				// A guard sees the same typed context + event as the reducer.
 				guard((_context, event) => event.username.trim().length > 0),
 				reduce((context, event) => ({
@@ -64,14 +64,14 @@ export const authMachine = defineMachine<AuthSpec>().create(
 			(context) => fakeLogin(context),
 			({ done, error }) => [
 				done(
-					"authenticated",
+					'authenticated',
 					reduce((context, result) => ({
 						username: context.username,
 						token: result.token,
 					})),
 				),
 				error(
-					"idle",
+					'idle',
 					reduce((context, invokeError) => ({
 						error:
 							invokeError instanceof Error

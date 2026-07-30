@@ -1,4 +1,4 @@
-import { defineMachine } from "../../src/totorobot.ts"
+import { defineMachine } from '../../src/totorobot.ts'
 
 /**
  * Example 1: per-state context.
@@ -7,7 +7,7 @@ import { defineMachine } from "../../src/totorobot.ts"
  * states - the thing robot3's single flat context could not express.
  */
 export interface NextEvent {
-	type: "next"
+	type: 'next'
 }
 
 type TrafficLightSpec = {
@@ -17,17 +17,17 @@ type TrafficLightSpec = {
 		yellow: { changes: number; blinking: boolean }
 	}
 	events: {
-		next: Omit<NextEvent, "type">
+		next: Omit<NextEvent, 'type'>
 	}
 }
 
 export const trafficLight = defineMachine<TrafficLightSpec>().create(
-	"red",
+	'red',
 	({ state, transition, reduce }) => ({
 		red: state(
 			transition(
-				"next",
-				"green",
+				'next',
+				'green',
 				reduce((context) => ({
 					changes: context.changes + 1,
 				})),
@@ -35,8 +35,8 @@ export const trafficLight = defineMachine<TrafficLightSpec>().create(
 		),
 		green: state(
 			transition(
-				"next",
-				"yellow",
+				'next',
+				'yellow',
 				reduce((context) => ({
 					changes: context.changes + 1,
 					blinking: true,
@@ -45,8 +45,8 @@ export const trafficLight = defineMachine<TrafficLightSpec>().create(
 		),
 		yellow: state(
 			transition(
-				"next",
-				"red",
+				'next',
+				'red',
 				// `context.blinking` is available here and nowhere else.
 				reduce((context) => ({
 					changes: context.changes + (context.blinking ? 1 : 0),

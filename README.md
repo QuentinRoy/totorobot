@@ -15,37 +15,37 @@ TypeScript enforce while keeping a compact, Robot-inspired creation API?
 ## Example
 
 ```ts
-import { defineMachine, interpret } from "totorobot"
+import { defineMachine, interpret } from 'totorobot'
 
 type CounterSpec = {
-  states: {
-    idle: { count: number }
-    finished: { result: number }
-  }
-  events: {
-    finish: Record<never, never>
-  }
+	states: {
+		idle: { count: number }
+		finished: { result: number }
+	}
+	events: {
+		finish: Record<never, never>
+	}
 }
 
 const counter = defineMachine<CounterSpec>().create(
-  "idle",
-  ({ state, transition, reduce }) => ({
-    idle: state(
-      transition(
-        "finish",
-        "finished",
-        reduce((context) => ({ result: context.count })),
-      ),
-    ),
-    finished: state(),
-  }),
+	'idle',
+	({ state, transition, reduce }) => ({
+		idle: state(
+			transition(
+				'finish',
+				'finished',
+				reduce((context) => ({ result: context.count })),
+			),
+		),
+		finished: state(),
+	}),
 )
 
 const service = interpret(counter, { count: 42 })
-service.send({ type: "finish" })
+service.send({ type: 'finish' })
 
-if (service.current.state === "finished") {
-  service.current.context.result // number
+if (service.current.state === 'finished') {
+	service.current.context.result // number
 }
 ```
 

@@ -1,6 +1,6 @@
-import { describe, expect, expectTypeOf, test, vi } from "vitest"
+import { describe, expect, expectTypeOf, test, vi } from 'vitest'
 
-import { defineMachine, interpret } from "../src/totorobot.ts"
+import { defineMachine, interpret } from '../src/totorobot.ts'
 
 // ---------------------------------------------------------------------------
 // Traffic light: per-state context, `blinking` exists only on `yellow`.
@@ -16,26 +16,26 @@ type TrafficSpec = {
 }
 
 const trafficLight = defineMachine<TrafficSpec>().create(
-	"red",
+	'red',
 	({ state, transition, reduce }) => ({
 		red: state(
 			transition(
-				"next",
-				"green",
+				'next',
+				'green',
 				reduce((context) => ({ changes: context.changes + 1 })),
 			),
 		),
 		green: state(
 			transition(
-				"next",
-				"yellow",
+				'next',
+				'yellow',
 				reduce((context) => ({ changes: context.changes + 1, blinking: true })),
 			),
 		),
 		yellow: state(
 			transition(
-				"next",
-				"red",
+				'next',
+				'red',
 				// `blinking` is readable here and nowhere else.
 				reduce((context) => ({
 					changes: context.changes + (context.blinking ? 1 : 0),
@@ -45,40 +45,43 @@ const trafficLight = defineMachine<TrafficSpec>().create(
 	}),
 )
 
-describe("per-state context", () => {
-	test("cycles and carries state-specific fields", () => {
+describe('per-state context', () => {
+	test('cycles and carries state-specific fields', () => {
 		const service = interpret(trafficLight, { changes: 0 })
 
-		expect(service.snapshot).toEqual({ state: "red", context: { changes: 0 } })
-		service.send({ type: "next" })
-		expect(service.snapshot).toEqual({ state: "green", context: { changes: 1 } })
-		service.send({ type: "next" })
+		expect(service.snapshot).toEqual({ state: 'red', context: { changes: 0 } })
+		service.send({ type: 'next' })
 		expect(service.snapshot).toEqual({
-			state: "yellow",
+			state: 'green',
+			context: { changes: 1 },
+		})
+		service.send({ type: 'next' })
+		expect(service.snapshot).toEqual({
+			state: 'yellow',
 			context: { changes: 2, blinking: true },
 		})
-		service.send({ type: "next" })
-		expect(service.snapshot).toEqual({ state: "red", context: { changes: 3 } })
+		service.send({ type: 'next' })
+		expect(service.snapshot).toEqual({ state: 'red', context: { changes: 3 } })
 	})
 
-	test("narrowing `state` narrows `context`", () => {
+	test('narrowing `state` narrows `context`', () => {
 		const service = interpret(trafficLight, { changes: 0 })
 		const snapshot = service.snapshot
 
-		if (snapshot.state === "yellow") {
+		if (snapshot.state === 'yellow') {
 			expectTypeOf(snapshot.context).toEqualTypeOf<{
 				changes: number
 				blinking: boolean
 			}>()
 		}
-		if (snapshot.state === "red") {
+		if (snapshot.state === 'red') {
 			expectTypeOf(snapshot.context).toEqualTypeOf<{ changes: number }>()
 			// @ts-expect-error `blinking` exists only on `yellow`
 			snapshot.context.blinking
 		}
 	})
 
-	test("initial context is checked against the initial state", () => {
+	test('initial context is checked against the initial state', () => {
 		// @ts-expect-error `red` does not declare `blinking`
 		interpret(trafficLight, { changes: 0, blinking: true })
 		// @ts-expect-error `red` requires `changes`
@@ -90,7 +93,7 @@ describe("per-state context", () => {
 // Explicit initial state and terminal states.
 // ---------------------------------------------------------------------------
 
-describe("state roles", () => {
+describe('state roles', () => {
 	type Spec = {
 		states: {
 			start: { count: number }
@@ -99,34 +102,34 @@ describe("state roles", () => {
 		events: { finish: Record<never, never> }
 	}
 
-	test("the machine owns its initial state and state() can be terminal", () => {
+	test('the machine owns its initial state and state() can be terminal', () => {
 		const machine = defineMachine<Spec>().create(
-			"start",
+			'start',
 			({ state, transition }) => ({
-				start: state(transition("finish", "finished")),
+				start: state(transition('finish', 'finished')),
 				finished: state(),
 			}),
 		)
 
-		expect(machine.initial).toBe("start")
+		expect(machine.initial).toBe('start')
 		expect(machine.states.finished.transitions).toHaveLength(0)
 
 		const service = interpret(machine, { count: 0 })
-		service.send({ type: "finish" })
+		service.send({ type: 'finish' })
 		expect(service.snapshot).toEqual({
-			state: "finished",
+			state: 'finished',
 			context: { count: 0 },
 		})
 
-		service.send({ type: "finish" })
-		expect(service.snapshot.state).toBe("finished")
+		service.send({ type: 'finish' })
+		expect(service.snapshot.state).toBe('finished')
 	})
 
-	test("the initial state must exist", () => {
+	test('the initial state must exist', () => {
 		expect(() =>
 			defineMachine<Spec>().create(
 				// @ts-expect-error no state named `missing` exists
-				"missing",
+				'missing',
 				({ state }) => ({
 					start: state(),
 					finished: state(),
@@ -140,7 +143,7 @@ describe("state roles", () => {
 // Auth: invoke, guards, actions, symbol events.
 // ---------------------------------------------------------------------------
 
-const retry = Symbol("retry")
+const retry = Symbol('retry')
 
 interface LoginResult {
 	token: string
@@ -163,17 +166,17 @@ const login = async (
 	username: string,
 	password: string,
 ): Promise<LoginResult> => {
-	if (password !== "hunter2") throw new Error("invalid credentials")
+	if (password !== 'hunter2') throw new Error('invalid credentials')
 	return { token: `token-for-${username}`, issuedAt: 1 }
 }
 
 const authMachine = defineMachine<AuthSpec>().create(
-	"idle",
+	'idle',
 	({ state, transition, invoke, guard, reduce }) => ({
 		idle: state(
 			transition(
-				"login",
-				"authenticating",
+				'login',
+				'authenticating',
 				guard((_data, event) => event.username.trim().length > 0),
 				reduce((context, event) => ({
 					username: event.username,
@@ -187,14 +190,14 @@ const authMachine = defineMachine<AuthSpec>().create(
 			(context) => login(context.username, context.password),
 			({ done, error }) => [
 				done(
-					"authenticated",
+					'authenticated',
 					reduce((context, result) => ({
 						username: context.username,
 						token: result.token,
 					})),
 				),
 				error(
-					"idle",
+					'idle',
 					reduce((context, err) => ({
 						error: err instanceof Error ? err.message : String(err),
 						attempts: context.attempts,
@@ -207,48 +210,48 @@ const authMachine = defineMachine<AuthSpec>().create(
 	}),
 )
 
-describe("invoke", () => {
+describe('invoke', () => {
 	test("resolves into the done target with the promise's value", async () => {
 		const service = interpret(authMachine, {
 			error: null,
 			attempts: 0,
 		})
 
-		service.send({ type: "login", username: "quentin", password: "hunter2" })
-		expect(service.snapshot.state).toBe("authenticating")
+		service.send({ type: 'login', username: 'quentin', password: 'hunter2' })
+		expect(service.snapshot.state).toBe('authenticating')
 
-		await vi.waitFor(() => expect(service.snapshot.state).toBe("authenticated"))
+		await vi.waitFor(() => expect(service.snapshot.state).toBe('authenticated'))
 
 		const context = service.snapshot
-		if (context.state !== "authenticated") throw new Error("unreachable")
+		if (context.state !== 'authenticated') throw new Error('unreachable')
 		// No null check: `token` is guaranteed by this state.
 		expectTypeOf(context.context.token).toEqualTypeOf<string>()
-		expect(context.context.token).toBe("token-for-quentin")
+		expect(context.context.token).toBe('token-for-quentin')
 	})
 
-	test("rejects into the error target with `unknown`", async () => {
+	test('rejects into the error target with `unknown`', async () => {
 		const service = interpret(authMachine, {
 			error: null,
 			attempts: 0,
 		})
 
-		service.send({ type: "login", username: "quentin", password: "wrong" })
-		await vi.waitFor(() => expect(service.snapshot.state).toBe("idle"))
+		service.send({ type: 'login', username: 'quentin', password: 'wrong' })
+		await vi.waitFor(() => expect(service.snapshot.state).toBe('idle'))
 
 		expect(service.snapshot.context).toEqual({
-			error: "invalid credentials",
+			error: 'invalid credentials',
 			attempts: 1,
 		})
 	})
 
-	test("the resolved type flows into `done` without a hand-written wrapper", () => {
+	test('the resolved type flows into `done` without a hand-written wrapper', () => {
 		defineMachine<AuthSpec>().create(
-			"idle",
+			'idle',
 			({ state, transition, invoke, reduce }) => ({
 				idle: state(
 					transition(
-						"login",
-						"authenticating",
+						'login',
+						'authenticating',
 						reduce((context, event) => ({
 							username: event.username,
 							password: event.password,
@@ -260,7 +263,7 @@ describe("invoke", () => {
 					(context) => login(context.username, context.password),
 					({ done, error }) => [
 						done(
-							"authenticated",
+							'authenticated',
 							reduce((context, result) => {
 								expectTypeOf(result).toEqualTypeOf<LoginResult>()
 								expectTypeOf(context).toEqualTypeOf<{
@@ -272,7 +275,7 @@ describe("invoke", () => {
 							}),
 						),
 						error(
-							"idle",
+							'idle',
 							reduce((context, err) => {
 								expectTypeOf(err).toEqualTypeOf<unknown>()
 								return { error: String(err), attempts: context.attempts }
@@ -292,16 +295,25 @@ describe("invoke", () => {
 		})
 
 		type Spec = {
-			states: { waiting: { n: number }; done: { n: number }; bailed: { n: number } }
+			states: {
+				waiting: { n: number }
+				done: { n: number }
+				bailed: { n: number }
+			}
 			events: { bail: Record<never, never> }
 		}
 
 		const invoking = defineMachine<Spec>().create(
-			"waiting",
+			'waiting',
 			({ state, invoke, reduce }) => ({
 				waiting: invoke(
 					() => slow,
-					({ done }) => [done("done", reduce((context) => context))],
+					({ done }) => [
+						done(
+							'done',
+							reduce((context) => context),
+						),
+					],
 				),
 				done: state(),
 				bailed: state(),
@@ -313,7 +325,7 @@ describe("invoke", () => {
 		release({ ok: true })
 		await slow
 
-		expect(service.snapshot.state).toBe("waiting")
+		expect(service.snapshot.state).toBe('waiting')
 	})
 })
 
@@ -321,22 +333,22 @@ describe("invoke", () => {
 // Modifiers
 // ---------------------------------------------------------------------------
 
-describe("modifiers", () => {
+describe('modifiers', () => {
 	type Spec = {
 		states: { one: { attempts: number }; two: { attempts: number } }
 		events: { ping: { allowed?: boolean } }
 	}
 
-	test("multiple guards: any returning false prevents the transition", () => {
+	test('multiple guards: any returning false prevents the transition', () => {
 		// The behaviour Robot3 has and the first prototype could not express.
 		let canProceed = false
 		const machine = defineMachine<Spec>().create(
-			"one",
+			'one',
 			({ state, transition, guard }) => ({
 				one: state(
 					transition(
-						"ping",
-						"two",
+						'ping',
+						'two',
 						guard(() => canProceed),
 						guard((_data, event) => event.allowed === true),
 					),
@@ -347,26 +359,26 @@ describe("modifiers", () => {
 
 		const service = interpret(machine, { attempts: 0 })
 
-		service.send({ type: "ping", allowed: true })
-		expect(service.snapshot.state).toBe("one")
+		service.send({ type: 'ping', allowed: true })
+		expect(service.snapshot.state).toBe('one')
 
 		canProceed = true
-		service.send({ type: "ping" })
-		expect(service.snapshot.state).toBe("one")
+		service.send({ type: 'ping' })
+		expect(service.snapshot.state).toBe('one')
 
-		service.send({ type: "ping", allowed: true })
-		expect(service.snapshot.state).toBe("two")
+		service.send({ type: 'ping', allowed: true })
+		expect(service.snapshot.state).toBe('two')
 	})
 
-	test("guards short-circuit in order", () => {
+	test('guards short-circuit in order', () => {
 		const second = vi.fn(() => true)
 		const machine = defineMachine<Spec>().create(
-			"one",
+			'one',
 			({ state, transition, guard }) => ({
 				one: state(
 					transition(
-						"ping",
-						"two",
+						'ping',
+						'two',
 						guard(() => false),
 						guard(second),
 					),
@@ -375,28 +387,28 @@ describe("modifiers", () => {
 			}),
 		)
 
-		interpret(machine, { attempts: 0 }).send({ type: "ping" })
+		interpret(machine, { attempts: 0 }).send({ type: 'ping' })
 		expect(second).not.toHaveBeenCalled()
 	})
 
-	test("actions run in order with the source context, only once guards pass", () => {
+	test('actions run in order with the source context, only once guards pass', () => {
 		const calls: string[] = []
 		const machine = defineMachine<Spec>().create(
-			"one",
+			'one',
 			({ state, transition, action, guard, reduce }) => ({
 				one: state(
 					transition(
-						"ping",
-						"two",
+						'ping',
+						'two',
 						action((context) => calls.push(`a:${context.attempts}`)),
-						action(() => calls.push("b")),
+						action(() => calls.push('b')),
 						reduce((context) => ({ attempts: context.attempts + 1 })),
 					),
 					transition(
-						"ping",
-						"two",
+						'ping',
+						'two',
 						guard(() => false),
-						action(() => calls.push("never")),
+						action(() => calls.push('never')),
 					),
 				),
 				two: state(),
@@ -404,17 +416,17 @@ describe("modifiers", () => {
 		)
 
 		const service = interpret(machine, { attempts: 7 })
-		service.send({ type: "ping" })
+		service.send({ type: 'ping' })
 
-		expect(calls).toEqual(["a:7", "b"])
+		expect(calls).toEqual(['a:7', 'b'])
 		expect(service.snapshot.context).toEqual({ attempts: 8 })
 	})
 
-	test("a reusable combinator applies to any state whose context fits", () => {
+	test('a reusable combinator applies to any state whose context fits', () => {
 		// Written with no knowledge of the machine; usable because the modifier's
 		// type parameters sit in `apply`'s parameter positions.
 		const machine = defineMachine<Spec>().create(
-			"one",
+			'one',
 			({ state, transition, guard }) => {
 				const maxAttempts = (limit: number) =>
 					guard<{ attempts: number }, unknown>(
@@ -422,56 +434,53 @@ describe("modifiers", () => {
 					)
 
 				return {
-					one: state(transition("ping", "two", maxAttempts(3))),
+					one: state(transition('ping', 'two', maxAttempts(3))),
 					two: state(),
 				}
 			},
 		)
 
 		const blocked = interpret(machine, { attempts: 5 })
-		blocked.send({ type: "ping" })
-		expect(blocked.snapshot.state).toBe("one")
+		blocked.send({ type: 'ping' })
+		expect(blocked.snapshot.state).toBe('one')
 
 		const allowed = interpret(machine, { attempts: 1 })
-		allowed.send({ type: "ping" })
-		expect(allowed.snapshot.state).toBe("two")
+		allowed.send({ type: 'ping' })
+		expect(allowed.snapshot.state).toBe('two')
 	})
 
-	test("more than one reduce per transition is rejected", () => {
+	test('more than one reduce per transition is rejected', () => {
 		// robot3 pipelines reducers; with per-state context that fold is not typeable,
 		// so the signature admits exactly one and it must come last. The runtime
 		// check backs the same rule up for callers who are not using TypeScript.
 		expect(() =>
-			defineMachine<Spec>().create(
-				"one",
-				({ state, transition, reduce }) => ({
-					one: state(
-						transition(
-							"ping",
-							"two",
-							// @ts-expect-error only one reduce is allowed, and it must be last
-							reduce((context) => context),
-							reduce((context) => context),
-						),
+			defineMachine<Spec>().create('one', ({ state, transition, reduce }) => ({
+				one: state(
+					transition(
+						'ping',
+						'two',
+						// @ts-expect-error only one reduce is allowed, and it must be last
+						reduce((context) => context),
+						reduce((context) => context),
 					),
-					two: state(),
-				}),
-			),
+				),
+				two: state(),
+			})),
 		).toThrow(/at most one/)
 	})
 
-	test("reduce may be omitted when the source context already fits the target", () => {
+	test('reduce may be omitted when the source context already fits the target', () => {
 		const machine = defineMachine<Spec>().create(
-			"one",
+			'one',
 			({ state, transition }) => ({
-				one: state(transition("ping", "two")),
+				one: state(transition('ping', 'two')),
 				two: state(),
 			}),
 		)
 
 		const service = interpret(machine, { attempts: 4 })
-		service.send({ type: "ping" })
-		expect(service.snapshot).toEqual({ state: "two", context: { attempts: 4 } })
+		service.send({ type: 'ping' })
+		expect(service.snapshot).toEqual({ state: 'two', context: { attempts: 4 } })
 	})
 })
 
@@ -479,82 +488,67 @@ describe("modifiers", () => {
 // What the types catch
 // ---------------------------------------------------------------------------
 
-describe("type errors", () => {
+describe('type errors', () => {
 	type Spec = {
 		states: { idle: { attempts: number }; authed: { token: string } }
 		events: { login: { username: string }; [retry]: Record<never, never> }
 	}
 
 	test("a reducer must return its target state's context", () => {
-		defineMachine<Spec>().create(
-			"idle",
-			({ state, transition, reduce }) => ({
-				idle: state(
-					transition(
-						"login",
-						"authed",
-						// @ts-expect-error returns idle's context, target `authed` declares { token }
-						reduce(() => ({ attempts: 1 })),
-					),
+		defineMachine<Spec>().create('idle', ({ state, transition, reduce }) => ({
+			idle: state(
+				transition(
+					'login',
+					'authed',
+					// @ts-expect-error returns idle's context, target `authed` declares { token }
+					reduce(() => ({ attempts: 1 })),
 				),
-				authed: state(),
-			}),
-		)
+			),
+			authed: state(),
+		}))
 	})
 
 	test("a reducer may only read its source state's context", () => {
-		defineMachine<Spec>().create(
-			"idle",
-			({ state, transition, reduce }) => ({
-				idle: state(
-					transition(
-						"login",
-						"authed",
-						// @ts-expect-error `token` is not on idle's context
-						reduce((context) => ({ token: context.token })),
-					),
+		defineMachine<Spec>().create('idle', ({ state, transition, reduce }) => ({
+			idle: state(
+				transition(
+					'login',
+					'authed',
+					// @ts-expect-error `token` is not on idle's context
+					reduce((context) => ({ token: context.token })),
 				),
-				authed: state(),
-			}),
-		)
+			),
+			authed: state(),
+		}))
 	})
 
-	test("reduce cannot be omitted when the shapes differ", () => {
-		defineMachine<Spec>().create(
-			"idle",
-			({ state, transition }) => ({
-				// @ts-expect-error idle's context is not assignable to authed's
-				idle: state(transition("login", "authed")),
-				authed: state(),
-			}),
-		)
+	test('reduce cannot be omitted when the shapes differ', () => {
+		defineMachine<Spec>().create('idle', ({ state, transition }) => ({
+			// @ts-expect-error idle's context is not assignable to authed's
+			idle: state(transition('login', 'authed')),
+			authed: state(),
+		}))
 	})
 
-	test("target and event names must exist", () => {
-		defineMachine<Spec>().create(
-			"idle",
-			({ state, transition }) => ({
-				// @ts-expect-error no such state
-				idle: state(transition("login", "nope")),
-				authed: state(),
-			}),
-		)
-		defineMachine<Spec>().create(
-			"idle",
-			({ state, transition }) => ({
-				// @ts-expect-error no such event
-				idle: state(transition("nope", "authed")),
-				authed: state(),
-			}),
-		)
+	test('target and event names must exist', () => {
+		defineMachine<Spec>().create('idle', ({ state, transition }) => ({
+			// @ts-expect-error no such state
+			idle: state(transition('login', 'nope')),
+			authed: state(),
+		}))
+		defineMachine<Spec>().create('idle', ({ state, transition }) => ({
+			// @ts-expect-error no such event
+			idle: state(transition('nope', 'authed')),
+			authed: state(),
+		}))
 	})
 
-	test("the state map must match the spec exactly", () => {
+	test('the state map must match the spec exactly', () => {
 		// @ts-expect-error `authed` is missing
-		defineMachine<Spec>().create("idle", ({ state }) => ({
+		defineMachine<Spec>().create('idle', ({ state }) => ({
 			idle: state(),
 		}))
-		defineMachine<Spec>().create("idle", ({ state }) => ({
+		defineMachine<Spec>().create('idle', ({ state }) => ({
 			idle: state(),
 			authed: state(),
 			// @ts-expect-error no such state in the spec
@@ -562,14 +556,14 @@ describe("type errors", () => {
 		}))
 	})
 
-	test("send rejects undeclared events and wrong payloads", () => {
+	test('send rejects undeclared events and wrong payloads', () => {
 		const machine = defineMachine<Spec>().create(
-			"idle",
+			'idle',
 			({ state, transition, reduce }) => ({
 				idle: state(
 					transition(
-						"login",
-						"authed",
+						'login',
+						'authed',
 						reduce((_data, event) => ({ token: event.username })),
 					),
 				),
@@ -579,9 +573,9 @@ describe("type errors", () => {
 		const service = interpret(machine, { attempts: 0 })
 
 		// @ts-expect-error `username` must be a string
-		service.send({ type: "login", username: 42 })
+		service.send({ type: 'login', username: 42 })
 		// @ts-expect-error the machine declares no `logout`
-		service.send({ type: "logout" })
+		service.send({ type: 'logout' })
 	})
 })
 
@@ -589,38 +583,38 @@ describe("type errors", () => {
 // Narrowed send
 // ---------------------------------------------------------------------------
 
-describe("send narrowed to the current state", () => {
+describe('send narrowed to the current state', () => {
 	type Spec = {
 		states: { idle: { n: number }; busy: { n: number } }
 		events: { start: Record<never, never>; cancel: Record<never, never> }
 	}
 
 	const machine = defineMachine<Spec>().create(
-		"idle",
+		'idle',
 		({ state, transition }) => ({
-			idle: state(transition("start", "busy")),
-			busy: state(transition("cancel", "idle")),
+			idle: state(transition('start', 'busy')),
+			busy: state(transition('cancel', 'idle')),
 		}),
 	)
 
-	test("`current.send` only accepts what the current state handles", () => {
+	test('`current.send` only accepts what the current state handles', () => {
 		const service = interpret(machine, { n: 0 })
 		const current = service.current
 
-		if (current.state === "idle") {
-			expectTypeOf(current.send).toBeCallableWith({ type: "start" })
+		if (current.state === 'idle') {
+			expectTypeOf(current.send).toBeCallableWith({ type: 'start' })
 			// @ts-expect-error `idle` does not handle `cancel`
-			current.send({ type: "cancel" })
-			current.send({ type: "start" })
+			current.send({ type: 'cancel' })
+			current.send({ type: 'start' })
 		}
 	})
 
-	test("the unnarrowed `send` still accepts the whole union", () => {
+	test('the unnarrowed `send` still accepts the whole union', () => {
 		const service = interpret(machine, { n: 0 })
-		service.send({ type: "cancel" }) // no-op at runtime, but allowed
-		expect(service.snapshot.state).toBe("idle")
-		service.send({ type: "start" })
-		expect(service.snapshot.state).toBe("busy")
+		service.send({ type: 'cancel' }) // no-op at runtime, but allowed
+		expect(service.snapshot.state).toBe('idle')
+		service.send({ type: 'start' })
+		expect(service.snapshot.state).toBe('busy')
 	})
 })
 
@@ -628,20 +622,20 @@ describe("send narrowed to the current state", () => {
 // Symbol event names
 // ---------------------------------------------------------------------------
 
-describe("symbol events", () => {
-	test("symbols work as event names and cannot collide", () => {
+describe('symbol events', () => {
+	test('symbols work as event names and cannot collide', () => {
 		type Spec = {
 			states: { a: { n: number }; b: { n: number } }
 			events: { [retry]: { attempt: number } }
 		}
 
 		const machine = defineMachine<Spec>().create(
-			"a",
+			'a',
 			({ state, transition, reduce }) => ({
 				a: state(
 					transition(
 						retry,
-						"b",
+						'b',
 						reduce((_data, event) => ({ n: event.attempt })),
 					),
 				),
@@ -651,6 +645,6 @@ describe("symbol events", () => {
 
 		const service = interpret(machine, { n: 0 })
 		service.send({ type: retry, attempt: 3 })
-		expect(service.snapshot).toEqual({ state: "b", context: { n: 3 } })
+		expect(service.snapshot).toEqual({ state: 'b', context: { n: 3 } })
 	})
 })
