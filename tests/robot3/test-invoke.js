@@ -1,55 +1,64 @@
-import { createMachine, immediate, interpret, invoke, reduce, state, state as final, transition } from 'totorobot';
+import { createMachine, defineMachine, immediate, interpret, invoke, reduce, state, state as final, transition } from 'totorobot';
 
 QUnit.module('Invoke', hooks => {
   QUnit.module('Promise');
 
   QUnit.test('Goes to the "done" event when complete', async assert => {
-    let machine = createMachine({
+    let machine = defineMachine().create('one', ({ invoke, reduce, state, transition }) => ({
       one: state(transition('click', 'two')),
-      two: invoke(() => Promise.resolve(13),
-        transition('done', 'three',
-          reduce((ctx, ev) => ({ ...ctx, age: ev.data }))
-        )
+      two: invoke(
+        () => Promise.resolve(13),
+        ({ done }) => [
+          done('three',
+            reduce((ctx, result) => ({ ...ctx, age: result }))
+          )
+        ]
       ),
       three: state()
-    }, () => ({age: 0}));
+    }));
   
-    let service = interpret(machine, () => {});
-    service.send('click');
+    let service = interpret(machine, {age: 0});
+    service.send({ type: 'click' });
     await Promise.resolve();
-    assert.equal(service.context.age, 13, 'Invoked');
-    assert.equal(service.machine.current, 'three', 'now in the next state');
+    assert.equal(service.snapshot.context.age, 13, 'Invoked');
+    assert.equal(service.snapshot.state, 'three', 'now in the next state');
   });
   
   QUnit.test('Goes to the "error" event when there is an error', async assert => {
-    let machine = createMachine({
+    let machine = defineMachine().create('one', ({ invoke, reduce, state, transition }) => ({
       one: state(transition('click', 'two')),
-      two: invoke(() => Promise.reject(new Error('oh no')),
-        transition('error', 'three',
-          reduce((ctx, ev) => ({ ...ctx, error: ev.error }))
-        )
+      two: invoke(
+        () => Promise.reject(new Error('oh no')),
+        ({ error }) => [
+          error('three',
+            reduce((ctx, thrown) => ({ ...ctx, error: thrown }))
+          )
+        ]
       ),
       three: state()
-    }, () => ({age: 0}));
+    }));
   
-    let service = interpret(machine, () => {});
-    service.send('click');
+    let service = interpret(machine, {age: 0});
+    service.send({ type: 'click' });
     await Promise.resolve(); await Promise.resolve();
-    assert.equal(service.context.error.message, 'oh no', 'Got the right error');
+    assert.equal(service.snapshot.context.error.message, 'oh no', 'Got the right error');
   });
   
   QUnit.test('The initial state can be an invoke', async assert => {
-    let machine = createMachine({
-      one: invoke(() => Promise.resolve(2),
-        transition('done', 'two', reduce((ctx, ev) => ({...ctx, age: ev.data})))
+    let machine = defineMachine().create('one', ({ invoke, reduce, state }) => ({
+      one: invoke(
+        () => Promise.resolve(2),
+        ({ done }) => [
+          done('two', reduce((ctx, result) => ({...ctx, age: result})))
+        ]
       ),
       two: state()
-    }, () => ({ age: 0 }));
+    }));
   
-    let service = interpret(machine, () => {});
+    let service = interpret(machine, { age: 0 });
     await Promise.resolve();
-    assert.equal(service.context.age, 2, 'Invoked immediately');
-    assert.equal(service.machine.current, 'two', 'in the new state');
+    assert.equal(service.snapshot.context.age, 2, 'Invoked immediately');
+    assert.equal(service.snapshot.state, 'two', 'in the new state');
   });
 
   QUnit.test('Should not fire "done" event when state changes', async assert => {
