@@ -1,4 +1,4 @@
-import { createMachine, interpret, state, transition, reduce, d} from 'totorobot';
+import { createMachine, defineMachine, interpret, state, transition, reduce, d} from 'totorobot';
 
 QUnit.module('robot/debug');
 
@@ -16,12 +16,12 @@ QUnit.test('Errors for transitions to states that don\'t exist', assert => {
 
 QUnit.test('Does not error for transitions to states when state does exist', assert => {
   try {
-    createMachine({
+    defineMachine().create('one', ({ state, transition }) => ({
       one: state(
         transition('go', 'two')
       ),
       two: state()
-    });
+    }));
     assert.ok(true, 'Created a valid machine!');
   } catch(e) {
     assert.ok(false, 'Should not have errored');
@@ -30,9 +30,9 @@ QUnit.test('Does not error for transitions to states when state does exist', ass
 
 QUnit.test('Errors if an invalid initial state is provided', assert => {
   try {
-    createMachine('oops', {
+    defineMachine().create('oops', ({ state }) => ({
       one: state()
-    });
+    }));
     assert.ok(false, 'should have failed');
   } catch(e) {
     assert.ok(true, 'it is errored');
