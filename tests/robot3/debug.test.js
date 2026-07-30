@@ -1,53 +1,54 @@
 import { createMachine, defineMachine, interpret, state, transition, reduce, d} from 'totorobot';
+import { describe, expect, test } from 'vitest';
 
-QUnit.module('robot/debug');
+describe('robot/debug', () => {
+  test('Errors for transitions to states that don\'t exist', () => {
+    try {
+      createMachine({
+        one: state(
+          transition('go', 'two')
+        )
+      });
+    } catch(e) {
+      expect.soft(/unknown state/.test(e.message), 'Gets an error about unknown states').toBeTruthy();
+    }
+  });
 
-QUnit.test('Errors for transitions to states that don\'t exist', assert => {
-  try {
-    createMachine({
-      one: state(
-        transition('go', 'two')
-      )
-    });
-  } catch(e) {
-    assert.ok(/unknown state/.test(e.message), 'Gets an error about unknown states');
-  }
-});
+  test('Does not error for transitions to states when state does exist', () => {
+    try {
+      defineMachine().create('one', ({ state, transition }) => ({
+        one: state(
+          transition('go', 'two')
+        ),
+        two: state()
+      }));
+      expect.soft(true, 'Created a valid machine!').toBeTruthy();
+    } catch(e) {
+      expect.soft(false, 'Should not have errored').toBeTruthy();
+    }
+  });
 
-QUnit.test('Does not error for transitions to states when state does exist', assert => {
-  try {
-    defineMachine().create('one', ({ state, transition }) => ({
-      one: state(
-        transition('go', 'two')
-      ),
-      two: state()
-    }));
-    assert.ok(true, 'Created a valid machine!');
-  } catch(e) {
-    assert.ok(false, 'Should not have errored');
-  }
-});
+  test('Errors if an invalid initial state is provided', () => {
+    try {
+      defineMachine().create('oops', ({ state }) => ({
+        one: state()
+      }));
+      expect.soft(false, 'should have failed').toBeTruthy();
+    } catch(e) {
+      expect.soft(true, 'it is errored').toBeTruthy();
+    }
+  });
 
-QUnit.test('Errors if an invalid initial state is provided', assert => {
-  try {
-    defineMachine().create('oops', ({ state }) => ({
-      one: state()
-    }));
-    assert.ok(false, 'should have failed');
-  } catch(e) {
-    assert.ok(true, 'it is errored');
-  }
-});
-
-QUnit.test('Errors when no transitions for event from the current state', assert => {
-  try {
-    const machine = createMachine('one', {
-      one: state(),
-    });
-    const { send } = interpret(machine, () => {});
-    send('go');
-    assert.ok(false, 'should have failed');
-  } catch(e) {
-    assert.ok(true, 'it is errored');
-  }
+  test('Errors when no transitions for event from the current state', () => {
+    try {
+      const machine = createMachine('one', {
+        one: state(),
+      });
+      const { send } = interpret(machine, () => {});
+      send('go');
+      expect.soft(false, 'should have failed').toBeTruthy();
+    } catch(e) {
+      expect.soft(true, 'it is errored').toBeTruthy();
+    }
+  });
 });
