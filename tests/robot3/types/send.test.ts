@@ -1,5 +1,4 @@
-import {expectTypeOf} from 'expect-type';
-import {test} from 'node:test';
+import {expectTypeOf, test} from 'vitest';
 import assert from 'node:assert';
 import {
   type Service,
@@ -87,4 +86,3 @@ test('types nested machine', () => {
   type ObjectParams = Extract<EventParam, { type: string; }>;
   expectTypeOf<ObjectParams['type']>().toEqualTypeOf<'next' | 'startBlinking' | 'finishBlinking'>();
 })
-
