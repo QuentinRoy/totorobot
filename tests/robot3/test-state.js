@@ -1,54 +1,54 @@
-import { createMachine, interpret, invoke, reduce, state, transition } from 'totorobot';
+import { createMachine, defineMachine, interpret, invoke, reduce, state, transition } from 'totorobot';
 
 QUnit.module('States', hooks => {
   QUnit.test('Basic state change', assert => {
     assert.expect(5);
-    let machine = createMachine({
+    let machine = defineMachine().create('one', ({ state, transition }) => ({
       one: state(
         transition('ping', 'two')
       ),
       two: state(
         transition('pong', 'one')
       )
-    });
-    let service = interpret(machine, service => {
+    }));
+    let service = interpret(machine, {}, service => {
       assert.ok(true, 'Callback called');
     });
-    assert.equal(service.machine.current, 'one');
-    service.send('ping');
-    assert.equal(service.machine.current, 'two');
-    service.send('pong');
-    assert.equal(service.machine.current, 'one');
+    assert.equal(service.snapshot.state, 'one');
+    service.send({ type: 'ping' });
+    assert.equal(service.snapshot.state, 'two');
+    service.send({ type: 'pong' });
+    assert.equal(service.snapshot.state, 'one');
   });
 
   QUnit.test('Data can be passed into the initial context', assert => {
-    let machine = createMachine({
+    let machine = defineMachine().create('one', ({ state }) => ({
       one: state()
-    }, ev => ({ foo: ev.foo }));
+    }));
 
-    let service = interpret(machine, () => {}, {
+    let service = interpret(machine, {
       foo: 'bar'
     });
 
-    assert.equal(service.context.foo, 'bar', 'works!');
+    assert.equal(service.snapshot.context.foo, 'bar', 'works!');
   });
 
   QUnit.test('First argument sets the initial state', assert => {
-    let machine = createMachine('two', {
+    let machine = defineMachine().create('two', ({ state, transition }) => ({
       one: state(transition('next', 'two')),
       two: state(transition('next', 'three')),
       three: state()
-    });
+    }));
 
-    let service = interpret(machine, () => {});
-    assert.equal(service.machine.current, 'two', 'in the initial state');
+    let service = interpret(machine, {});
+    assert.equal(service.snapshot.state, 'two', 'in the initial state');
 
-    machine = createMachine('two', {
+    machine = defineMachine().create('two', ({ state, transition }) => ({
       one: state(transition('next', 'two')),
       two: state(),
-    });
-    service = interpret(machine, () => {});
-    assert.equal(service.machine.current, 'two', 'in the initial state');
+    }));
+    service = interpret(machine, {});
+    assert.equal(service.snapshot.state, 'two', 'in the initial state');
     assert.equal(service.machine.state.value.final, true, 'in the final state');
   });
 
