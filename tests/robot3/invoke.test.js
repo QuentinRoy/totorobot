@@ -1,8 +1,7 @@
 import { createMachine, defineMachine, immediate, interpret, invoke, reduce, state, state as final, transition } from 'totorobot';
 import { describe, expect, test } from 'vitest';
 
-describe('Invoke', () => {
-  describe('Promise', () => {
+describe('Invoke Promise', () => {
 
   test('Goes to the "done" event when complete', async () => {
     let machine = defineMachine().create('one', ({ invoke, reduce, state, transition }) => ({
@@ -113,10 +112,9 @@ describe('Invoke', () => {
     // Preserve QUnit assert.equal's loose equality semantics.
     expect.soft(service.machine.current == 'three', 'now in the correct state').toBe(true);
   });
-  });
+});
 
-  describe('Machine', () => {
-
+describe("Invoke Machine", () => {
   test('Can invoke a child machine', async () => {
     expect.assertions(4);
     let one = createMachine({
@@ -432,6 +430,5 @@ describe('Invoke', () => {
     });
 
     service.send('next');
-  });
   });
 });
