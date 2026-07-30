@@ -1,7 +1,8 @@
 import { createMachine, defineMachine, interpret, reduce, state, transition } from 'totorobot';
+import { describe, expect, test } from 'vitest';
 
-QUnit.module('Reduce', () => {
-  QUnit.test('Basic state change', assert => {
+describe('Reduce', () => {
+  test('Basic state change', () => {
     let machine = createMachine({
       one: state(
         transition('ping', 'two',
@@ -15,11 +16,13 @@ QUnit.module('Reduce', () => {
     service.send('ping');
 
     let { one, two } = service.context;
-    assert.equal(one, 1, 'first reducer ran');
-    assert.equal(two, 2, 'second reducer ran');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(one == 1, 'first reducer ran').toBe(true);
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(two == 2, 'second reducer ran').toBe(true);
   });
 
-  QUnit.test('If no reducers, the context remains', assert => {
+  test('If no reducers, the context remains', () => {
     let machine = defineMachine().create('one', ({ state, transition }) => ({
       one: state(
         transition('go', 'two')
@@ -29,17 +32,17 @@ QUnit.module('Reduce', () => {
 
     let service = interpret(machine, { one: 1, two: 2 });
     service.send({ type: 'go' });
-    assert.deepEqual(service.snapshot.context, { one: 1, two: 2 }, 'context remains');
+    expect.soft(service.snapshot.context, 'context remains').toEqual({ one: 1, two: 2 });
   });
 
-  QUnit.test('Event is the second argument', assert => {
-    assert.expect(2);
+  test('Event is the second argument', () => {
+    expect.assertions(2);
 
     let machine = defineMachine().create('one', ({ reduce, state, transition }) => ({
       one: state(
         transition('go', 'two',
           reduce(function(ctx, ev) {
-            assert.deepEqual(ev, { type: 'go' });
+            expect.soft(ev).toEqual({ type: 'go' });
             return { ...ctx, worked: true };
           })
         )
@@ -48,6 +51,7 @@ QUnit.module('Reduce', () => {
     }));
     let service = interpret(machine, {});
     service.send({ type: 'go' });
-    assert.equal(service.snapshot.context.worked, true, 'changed the context');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.snapshot.context.worked == true, 'changed the context').toBe(true);
   });
 });
