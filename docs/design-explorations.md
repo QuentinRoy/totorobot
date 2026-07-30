@@ -1,326 +1,142 @@
 # Design explorations
 
-Started as a small TypeScript example exploring [robot3](https://thisrobot.life/)'s
-typing. Along the way we found real gaps in what robot3's types can guarantee,
-and ended up prototyping a replacement to see whether those gaps are actually
-fixable in TypeScript, and at what cost. This README documents that arc.
+Totorobot began as an investigation into Robot3's TypeScript types. This
+document records the experiments that led from that investigation to the
+current API. For a reference focused on the design as it exists today, see
+[Design notes](design-notes.md).
 
-There were two prototypes, and the second superseded the first:
+## Contents
 
-- The first attempt declared states inline and deferred target checking to
-  `defineMachine(...)`. Its source was removed before the first public commit,
-  but its findings are preserved below.
-- `src/totorobot.ts` — the spec declared up front, then a robot3-shaped builder.
-  Same guarantees, local error messages, and more of them. Its extra size is
-  features — explicit initial states, multiple guards, actions,
-  `AbortSignal`, and `send` narrowed to the current state — not deferred
-  transition validation machinery.
+- [Starting point: Robot3](#starting-point-robot3)
+- [Goal: per-state context](#goal-per-state-context)
+- [Attempt 1: infer states from the map](#attempt-1-infer-states-from-the-map)
+- [Attempt 2: a Kysely-inspired builder](#attempt-2-a-kysely-inspired-builder)
+- [Attempt 3: declare the spec first](#attempt-3-declare-the-spec-first)
+- [Outcome](#outcome)
 
-## What broke down in robot3
+## Starting point: Robot3
 
-Working through robot3's `index.d.ts` and a couple of example machines
-(a traffic light, an auth flow with an async login), we found and verified
-(compiled + ran, not just read) several gaps between what the types *look*
-like they guarantee and what they actually check:
+We started with two example machines: a traffic light and an authentication
+flow with an asynchronous login. Reading Robot3's declarations and running
+those examples exposed several gaps between what its types appeared to
+guarantee and what they actually checked.
 
-- **`reduce`/`guard`/`action`'s `<C, E>` generics aren't checked against
-  anything.** Each call is independently generic; nothing ties them back to
-  the machine's real context type, so a wrong context type in one reducer
-  isn't caught.
-- **`send()`'s payload is effectively untyped.** Only the event's `type` field
-  is checked; every other field is typed `any` (`{ type: T; [key: string]: any }`).
-  `send({ type: 'login', username: 42, password: 'x' })` compiled cleanly and
-  crashed at runtime (`ev.username.trim is not a function`).
-- **Transition validity isn't checked per current state.** The event names
-  `send()` accepts are the union across *every* state, not just the ones
-  reachable from wherever the machine currently is. An irrelevant event
-  compiles and just silently no-ops at runtime.
-- **`invoke`'s event-wrapping isn't reflected in the types.** A resolved
-  promise arrives as `{ type: 'done', data: T }`, a rejection as
-  `{ type: 'error', error: E }` — but nothing in `invoke`'s signature says so;
-  we only found this by reading the source and by crashing first.
-- **No typestate.** `context: C` and `current: K` are two independent
-  properties of one flat `Machine` type; states themselves carry no context at
-  all. Narrowing `current === 'authenticated'` narrows nothing about
-  `context` — a field like `token: string | null` stays nullable even in the
-  one state where it's logically guaranteed to be set.
+### Modifier generics were not tied to the machine
 
-None of this is a knock on robot3's *design* for its actual goal (a ~2kb,
-dependency-free FSM with a clean functional API) — it's what happens when a
-tiny library optimizes for size and API ergonomics over exhaustive
-compile-time checking. But it meant the type annotations were, in a few
-concrete ways, decorative rather than enforced.
+Each `reduce`, `guard`, or `action` call was independently generic. Nothing
+connected its context and event parameters to the real machine, so an
+incorrect context annotation inside one modifier could compile.
 
-## What we wanted instead
+### Event payloads were effectively untyped
 
-The one gap worth taking seriously was typestate: **context should be declared
-at the state that owns it**, not in one flat context shared by every state.
-If `token` only exists once authenticated, the type of the machine's context
-should say so, and narrowing the state should narrow the context.
+`send` checked the event's `type`, but additional fields came from an
+`[key: string]: any` index signature. This compiled:
 
-That one requirement has a sharp consequence: a transition's reducer must
-return exactly the context shape its *target* state declares. Getting the type
-checker to enforce that turned out to be the hard part, and it is what
-separates the two prototypes.
+```ts
+send({ type: "login", username: 42, password: "secret" })
+```
 
-## First attempt
+It then failed at runtime when the machine called `event.username.trim()`.
 
-States are declared inline, each binding its own data:
+### `send` was not state-specific
+
+The accepted events were the union across the whole machine. Sending an event
+that the current state did not handle compiled and silently did nothing.
+
+### Invocation wrappers were hidden from the types
+
+A resolved promise arrived at a transition as `{ type: "done", data: value }`;
+a rejection arrived as `{ type: "error", error }`. The invocation signature
+did not describe those wrappers.
+
+### Context and state could not narrow together
+
+Robot3 exposed one flat context type and a separate current-state key. Narrowing
+the state to `"authenticated"` did not narrow a nullable `token` field or
+remove fields that only made sense while authenticating.
+
+These trade-offs are reasonable for Robot3's goal: a tiny, dependency-free
+state machine with a compact functional API. The experiment asked what the
+types could guarantee if typestate took priority instead.
+
+## Goal: per-state context
+
+The central requirement became:
+
+> Context should be declared by the state that owns it, and narrowing the
+> current state should narrow that context.
+
+For an authentication machine, `password` should exist only while
+authenticating and `token` only after authentication.
+
+That requirement creates a harder one: every transition reducer must return
+the context declared by its target state. Most of the API exploration was
+about finding where TypeScript could know both ends of an edge early enough to
+check that reducer well.
+
+## Attempt 1: infer states from the map
+
+The first prototype declared state context inline:
 
 ```ts
 defineMachine("red", {
   red: state((transition: TransitionBuilder<{ changes: number }>) => [
-    transition("next", "green", { reduce: (data) => ({ changes: data.changes + 1 }) }),
+    transition("next", "green", {
+      reduce: (data) => ({ changes: data.changes + 1 }),
+    }),
   ]),
   // ...
 })
 ```
 
-This works, and it catches everything in the table further down. But the
-target state's type genuinely isn't known while the checker is looking at a
-reducer nested in the same state-map literal being built, so a reducer's
-output *cannot* be checked at its call site. Bad transitions are collected
-across the whole machine and surfaced at `defineMachine(...)` instead.
+This could verify source context, event payloads, and target context, but not at
+the point where a reducer was written. While TypeScript checked the reducer
+inside `red`, the type of `green` was still part of the same object literal
+being inferred.
 
-Three costs came with that, all found by building it rather than by
-speculating:
+The prototype therefore collected invalid transitions and reported them later
+at `defineMachine(...)`.
 
-1. **The deferred error messages are bad.** A wrong reducer output produces a
-   wall of `StateDefinition<...> is not assignable to StateDefinition<...> & {
-   ERROR: '...' }`. The English sentence is in there, but it points at the
-   *state*, not the offending reducer.
-2. **`send()` isn't narrowed to the current state** — the same weakness robot3
-   had.
-3. **The deferred-validation machinery is treacherous.** Getting it right meant
-   working around `never` distributing through a conditional and poisoning the
-   result, `unknown | Error` collapsing back to `unknown` (silently hiding one
-   bad transition among good ones), and intersecting per-transition error
-   objects reducing to `never` and firing on *correct* machines. Each bug was
-   invisible until tested against both a passing and a failing machine — see
-   its `BadTransitions`/`ValidateMachine` machinery.
+### What worked
 
-Multiple guards and multiple reducers per transition were never supported.
+- State-specific context was represented.
+- Wrong source-context reads were rejected.
+- Wrong targets and event payloads were rejected.
+- Reducer output could eventually be compared with target context.
 
-## Second attempt: `src/totorobot.ts`
+### Why it was abandoned
 
-The root cause of all three is declaration order: the target's type isn't known
-yet. So declare the spec — every state's context and every event's payload — up
-front, as a type argument. Then both ends of every edge are known when a
-transition is checked, and a wrong reducer output is reported on the
-`reduce(...)` call itself.
+#### Errors appeared in the wrong place
 
-The builder keeps robot3's shape: a state map, `state(...transitions)`, and
-`transition(event, target, ...modifiers)`. All DSL helpers come from the
-`create` callback, so the module only needs to export the machine entry points.
+A bad reducer produced a large
+`StateDefinition<...> is not assignable to StateDefinition<...> & { ERROR: ... }`
+message on the state definition. The useful explanation was buried inside it,
+and the reducer itself was not highlighted.
 
-```ts
-const retry = Symbol("retry")
+#### `send` still could not narrow by current state
 
-type AuthSpec = {
-  states: {
-    idle: { error: string | null; attempts: number }
-    authenticating: { username: string; password: string; attempts: number }
-    authenticated: { username: string; token: string }
-  }
-  events: {
-    login: { username: string; password: string }
-    [retry]: Record<never, never>
-  }
-}
+The machine-wide validation knew which events existed, but the resulting
+service lost the per-state handled-event information needed for a narrowed
+`send`.
 
-const authMachine = defineMachine<AuthSpec>().create("idle", ({
-  state,
-  transition,
-  invoke,
-  guard,
-  reduce,
-}) => ({
-  idle: state(
-    transition(
-      "login",
-      "authenticating",
-      guard((_context, event) => event.username.trim().length > 0),
-      reduce((context, event) => ({
-        username: event.username,
-        password: event.password,
-        attempts: context.attempts + 1,
-      })),
-    ),
-  ),
+#### Deferred validation was fragile
 
-  authenticating: invoke(
-    (context) => login(context.username, context.password),
-    ({ done, error }) => [
-      done("authenticated", reduce((context, result) => ({
-        username: context.username,
-        token: result.token,
-      }))),
-      error("idle", reduce((context, err) => ({
-        error: err instanceof Error ? err.message : String(err),
-        attempts: context.attempts,
-      }))),
-    ],
-  ),
+The validation machinery had to account for several conditional-type traps:
 
-  authenticated: state(),
-}))
+- `never` distributing through a conditional and poisoning the result;
+- `unknown | Error` collapsing to `unknown` and hiding a bad transition;
+- intersections of per-transition error objects reducing to `never` and
+  rejecting valid machines.
 
-const service = interpret(authMachine, { error: null, attempts: 0 })
-```
+Each failure mode required paired passing and failing tests to detect. The
+complexity existed mainly to compensate for information arriving too late.
+This prototype also never supported multiple guards on one transition.
 
-`context`, `event`, `result` and `err` are all inferred. Nothing is annotated by
-hand — the enclosing object key binds the source state, and TypeScript chains
-return-type-driven inference from there down into each modifier's callback.
+## Attempt 2: a Kysely-inspired builder
 
-The first argument to `create` declares the initial state, so `interpret` only
-needs its context. As in Robot3, `state()` with no transitions is terminal.
-
-### Why the design looks like this
-
-Every one of these was settled by compiling the alternative and reading what
-the checker did, not by reasoning about it.
-
-**The spec is a type argument, followed by a `create` step.**
-`defineMachine<Spec>().create(initial, build)` needs two inference boundaries:
-the spec is fixed first, then the initial state and state map are inferred by
-`create`. That
-inferred type is what lets a state key absent from the spec be rejected, and
-what lets `send` be narrowed per state. Putting both type arguments on one call
-would force the caller to write out the state map's type by hand. The named
-`create` step makes that necessary split explicit instead of exposing it as a
-bare curried call.
-
-**Modifiers are real objects, not phantom-branded markers.** `reduce`, `guard`
-and `action` return `{ kind, apply }`, both fields real. Branding them with a
-tuple of their type parameters instead — `{ [brand]?: ["guard", D, E] }` —
-makes them *invariant*, and a reusable combinator written against
-`{ attempts: number }` stops fitting a state declaring
-`{ attempts: number; tries: number }`:
-
-```
-Type 'GuardModifier<{ attempts: number; }, unknown>' is not assignable to
-  'GuardModifier<IdleData, { username: string; }>'.
-```
-
-Putting the type parameters in `apply`'s parameter positions gives
-contravariance for free, so third-party combinators compose. It also means the
-public surface carries no `__types`/`__context` placeholders.
-
-**The reducer comes last, and there is at most one.** robot3 partitions
-modifiers by kind (`filter(guardType, args)` / `filter(reduceType, args)`), so
-the relative order of guards and reducers was never meaningful there — only
-order *within* a kind. But robot3 also *pipelines* reducers via `callForward`,
-each receiving the previous one's output. That cannot be typed once context is
-per-state: reducer *n*'s input is reducer *n-1*'s output, and that fold isn't
-expressible through this inference path. Written naively it type-checks and
-lies — the second reducer's `context` is typed as the source state's while the
-runtime hands it the first reducer's output. Fixing the reducer's position in
-the signature is what rules that out.
-
-**A required reducer is expressed in the signature, not the docs.** The
-modifier list is a conditional tuple: guards and actions, then a reducer that
-is optional only when the source context is already assignable to the target's.
-Omitting it across differently-shaped states is a compile error rather than a
-convention.
-
-**`invoke` takes a callback where `state` takes varargs.** `Result` has to be
-fixed by `source` before `done`'s modifiers can be checked against it. Passing
-`done(...)` as a sibling argument leaves `Result` unresolved and its reducer
-sees `unknown` — verified. The callback form binds it first.
-
-**`action` is its own kind.** robot3 derives it from `reduce`
-(`action = fn => reduce((ctx, ev) => !!~fn(ctx, ev) && ctx)`), which forces an
-action's output shape to equal its input shape, so it couldn't be attached to a
-transition that changes shape. (That derivation also has a live footgun: an
-action returning `-1` makes `~fn(...)` zero and silently replaces the context
-with `false`.) Here it's shape-neutral, so any number can appear on any edge.
-
-### What it catches
-
-Each of these is a test in `tests/totorobot.test.ts`, written as a failing example
-and confirmed rejected.
-
-| Mistake | First attempt | Totorobot |
-|---|---|---|
-| Reducer returns the wrong target state's shape | ✅ (deferred) | ✅ (at the `reduce` call) |
-| Reducer reads a field its source state lacks | ✅ | ✅ |
-| Transition targets a state that doesn't exist | ✅ | ✅ |
-| Event name isn't declared by the machine | ✅ | ✅ |
-| `send()` with a wrong-typed payload field | ✅ | ✅ |
-| `send()` an event the machine doesn't declare | ✅ | ✅ |
-| Reading a state-specific field without narrowing | ✅ | ✅ |
-| Wrong initial context for the initial state | ✅ | ✅ |
-| Initial state name isn't declared by the spec | ❌ | ✅ |
-| Sending an `invoke`-internal settlement event | ✅ | ✅ (not in the event union at all) |
-| A state key that isn't in the spec | ❌ | ✅ |
-| A spec state with no entry in the map | ❌ | ✅ |
-| `send()` an event the *current state* doesn't handle | ❌ | ✅ (via `service.current`) |
-| Omitting a reducer between differently-shaped states | ❌ | ✅ |
-| More than one reducer on a transition | n/a | ✅ |
-
-Error locality, which was the whole point:
-
-```
-error TS2345: Argument of type '[ReduceModifier<…, { attempts: number; }>]'
-  is not assignable to parameter of type '[…, ReduceModifier<…, { token: string; }>]'.
-  …
-      Property 'token' is missing in type '{ attempts: number; }'
-        but required in type '{ token: string; }'.
-
-7  idle: state(transition("login", "authed", reduce((context) => ({ attempts: … })))),
-                                             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-```
-
-The squiggle is on the offending `reduce(...)`, and the last line names the
-actual problem and links the declaration. The conditional tuple does add two
-lines of noise above it — an honest cost of encoding "reducer required" in the
-signature, and still far better than the deferred check's wall.
-
-### Narrowed `send`
-
-`service.current` is a discriminated union carrying `state`, `context` and a
-`send` restricted to the events that state actually handles:
-
-```ts
-const current = service.current
-if (current.state === "idle") {
-  current.send({ type: "start" })
-  current.send({ type: "cancel" }) // compile error: `idle` doesn't handle it
-}
-```
-
-`service.send` remains available as an unnarrowed escape hatch, accepting the
-whole event union and no-opping on an irrelevant event, as robot3 does.
-
-### What's still rough
-
-1. **Everything must stay inline in the state map.** Hoisting a transition into
-   a variable breaks inference — with no contextual return type the source
-   state falls back to the union of all states, and the failure surfaces at the
-   variable (`Property 'attempts' does not exist on type 'AuthedData | IdleData'`)
-   rather than at the cause. Same class of constraint as the first attempt's
-   `TransitionBuilder<Data>` annotation, just implicit instead of explicit.
-2. **Omitting a reducer permits structural width.** `{ username, token }` is
-   assignable to `{ username }`, so a reducer-less transition carries the extra
-   fields into a state whose type doesn't mention them. Harmless for reads;
-   it leaks the moment anything serializes the context. Treat a state's context as
-   a lower bound at runtime.
-3. **No `immediate`, `entry` or `exit` yet.** robot3's `immediate` is
-   `transition(null, target, ...)` and should drop into the same shape;
-   entry/exit hooks are unspecified.
-4. **`StateDefinition` still carries two optional type-only members**
-   (`state?`, `handles?`). They're what bind the state key and the handled-event
-   union for `send` narrowing. Removing them means deriving both from the real
-   `transitions` field, which is possible but untested.
-5. **A spec written as an `interface` rather than a `type` alias may not
-   satisfy the constraint** in some positions — the usual implicit-index-signature
-   gotcha. The examples use type aliases.
-
-### The Kysely-inspired interface we didn't build
-
-After the first attempt, we considered a fluent API inspired by
-[Kysely](https://kysely.dev/). States and transitions would progressively add
-their types to the builder:
+The next proposal used a fluent API inspired by
+[Kysely](https://kysely.dev/). Each method would return a new builder type that
+accumulated the states, events, and transitions declared so far.
 
 ```ts
 const authMachine = defineMachine()
@@ -366,37 +182,102 @@ const authMachine = defineMachine()
   .build()
 ```
 
-The appeal was that `.on(...)` puts both ends of an edge in scope, allowing its
-reducer to be checked against the target state's data without a separate spec.
-But the event-payload rule made typing order-dependent: repeated event names
-would have to accumulate their payloads by intersection, and earlier callbacks
-could only see what had accumulated so far. Moving an `.on(...)` block could
-therefore change what its own guard saw.
+This is a discarded API sketch. Its `.data()`, `.initial()`, and `.final()`
+methods are not part of Totorobot's current API.
 
-Each link would also return a new builder type with a growing accumulator, so a
-mistake in the middle of the chain would degrade every later link and its error
-messages. Declaring states and events together in an up-front spec removes the
-accumulation rule entirely, while the state-map API avoids a type that grows
-one method call at a time.
+This shape had a real advantage: `.on(...)` named both ends of the edge before
+its reducer was checked, without requiring a separate spec.
 
-## Current layout
+### Why it was abandoned
 
-- `src/totorobot.ts` — the current design.
-- `examples/case-studies/traffic-light.ts` — minimal example; `yellow` carries a
-  `blinking` flag the other states don't have.
-- `examples/case-studies/auth-machine.ts` — `invoke` example; `password` exists
-  only while authenticating, `token` only once authenticated.
-- `examples/index.ts` — runs both, including the narrowed read of `token` with
-  no null check.
-- `tests/totorobot.test.ts` — runtime and type-level coverage.
+#### Payload inference became order-dependent
 
-## Running it
+If the same event name appeared on multiple edges, its payload would have to
+accumulate by intersection. A callback could only see the payload declarations
+that appeared earlier in the chain.
 
-Requires Node ≥26 (runs `.ts` files directly, no build step) and pnpm.
+Moving an `.on(...)` call could therefore change the type seen by its own
+guard. The machine's meaning should not depend on the order in which equivalent
+edges are declared.
 
-```bash
-pnpm install
-pnpm test
-pnpm typecheck
-pnpm examples
+#### Errors cascaded through the chain
+
+Every call returned a builder with a larger type accumulator. One mistake in
+the middle degraded the type of every later method, spreading errors beyond
+their cause.
+
+The fluent surface was attractive, but it traded one error-locality problem for
+another.
+
+## Attempt 3: declare the spec first
+
+The current direction fixes declaration order directly: declare all state
+contexts and event payloads as a type before building any edge.
+
+```ts
+type AuthSpec = {
+  states: {
+    idle: { error: string | null; attempts: number }
+    authenticating: {
+      username: string
+      password: string
+      attempts: number
+    }
+  }
+  events: {
+    login: { username: string; password: string }
+  }
+}
+
+const authMachine = defineMachine<AuthSpec>().create(
+  "idle",
+  ({ state, transition, reduce }) => ({
+    idle: state(
+      transition(
+        "login",
+        "authenticating",
+        reduce((context, event) => ({
+          username: event.username,
+          password: event.password,
+          attempts: context.attempts + 1,
+        })),
+      ),
+    ),
+    authenticating: state(),
+  }),
+)
 ```
+
+Both ends of every transition are now known when its reducer is checked. A
+wrong output is reported at `reduce(...)`, rather than later at the machine or
+on every method after it.
+
+The separate `defineMachine<Spec>().create(...)` calls are two deliberate
+inference boundaries:
+
+1. Fix the complete state and event vocabulary.
+2. Infer the state map, including which events each state handles.
+
+The second inference result powers the state-specific
+`service.current.send`. Keeping builders inside the `create` callback ties them
+to the fixed spec without exporting a mixture of bound and unbound helpers.
+
+The current API keeps Robot3's state-map vocabulary rather than the fluent
+prototype. It also follows Robot3's convention that `state()` with no outgoing
+transitions is terminal.
+
+Detailed rationale, guarantees, and limitations now live in
+[Design notes](design-notes.md).
+
+## Outcome
+
+The prototypes established three constraints that shaped Totorobot:
+
+1. Target context must be known before a reducer is checked.
+2. Event payload meaning must not depend on declaration order.
+3. Errors should remain local instead of propagating through a machine-wide
+   validator or fluent type accumulator.
+
+Declaring the spec first is more explicit than inferring everything from the
+implementation, but it satisfies those constraints with the most predictable
+errors found so far.

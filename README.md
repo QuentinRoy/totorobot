@@ -76,12 +76,17 @@ and terminal states represented by `state()` with no transitions.
 
 This repository is a design prototype, not a released library. There is no
 stability guarantee, package build, compatibility promise, or npm release yet.
-Known rough edges and the reasoning behind the API are recorded in
-[the design explorations](docs/design-explorations.md).
 
 Notable missing features include immediate transitions and entry/exit hooks.
 Some inference also depends on keeping transition declarations inline in the
 state map.
+
+## Documentation
+
+- [Design notes](docs/design-notes.md) explains the current API, its type
+  guarantees, runtime semantics, and known limitations.
+- [Design explorations](docs/design-explorations.md) records the Robot3
+  investigation and the discarded inline and Kysely-inspired APIs.
 
 ## Repository layout
 
@@ -89,8 +94,8 @@ state map.
 - `examples/case-studies/` — traffic-light and asynchronous-auth examples.
 - `examples/index.ts` — runs both case studies.
 - `tests/totorobot.test.ts` — runtime and compile-time coverage.
-- `docs/design-explorations.md` — the experiments and trade-offs that led to
-  the current design.
+- `docs/design-notes.md` — reference for the current design.
+- `docs/design-explorations.md` — history of the experiments that led to it.
 
 ## Development
 
