@@ -87,7 +87,7 @@ describe("per-state context", () => {
 })
 
 // ---------------------------------------------------------------------------
-// Explicit initial and final states.
+// Explicit initial state and terminal states.
 // ---------------------------------------------------------------------------
 
 describe("state roles", () => {
@@ -99,17 +99,17 @@ describe("state roles", () => {
 		events: { finish: Record<never, never> }
 	}
 
-	test("the machine owns its initial state and final states cannot transition", () => {
+	test("the machine owns its initial state and state() can be terminal", () => {
 		const machine = defineMachine<Spec>().create(
 			"start",
-			({ state, final, transition }) => ({
+			({ state, transition }) => ({
 				start: state(transition("finish", "finished")),
-				finished: final(),
+				finished: state(),
 			}),
 		)
 
 		expect(machine.initial).toBe("start")
-		expect(machine.states.finished.final).toBe(true)
+		expect(machine.states.finished.transitions).toHaveLength(0)
 
 		const service = interpret(machine, { count: 0 })
 		service.send({ type: "finish" })
@@ -127,25 +127,12 @@ describe("state roles", () => {
 			defineMachine<Spec>().create(
 				// @ts-expect-error no state named `missing` exists
 				"missing",
-				({ state, final }) => ({
+				({ state }) => ({
 					start: state(),
-					finished: final(),
+					finished: state(),
 				}),
 			),
 		).toThrow(/no state named "missing"/)
-	})
-
-	test("a final state rejects transitions", () => {
-		const machine = defineMachine<Spec>().create(
-			"start",
-			({ state, final, transition }) => ({
-				start: state(transition("finish", "finished")),
-				// @ts-expect-error final states cannot declare transitions
-				finished: final(transition("finish", "start")),
-			}),
-		)
-
-		expect(machine.states.finished.transitions).toHaveLength(0)
 	})
 })
 
@@ -182,7 +169,7 @@ const login = async (
 
 const authMachine = defineMachine<AuthSpec>().create(
 	"idle",
-	({ state, final, transition, invoke, guard, reduce }) => ({
+	({ state, transition, invoke, guard, reduce }) => ({
 		idle: state(
 			transition(
 				"login",
@@ -216,7 +203,7 @@ const authMachine = defineMachine<AuthSpec>().create(
 			],
 		),
 
-		authenticated: final(),
+		authenticated: state(),
 	}),
 )
 
@@ -257,7 +244,7 @@ describe("invoke", () => {
 	test("the resolved type flows into `done` without a hand-written wrapper", () => {
 		defineMachine<AuthSpec>().create(
 			"idle",
-			({ state, final, transition, invoke, reduce }) => ({
+			({ state, transition, invoke, reduce }) => ({
 				idle: state(
 					transition(
 						"login",
@@ -293,7 +280,7 @@ describe("invoke", () => {
 						),
 					],
 				),
-				authenticated: final(),
+				authenticated: state(),
 			}),
 		)
 	})
@@ -311,13 +298,13 @@ describe("invoke", () => {
 
 		const invoking = defineMachine<Spec>().create(
 			"waiting",
-			({ final, invoke, reduce }) => ({
+			({ state, invoke, reduce }) => ({
 				waiting: invoke(
 					() => slow,
 					({ done }) => [done("done", reduce((context) => context))],
 				),
-				done: final(),
-				bailed: final(),
+				done: state(),
+				bailed: state(),
 			}),
 		)
 
@@ -345,7 +332,7 @@ describe("modifiers", () => {
 		let canProceed = false
 		const machine = defineMachine<Spec>().create(
 			"one",
-			({ state, final, transition, guard }) => ({
+			({ state, transition, guard }) => ({
 				one: state(
 					transition(
 						"ping",
@@ -354,7 +341,7 @@ describe("modifiers", () => {
 						guard((_data, event) => event.allowed === true),
 					),
 				),
-				two: final(),
+				two: state(),
 			}),
 		)
 
@@ -375,7 +362,7 @@ describe("modifiers", () => {
 		const second = vi.fn(() => true)
 		const machine = defineMachine<Spec>().create(
 			"one",
-			({ state, final, transition, guard }) => ({
+			({ state, transition, guard }) => ({
 				one: state(
 					transition(
 						"ping",
@@ -384,7 +371,7 @@ describe("modifiers", () => {
 						guard(second),
 					),
 				),
-				two: final(),
+				two: state(),
 			}),
 		)
 
@@ -396,7 +383,7 @@ describe("modifiers", () => {
 		const calls: string[] = []
 		const machine = defineMachine<Spec>().create(
 			"one",
-			({ state, final, transition, action, guard, reduce }) => ({
+			({ state, transition, action, guard, reduce }) => ({
 				one: state(
 					transition(
 						"ping",
@@ -412,7 +399,7 @@ describe("modifiers", () => {
 						action(() => calls.push("never")),
 					),
 				),
-				two: final(),
+				two: state(),
 			}),
 		)
 
@@ -428,7 +415,7 @@ describe("modifiers", () => {
 		// type parameters sit in `apply`'s parameter positions.
 		const machine = defineMachine<Spec>().create(
 			"one",
-			({ state, final, transition, guard }) => {
+			({ state, transition, guard }) => {
 				const maxAttempts = (limit: number) =>
 					guard<{ attempts: number }, unknown>(
 						(context) => context.attempts < limit,
@@ -436,7 +423,7 @@ describe("modifiers", () => {
 
 				return {
 					one: state(transition("ping", "two", maxAttempts(3))),
-					two: final(),
+					two: state(),
 				}
 			},
 		)
@@ -457,7 +444,7 @@ describe("modifiers", () => {
 		expect(() =>
 			defineMachine<Spec>().create(
 				"one",
-				({ state, final, transition, reduce }) => ({
+				({ state, transition, reduce }) => ({
 					one: state(
 						transition(
 							"ping",
@@ -467,7 +454,7 @@ describe("modifiers", () => {
 							reduce((context) => context),
 						),
 					),
-					two: final(),
+					two: state(),
 				}),
 			),
 		).toThrow(/at most one/)
@@ -476,9 +463,9 @@ describe("modifiers", () => {
 	test("reduce may be omitted when the source context already fits the target", () => {
 		const machine = defineMachine<Spec>().create(
 			"one",
-			({ state, final, transition }) => ({
+			({ state, transition }) => ({
 				one: state(transition("ping", "two")),
-				two: final(),
+				two: state(),
 			}),
 		)
 
@@ -501,7 +488,7 @@ describe("type errors", () => {
 	test("a reducer must return its target state's context", () => {
 		defineMachine<Spec>().create(
 			"idle",
-			({ state, final, transition, reduce }) => ({
+			({ state, transition, reduce }) => ({
 				idle: state(
 					transition(
 						"login",
@@ -510,7 +497,7 @@ describe("type errors", () => {
 						reduce(() => ({ attempts: 1 })),
 					),
 				),
-				authed: final(),
+				authed: state(),
 			}),
 		)
 	})
@@ -518,7 +505,7 @@ describe("type errors", () => {
 	test("a reducer may only read its source state's context", () => {
 		defineMachine<Spec>().create(
 			"idle",
-			({ state, final, transition, reduce }) => ({
+			({ state, transition, reduce }) => ({
 				idle: state(
 					transition(
 						"login",
@@ -527,7 +514,7 @@ describe("type errors", () => {
 						reduce((context) => ({ token: context.token })),
 					),
 				),
-				authed: final(),
+				authed: state(),
 			}),
 		)
 	})
@@ -535,10 +522,10 @@ describe("type errors", () => {
 	test("reduce cannot be omitted when the shapes differ", () => {
 		defineMachine<Spec>().create(
 			"idle",
-			({ state, final, transition }) => ({
+			({ state, transition }) => ({
 				// @ts-expect-error idle's context is not assignable to authed's
 				idle: state(transition("login", "authed")),
-				authed: final(),
+				authed: state(),
 			}),
 		)
 	})
@@ -546,18 +533,18 @@ describe("type errors", () => {
 	test("target and event names must exist", () => {
 		defineMachine<Spec>().create(
 			"idle",
-			({ state, final, transition }) => ({
+			({ state, transition }) => ({
 				// @ts-expect-error no such state
 				idle: state(transition("login", "nope")),
-				authed: final(),
+				authed: state(),
 			}),
 		)
 		defineMachine<Spec>().create(
 			"idle",
-			({ state, final, transition }) => ({
+			({ state, transition }) => ({
 				// @ts-expect-error no such event
 				idle: state(transition("nope", "authed")),
-				authed: final(),
+				authed: state(),
 			}),
 		)
 	})
@@ -567,18 +554,18 @@ describe("type errors", () => {
 		defineMachine<Spec>().create("idle", ({ state }) => ({
 			idle: state(),
 		}))
-		defineMachine<Spec>().create("idle", ({ state, final }) => ({
+		defineMachine<Spec>().create("idle", ({ state }) => ({
 			idle: state(),
-			authed: final(),
+			authed: state(),
 			// @ts-expect-error no such state in the spec
-			bogus: final(),
+			bogus: state(),
 		}))
 	})
 
 	test("send rejects undeclared events and wrong payloads", () => {
 		const machine = defineMachine<Spec>().create(
 			"idle",
-			({ state, final, transition, reduce }) => ({
+			({ state, transition, reduce }) => ({
 				idle: state(
 					transition(
 						"login",
@@ -586,7 +573,7 @@ describe("type errors", () => {
 						reduce((_data, event) => ({ token: event.username })),
 					),
 				),
-				authed: final(),
+				authed: state(),
 			}),
 		)
 		const service = interpret(machine, { attempts: 0 })
@@ -650,7 +637,7 @@ describe("symbol events", () => {
 
 		const machine = defineMachine<Spec>().create(
 			"a",
-			({ state, final, transition, reduce }) => ({
+			({ state, transition, reduce }) => ({
 				a: state(
 					transition(
 						retry,
@@ -658,7 +645,7 @@ describe("symbol events", () => {
 						reduce((_data, event) => ({ n: event.attempt })),
 					),
 				),
-				b: final(),
+				b: state(),
 			}),
 		)
 

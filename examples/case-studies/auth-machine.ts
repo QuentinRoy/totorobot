@@ -43,7 +43,7 @@ type AuthSpec = {
 
 export const authMachine = defineMachine<AuthSpec>().create(
 	"idle",
-	({ state, final, transition, invoke, guard, reduce }) => ({
+	({ state, transition, invoke, guard, reduce }) => ({
 		idle: state(
 			transition(
 				"login",
@@ -83,6 +83,6 @@ export const authMachine = defineMachine<AuthSpec>().create(
 			],
 		),
 
-		authenticated: final(),
+		authenticated: state(),
 	}),
 )

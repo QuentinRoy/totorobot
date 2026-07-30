@@ -13,7 +13,7 @@
  * checked. A wrong reducer output is reported on the `reduce(...)` call itself.
  *
  *     defineMachine<Spec>().create("idle", ({
- *       state, final, transition, guard, reduce,
+ *       state, transition, guard, reduce,
  *     }) => ({
  *       idle: state(
  *         transition("login", "authenticating",
@@ -21,7 +21,7 @@
  *           reduce((context, event) => ({ ... })),
  *         ),
  *       ),
- *       authenticated: final(),
+ *       authenticated: state(),
  *     }))
  *
  * `context` and `event` are inferred from the enclosing state key and the event
@@ -181,11 +181,9 @@ export interface StateDefinition<
 	S extends MachineSpec,
 	K,
 	Handled,
-	Final extends boolean = boolean,
 > {
 	readonly state?: K
 	readonly handles?: Handled
-	readonly final: Final
 	readonly transitions: readonly TransitionDefinition<
 		ContextOf<S, StateName<S>>,
 		EventName<S>
@@ -199,8 +197,7 @@ export interface StateDefinition<
 type AnyStateDefinition<S extends MachineSpec> = StateDefinition<
 	S,
 	StateName<S>,
-	EventName<S>,
-	boolean
+	EventName<S>
 >
 
 /** The events state `K` of a built machine actually handles. */
@@ -227,9 +224,11 @@ export interface InvokeKit<S extends MachineSpec, K extends StateName<S>, Result
 }
 
 export interface StateBuilder<S extends MachineSpec> {
+	(): StateDefinition<S, never, never>
 	<K extends StateName<S>, Handled extends EventName<S>>(
+		transition: TransitionDefinition<ContextOf<S, K>, Handled>,
 		...transitions: TransitionDefinition<ContextOf<S, K>, Handled>[]
-	): StateDefinition<S, K, Handled, false>
+	): StateDefinition<S, K, Handled>
 }
 
 export interface InvokeBuilder<S extends MachineSpec> {
@@ -238,7 +237,7 @@ export interface InvokeBuilder<S extends MachineSpec> {
 		settlements: (
 			kit: InvokeKit<S, K, Result>,
 		) => SettlementDefinition<ContextOf<S, K>, Result>[],
-	): StateDefinition<S, K, never, false>
+	): StateDefinition<S, K, never>
 }
 
 export interface Kit<S extends MachineSpec> {
@@ -246,7 +245,6 @@ export interface Kit<S extends MachineSpec> {
 	guard: typeof guard
 	action: typeof action
 	state: StateBuilder<S>
-	final: <K extends StateName<S>>() => StateDefinition<S, K, never, true>
 
 	/**
 	 * An edge. Guards and actions may appear in any order, followed by an
@@ -329,21 +327,16 @@ export interface Service<
 	readonly stop: () => void
 }
 
-const makeState = (final: boolean, transitions: unknown[]) => ({
-	final,
+const state = (...transitions: unknown[]) => ({
 	transitions,
 	source: undefined,
 	settlements: [],
 })
 
-const state = (...transitions: unknown[]) => makeState(false, transitions)
-const final = () => makeState(true, [])
-
 const makeInvoke = (
 	source: unknown,
 	settlements: (kit: unknown) => unknown[],
 ) => ({
-	final: false,
 	transitions: [],
 	source,
 	settlements: settlements({
@@ -370,7 +363,6 @@ const kit = {
 	guard,
 	action,
 	state,
-	final,
 	transition: (handles: PropertyKey, target: string, ...modifiers: unknown[]) => ({
 		handles,
 		target,
@@ -456,7 +448,6 @@ interface RuntimeBranch {
 }
 
 interface RuntimeState {
-	readonly final: boolean
 	readonly transitions: readonly RuntimeBranch[]
 	readonly settlements: readonly RuntimeBranch[]
 	readonly source:
@@ -544,7 +535,7 @@ export function interpret<
 	const dispatch = (event: { type: PropertyKey }): void => {
 		if (stopped) return
 		const definition = states[currentState]
-		if (!definition || definition.final) return
+		if (!definition) return
 		for (const branch of definition.transitions) {
 			if (branch.handles !== event.type) continue
 			if (runBranch(branch, event)) return

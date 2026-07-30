@@ -29,7 +29,7 @@ type CounterSpec = {
 
 const counter = defineMachine<CounterSpec>().create(
   "idle",
-  ({ state, final, transition, reduce }) => ({
+  ({ state, transition, reduce }) => ({
     idle: state(
       transition(
         "finish",
@@ -37,7 +37,7 @@ const counter = defineMachine<CounterSpec>().create(
         reduce((context) => ({ result: context.count })),
       ),
     ),
-    finished: final(),
+    finished: state(),
   }),
 )
 
@@ -50,9 +50,9 @@ if (service.current.state === "finished") {
 ```
 
 The machine spec is declared first, then `create` checks the state map against
-it. Builders such as `state`, `final`, `transition`, `invoke`, `guard`,
-`reduce`, and `action` are scoped to the creation callback so their context and
-event types can be inferred.
+it. Builders such as `state`, `transition`, `invoke`, `guard`, `reduce`, and
+`action` are scoped to the creation callback so their context and event types
+can be inferred.
 
 ## What is checked
 
@@ -64,14 +64,13 @@ Totorobot currently catches:
 - reads of context fields that do not exist in the current state;
 - missing or extra state definitions;
 - an initial context that does not match the declared initial state;
-- transitions declared on a final state;
 - events sent through `service.current.send` that the narrowed state does not
   handle;
 - multiple reducers on one transition.
 
 Runtime support currently includes guarded transitions, actions, context
 reducers, promise invocation with typed success/error branches, cancellation,
-and final states.
+and terminal states represented by `state()` with no transitions.
 
 ## Status and limitations
 

@@ -12,7 +12,7 @@ There were two prototypes, and the second superseded the first:
   but its findings are preserved below.
 - `src/totorobot.ts` — the spec declared up front, then a robot3-shaped builder.
   Same guarantees, local error messages, and more of them. Its extra size is
-  features — explicit initial/final states, multiple guards, actions,
+  features — explicit initial states, multiple guards, actions,
   `AbortSignal`, and `send` narrowed to the current state — not deferred
   transition validation machinery.
 
@@ -130,7 +130,6 @@ type AuthSpec = {
 
 const authMachine = defineMachine<AuthSpec>().create("idle", ({
   state,
-  final,
   transition,
   invoke,
   guard,
@@ -163,7 +162,7 @@ const authMachine = defineMachine<AuthSpec>().create("idle", ({
     ],
   ),
 
-  authenticated: final(),
+  authenticated: state(),
 }))
 
 const service = interpret(authMachine, { error: null, attempts: 0 })
@@ -174,8 +173,7 @@ hand — the enclosing object key binds the source state, and TypeScript chains
 return-type-driven inference from there down into each modifier's callback.
 
 The first argument to `create` declares the initial state, so `interpret` only
-needs its context. `final()` explicitly marks a terminal state and does not
-accept transitions.
+needs its context. As in Robot3, `state()` with no transitions is terminal.
 
 ### Why the design looks like this
 
@@ -253,7 +251,6 @@ and confirmed rejected.
 | Reading a state-specific field without narrowing | ✅ | ✅ |
 | Wrong initial context for the initial state | ✅ | ✅ |
 | Initial state name isn't declared by the spec | ❌ | ✅ |
-| Declaring transitions on a final state | ❌ | ✅ |
 | Sending an `invoke`-internal settlement event | ✅ | ✅ (not in the event union at all) |
 | A state key that isn't in the spec | ❌ | ✅ |
 | A spec state with no entry in the map | ❌ | ✅ |
@@ -319,17 +316,68 @@ whole event union and no-opping on an irrelevant event, as robot3 does.
    satisfy the constraint** in some positions — the usual implicit-index-signature
    gotcha. The examples use type aliases.
 
-### The interface we didn't build
+### The Kysely-inspired interface we didn't build
 
-An earlier proposal had a fluent builder — `.state("idle", s => s.context<…>())`
-then `.on("login", { from, to }, t => t.reduce(…))` — which also puts both ends
-of an edge in scope. Two things ruled it out. Its payload rule (repeated event
-names accumulate by intersection, and earlier callbacks see only what has
-accumulated so far) makes typing order-dependent: moving an `.on(...)` block
-changes what its own guard sees. And each link returns a new builder type with a
-growing accumulator, so a mistake mid-chain degrades every later link. Declaring
-events in the spec removes the accumulation rule entirely, and a state map has
-no accumulator to grow.
+After the first attempt, we considered a fluent API inspired by
+[Kysely](https://kysely.dev/). States and transitions would progressively add
+their types to the builder:
+
+```ts
+const authMachine = defineMachine()
+  .state("idle", (state) =>
+    state
+      .data<{
+        error: string | null
+        attempts: number
+      }>()
+      .initial(),
+  )
+  .state("authenticating", (state) =>
+    state.data<{
+      username: string
+      password: string
+      attempts: number
+    }>(),
+  )
+  .state("authenticated", (state) =>
+    state
+      .data<{
+        username: string
+        token: string
+      }>()
+      .final(),
+  )
+  .on(
+    "login",
+    { from: "idle", to: "authenticating" },
+    (transition) =>
+      transition
+        .payload<{
+          username: string
+          password: string
+        }>()
+        .guard((_data, event) => event.username.trim().length > 0)
+        .reduce((data, event) => ({
+          username: event.username,
+          password: event.password,
+          attempts: data.attempts + 1,
+        })),
+  )
+  .build()
+```
+
+The appeal was that `.on(...)` puts both ends of an edge in scope, allowing its
+reducer to be checked against the target state's data without a separate spec.
+But the event-payload rule made typing order-dependent: repeated event names
+would have to accumulate their payloads by intersection, and earlier callbacks
+could only see what had accumulated so far. Moving an `.on(...)` block could
+therefore change what its own guard saw.
+
+Each link would also return a new builder type with a growing accumulator, so a
+mistake in the middle of the chain would degrade every later link and its error
+messages. Declaring states and events together in an up-front spec removes the
+accumulation rule entirely, while the state-map API avoids a type that grows
+one method call at a time.
 
 ## Current layout
 
