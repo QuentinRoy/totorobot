@@ -1,24 +1,24 @@
-import { createMachine, interpret, guard, state, transition } from 'totorobot';
+import { defineMachine, interpret } from 'totorobot';
 
 QUnit.module('Guards', hooks => {
   QUnit.test('Can prevent changing states', assert => {
     let canProceed = false;
-    let machine = createMachine({
+    let machine = defineMachine().create('one', ({ guard, state, transition }) => ({
       one: state(
         transition('ping', 'two', guard(() => canProceed))
       ),
       two: state()
-    });
-    let service = interpret(machine, service => {});
-    service.send('ping');
-    assert.equal(service.machine.current, 'one');
+    }));
+    let service = interpret(machine, {});
+    service.send({ type: 'ping' });
+    assert.equal(service.snapshot.state, 'one');
     canProceed = true;
-    service.send('ping');
-    assert.equal(service.machine.current, 'two');
+    service.send({ type: 'ping' });
+    assert.equal(service.snapshot.state, 'two');
   });
 
   QUnit.test('If there are multiple guards, any returning false prevents a transition', assert => {
-    let machine = createMachine({
+    let machine = defineMachine().create('one', ({ guard, state, transition }) => ({
       one: state(
         transition('ping', 'two',
           guard(() => false),
@@ -26,25 +26,25 @@ QUnit.module('Guards', hooks => {
         )
       ),
       two: state()
-    });
-    let service = interpret(machine, service => {});
-    service.send('ping');
-    assert.equal(service.machine.current, 'one');
+    }));
+    let service = interpret(machine, {});
+    service.send({ type: 'ping' });
+    assert.equal(service.snapshot.state, 'one');
   });
 
   QUnit.test('Guards are passed the event', assert => {
-    let machine = createMachine({
+    let machine = defineMachine().create('one', ({ guard, state, transition }) => ({
       one: state(
         transition('ping', 'two',
           guard((ctx, ev) => ev.canProceed)
         )
       ),
       two: state()
-    });
-    let service = interpret(machine, () => {});
+    }));
+    let service = interpret(machine, {});
     service.send({ type: 'ping' });
-    assert.equal(service.machine.current, 'one', 'still in the initial state');
+    assert.equal(service.snapshot.state, 'one', 'still in the initial state');
     service.send({ type: 'ping', canProceed: true });
-    assert.equal(service.machine.current, 'two', 'now moved');
+    assert.equal(service.snapshot.state, 'two', 'now moved');
   });
 });
