@@ -3,19 +3,31 @@ import assert from 'node:assert';
 import {
   type Service,
   createMachine,
+  defineMachine,
   transition,
   state,
   invoke, interpret
 } from 'totorobot';
 
 test('send(event) is typed', () => {
-  const machine = createMachine({
+  type Spec = {
+    states: {
+      one: {};
+      two: {};
+      three: {};
+    };
+    events: {
+      'go-one': Record<never, never>;
+      'go-two': Record<never, never>;
+    };
+  };
+  const machine = defineMachine<Spec>().create('one', ({ state, transition }) => ({
     one: state(transition('go-two', 'two')),
     two: state(transition('go-one', 'one')),
     three: state()
-  });
+  }));
 
-  type Params = Parameters<Service<typeof machine>['send']>;
+  type Params = Parameters<Service<Spec, typeof machine.states>['send']>;
   type EventParam = Params[0];
   type StringParams = Extract<EventParam, string>;
   expectTypeOf<StringParams>().toEqualTypeOf<'go-one' | 'go-two'>();
@@ -25,13 +37,25 @@ test('send(event) is typed', () => {
 });
 
 test('types machine with multiple transitions from one state', () => {
-  const machine = createMachine({
+  type Spec = {
+    states: {
+      one: {};
+      two: {};
+      three: {};
+    };
+    events: {
+      'go-one': Record<never, never>;
+      'go-two': Record<never, never>;
+      'go-three': Record<never, never>;
+    };
+  };
+  const machine = defineMachine<Spec>().create('one', ({ state, transition }) => ({
     one: state(transition('go-two', 'two'), transition('go-three', 'three')),
     two: state(transition('go-one', 'one')),
     three: state()
-  });
+  }));
 
-  type Params = Parameters<Service<typeof machine>['send']>;
+  type Params = Parameters<Service<Spec, typeof machine.states>['send']>;
   type EventParam = Params[0];
   type StringParams = Extract<EventParam, string>;
   expectTypeOf<StringParams>().toEqualTypeOf<'go-one' | 'go-two' | 'go-three'>();
