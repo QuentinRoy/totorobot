@@ -1,4 +1,4 @@
-import { createMachine, interpret, reduce, state, transition } from '../machine.js';
+import { createMachine, interpret, reduce, state, transition } from 'totorobot';
 
 QUnit.module('Reduce', () => {
   QUnit.test('Basic state change', assert => {

@@ -1,4 +1,4 @@
-import { createMachine, immediate, interpret, invoke, reduce, state, state as final, transition } from '../machine.js';
+import { createMachine, immediate, interpret, invoke, reduce, state, state as final, transition } from 'totorobot';
 
 QUnit.module('Invoke', hooks => {
   QUnit.module('Promise');

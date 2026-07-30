@@ -1,4 +1,4 @@
-import { createMachine, guard, interpret, immediate, state, transition } from '../machine.js';
+import { createMachine, guard, interpret, immediate, state, transition } from 'totorobot';
 
 QUnit.module('Immediate', hooks => {
   QUnit.test('Will immediately transition', assert => {

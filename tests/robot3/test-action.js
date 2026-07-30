@@ -1,4 +1,4 @@
-import { createMachine, action, interpret, state, transition } from '../machine.js';
+import { createMachine, action, interpret, state, transition } from 'totorobot';
 
 QUnit.module('Action', () => {
   QUnit.test('Can be used to do side-effects', assert => {

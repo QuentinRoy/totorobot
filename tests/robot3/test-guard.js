@@ -1,4 +1,4 @@
-import { createMachine, interpret, guard, state, transition } from '../machine.js';
+import { createMachine, interpret, guard, state, transition } from 'totorobot';
 
 QUnit.module('Guards', hooks => {
   QUnit.test('Can prevent changing states', assert => {

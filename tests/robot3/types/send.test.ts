@@ -6,7 +6,7 @@ import {
   transition,
   state,
   invoke, interpret
-} from 'robot3';
+} from 'totorobot';
 
 test('send(event) is typed', () => {
   const machine = createMachine({

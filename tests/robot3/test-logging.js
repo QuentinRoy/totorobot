@@ -1,4 +1,4 @@
-import { createMachine, interpret, state, transition, reduce, d} from '../machine.js';
+import { createMachine, interpret, state, transition, reduce, d} from 'totorobot';
 
 QUnit.module('robot/logging');
 
