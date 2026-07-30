@@ -1,8 +1,8 @@
-import { createMachine, guard, interpret, immediate, state, transition } from 'totorobot';
+import { defineMachine, immediate, interpret } from 'totorobot';
 
 QUnit.module('Immediate', hooks => {
   QUnit.test('Will immediately transition', assert => {
-    let machine = createMachine({
+    let machine = defineMachine().create('one', ({ state, transition }) => ({
       one: state(
         transition('ping', 'two')
       ),
@@ -10,14 +10,14 @@ QUnit.module('Immediate', hooks => {
         immediate('three')
       ),
       three: state()
-    });
-    let service = interpret(machine, () => {});
-    service.send('ping');
-    assert.equal(service.machine.current, 'three');
+    }));
+    let service = interpret(machine, {});
+    service.send({ type: 'ping' });
+    assert.equal(service.snapshot.state, 'three');
   });
 
   QUnit.test('Will not reject state when a guard fails', assert => {
-    let machine = createMachine({
+    let machine = defineMachine().create('one', ({ guard, state, transition }) => ({
       one: state(
         transition('ping', 'two')
       ),
@@ -26,16 +26,16 @@ QUnit.module('Immediate', hooks => {
         transition('next', 'three')
       ),
       three: state()
-    });
-    let service = interpret(machine, () => {});
-    service.send('ping');
-    assert.equal(service.machine.current, 'two');
-    service.send('next');
-    assert.equal(service.machine.current, 'three');
+    }));
+    let service = interpret(machine, {});
+    service.send({ type: 'ping' });
+    assert.equal(service.snapshot.state, 'two');
+    service.send({ type: 'next' });
+    assert.equal(service.snapshot.state, 'three');
   });
 
   QUnit.test('Can immediately transitions past 2 states', assert => {
-    let machine = createMachine({
+    let machine = defineMachine().create('one', ({ state }) => ({
       one: state(
         immediate('two')
       ),
@@ -43,10 +43,10 @@ QUnit.module('Immediate', hooks => {
         immediate('three')
       ),
       three: state()
-    });
+    }));
 
-    let service = interpret(machine, () => {});
-    assert.equal(service.machine.current, 'three', 'transitioned to 3');
+    let service = interpret(machine, {});
+    assert.equal(service.snapshot.state, 'three', 'transitioned to 3');
     assert.ok(service.machine.state.value.final, 'in the final state');
   });
 });
