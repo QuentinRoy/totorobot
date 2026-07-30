@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    /* Node 26 runs .ts files directly by stripping types - no bundler/tsx needed.
+       This tsconfig is used for type-checking only (`pnpm typecheck`); it never emits. */
+    "target": "ESNext",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ESNext"],
+    "types": ["node"],
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+
+    /* Node's type-stripping only erases type-only syntax: no enums, no
+       namespaces with runtime values, no parameter properties, etc. */
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+
+    /* Strict mode, maxed out. */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "useUnknownInCatchVariables": true,
+
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  },
+  "include": ["src", "examples", "tests"]
+}
