@@ -1,4 +1,4 @@
-import { createMachine, interpret, reduce, state, transition } from 'totorobot';
+import { createMachine, defineMachine, interpret, reduce, state, transition } from 'totorobot';
 
 QUnit.module('Reduce', () => {
   QUnit.test('Basic state change', assert => {
@@ -20,34 +20,34 @@ QUnit.module('Reduce', () => {
   });
 
   QUnit.test('If no reducers, the context remains', assert => {
-    let machine = createMachine({
+    let machine = defineMachine().create('one', ({ state, transition }) => ({
       one: state(
         transition('go', 'two')
       ),
       two: state()
-    }, () => ({ one: 1, two: 2 }));
+    }));
 
-    let service = interpret(machine, () => {});
-    service.send('go');
-    assert.deepEqual(service.context, { one: 1, two: 2 }, 'context remains');
+    let service = interpret(machine, { one: 1, two: 2 });
+    service.send({ type: 'go' });
+    assert.deepEqual(service.snapshot.context, { one: 1, two: 2 }, 'context remains');
   });
 
   QUnit.test('Event is the second argument', assert => {
     assert.expect(2);
 
-    let machine = createMachine({
+    let machine = defineMachine().create('one', ({ reduce, state, transition }) => ({
       one: state(
         transition('go', 'two',
           reduce(function(ctx, ev) {
-            assert.equal(ev, 'go');
+            assert.deepEqual(ev, { type: 'go' });
             return { ...ctx, worked: true };
           })
         )
       ),
       two: state()
-    });
-    let service = interpret(machine, () => {});
-    service.send('go');
-    assert.equal(service.context.worked, true, 'changed the context');
+    }));
+    let service = interpret(machine, {});
+    service.send({ type: 'go' });
+    assert.equal(service.snapshot.context.worked, true, 'changed the context');
   });
 });
