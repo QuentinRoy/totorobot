@@ -1,7 +1,8 @@
 import { defineMachine, interpret } from 'totorobot';
+import { describe, expect, test } from 'vitest';
 
-QUnit.module('Guards', hooks => {
-  QUnit.test('Can prevent changing states', assert => {
+describe('Guards', () => {
+  test('Can prevent changing states', () => {
     let canProceed = false;
     let machine = defineMachine().create('one', ({ guard, state, transition }) => ({
       one: state(
@@ -11,13 +12,15 @@ QUnit.module('Guards', hooks => {
     }));
     let service = interpret(machine, {});
     service.send({ type: 'ping' });
-    assert.equal(service.snapshot.state, 'one');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.snapshot.state == 'one').toBe(true);
     canProceed = true;
     service.send({ type: 'ping' });
-    assert.equal(service.snapshot.state, 'two');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.snapshot.state == 'two').toBe(true);
   });
 
-  QUnit.test('If there are multiple guards, any returning false prevents a transition', assert => {
+  test('If there are multiple guards, any returning false prevents a transition', () => {
     let machine = defineMachine().create('one', ({ guard, state, transition }) => ({
       one: state(
         transition('ping', 'two',
@@ -29,10 +32,11 @@ QUnit.module('Guards', hooks => {
     }));
     let service = interpret(machine, {});
     service.send({ type: 'ping' });
-    assert.equal(service.snapshot.state, 'one');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.snapshot.state == 'one').toBe(true);
   });
 
-  QUnit.test('Guards are passed the event', assert => {
+  test('Guards are passed the event', () => {
     let machine = defineMachine().create('one', ({ guard, state, transition }) => ({
       one: state(
         transition('ping', 'two',
@@ -43,8 +47,10 @@ QUnit.module('Guards', hooks => {
     }));
     let service = interpret(machine, {});
     service.send({ type: 'ping' });
-    assert.equal(service.snapshot.state, 'one', 'still in the initial state');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.snapshot.state == 'one', 'still in the initial state').toBe(true);
     service.send({ type: 'ping', canProceed: true });
-    assert.equal(service.snapshot.state, 'two', 'now moved');
+    // Preserve QUnit assert.equal's loose equality semantics.
+    expect.soft(service.snapshot.state == 'two', 'now moved').toBe(true);
   });
 });
