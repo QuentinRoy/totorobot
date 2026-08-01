@@ -87,6 +87,10 @@ state map.
   guarantees, runtime semantics, and known limitations.
 - [Design explorations](docs/design-explorations.md) records the Robot3
   investigation and the discarded inline and Kysely-inspired APIs.
+- [Explorations](explorations/README.md) holds the compilable prototypes behind
+  those findings, including one built over Robot3 itself. They are type-checked
+  and the Robot3 one is tested, so a rejected option that starts working again
+  fails the build rather than going unnoticed.
 
 ## Repository layout
 
@@ -96,6 +100,8 @@ state map.
 - `tests/totorobot.test.ts` — runtime and compile-time coverage.
 - `docs/design-notes.md` — reference for the current design.
 - `docs/design-explorations.md` — history of the experiments that led to it.
+- `explorations/` — prototypes of alternative API shapes, kept compiling as
+  evidence for that history. Not part of the library.
 
 ## Development
 
