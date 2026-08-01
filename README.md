@@ -83,6 +83,9 @@ state map.
 
 ## Documentation
 
+- [FSM library requirements](docs/requirements.md) prioritizes the target
+  behavior, type guarantees, design latitude, and non-goals for the next API
+  exploration.
 - [Design notes](docs/design-notes.md) explains the current API, its type
   guarantees, runtime semantics, and known limitations.
 - [Design explorations](docs/design-explorations.md) records the Robot3
