@@ -1,20 +1,25 @@
-# Raw API seed ledger
+# Raw API seed index
 
-> **Status:** Not started.
+> **Status:** Two pre-session seeds captured; generative session not started.
 
-This is the append-only canonical ledger for the breadth-first brainstorm. The
-coordinating agent incorporates every seed from the per-agent files in
-[`raw/`](raw/) after each wave.
+The immutable seed bodies live in source files under [`raw/`](raw/). This is the
+complete append-only index and reading order. It must point to every raw seed
+exactly once without paraphrasing or replacing the original body.
 
-## Ledger rules
+## Index rules
 
-- Assign each seed a stable identifier such as `S001`.
-- Preserve the seed's original mechanism and intent.
-- Record its source file.
+- Seeds receive stable, namespaced identifiers in their source files.
+- Link each identifier directly to its stable heading in the source file.
+- Preserve name, wave, source, and parent identifiers.
 - Annotate likely cosmetic duplicates without deleting either seed.
 - Do not rank, score, cluster away, or reject seeds during generation.
 - Add corrections as notes instead of silently rewriting history.
+- After each wave, verify that the indexed IDs exactly match the well-formed,
+  uniquely identified seeds in accepted and abandoned raw files.
 
 ## Seeds
 
-_The brainstorm has not run yet._
+| Seed                                | Name                           | Wave        | Source | Parents | Annotation                                              |
+| ----------------------------------- | ------------------------------ | ----------- | ------ | ------- | ------------------------------------------------------- |
+| [`H-001`](raw/human-seeds.md#h-001) | Transition-keyed edge table    | Pre-session | Human  | None    | Withheld from Wave 1; ordinary seed from Wave 2 onward. |
+| [`H-002`](raw/human-seeds.md#h-002) | Interpolated transition script | Pre-session | Human  | None    | Withheld from Wave 1; ordinary seed from Wave 2 onward. |

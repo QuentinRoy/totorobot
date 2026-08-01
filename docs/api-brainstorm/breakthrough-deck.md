@@ -8,6 +8,12 @@ roughly 10–15 surprising, high-leverage ideas or fragments. Selection is for
 novelty, conceptual leverage, and diversity—not an assertion that these are the
 most feasible or “best” APIs.
 
+Each curator nominates exactly three raw seeds. Deduplicate their nominations,
+then sample unnominated seeds until the pool contains 12. Every pool entry gets
+a card; the coordinator does not cut or rank it. Report the resulting coverage
+across mechanisms, waves, source agents, quiet foundations, donor fragments,
+and the speculative fringe.
+
 ## Card shape
 
 Each card should fit roughly on one screen and contain:

@@ -18,6 +18,18 @@ mostly resembles an existing library is less useful at this stage.
 Do not converge, rank, reject, or merge ideas during the generative rounds.
 Preserve every seed, including awkward and contradictory ones.
 
+## Execution contract
+
+One coordinating agent owns the complete pre-review run. In one invocation it
+runs all three waves, validates and indexes their output, performs independent
+curation, builds the atlas and breakthrough deck, and returns the human
+handoff. It makes operational choices and retries failed workers without asking
+the human for approval or clarification.
+
+The coordinator contacts the human only when the review package is complete or
+an essential tool or capability remains unavailable after reasonable retries.
+It does not begin API evaluation or convergence during this run.
+
 ## Breakthrough mandate
 
 Wild ideas are actively encouraged. Early seeds must not be rejected because
@@ -107,7 +119,11 @@ TypeScript syntax before it is ready.
 Use this loose shape:
 
 ```md
-### Short name
+## <assigned-prefix>-001
+
+**Name:** Short name
+
+**Parents:** Stable seed identifiers, for mutations; otherwise omit.
 
 **Sketch:** The smallest representation that reveals the idea. Omit this when
 the mechanism is clearer in words.
@@ -180,30 +196,64 @@ Use these when the obvious space is exhausted:
 
 ### Wave 1 — Independent spray
 
-Run three ideation agents plus the coordinating agent independently.
+The coordinating agent orchestrates and captures; it does not count as a blind
+ideator because it already knows the requirements and prior exploration.
+
+Launch four fresh agents with no inherited conversation history. Give each a
+self-contained prompt containing the ideation guidance above, its assigned role
+below, the 12-seed minimum, its output path and reserved prefix, and the
+write-and-return rules below. Do not give it repository links or broader
+context.
+
+| Prefix | Role                         | Output file                                             |
+| ------ | ---------------------------- | ------------------------------------------------------- |
+| `W1-A` | Near-field breaker           | `docs/api-brainstorm/raw/wave-1-near-field.md`          |
+| `W1-B` | Alien-mechanism miner        | `docs/api-brainstorm/raw/wave-1-alien-mechanisms.md`    |
+| `W1-C` | Anti-machine, caller-first   | `docs/api-brainstorm/raw/wave-1-anti-machine.md`        |
+| `W1-D` | Impossible-language inventor | `docs/api-brainstorm/raw/wave-1-impossible-language.md` |
 
 - Each produces **at least 12 seeds**.
 - Agents do not see one another's work.
 - Agents do not read the requirements inventory.
-- Agents do not research every reference library before starting.
+- Agents do not read the repository README, current design, historical
+  explorations, reference list, or raw output from other agents.
 - No agent recommends a winner.
+- Each agent writes its assigned file before returning only its path and seed
+  count.
 
-Give each participant a different initial provocation, but do not confine it to
-one lane:
+Use deliberately asymmetric starting roles rather than four variations on the
+same programming-language prompt:
 
-- **Topology/language:** graphs, edge tables, small DSLs, declarative views.
-- **Typestate/interaction:** typed values, methods, capabilities, protocols.
-- **Functions/algebras:** reducers, matchers, transitions as data or results.
-- **Ownership/lifetime:** services, handles, scopes, transactions, iterators.
+- **Near-field breaker:** remain plausible in ordinary TypeScript but change
+  underlying models, not syntax.
+- **Alien-mechanism miner:** transplant mechanisms from non-software domains.
+- **Anti-machine, caller-first:** begin from ideal use sites and question state
+  names, event vocabularies, and central definitions.
+- **Impossible-language inventor:** sketch desirable models even when they need
+  compiler features or ownership rules TypeScript lacks.
+
+Roles are provocations, not lanes.
 
 Target after Wave 1: **roughly 50 raw seeds**, not four polished proposals.
 
+Before starting Wave 2, verify every assigned file exists, each contains at
+least 12 seeds under its reserved prefix, all IDs are unique, and every ID
+appears in the raw index. Resume or replace a failed worker without involving
+the human.
+
 ### Wave 2 — Mutation and collision
 
-Do not give every agent the complete ledger; that would make the existing pool
-an anchor. Give different agents different random, overlapping subsets of
-seeds without commentary or ranking. Keep at least one agent blind for another
-independent spray.
+Launch four fresh agents without inherited conversation history. Give three
+different random, overlapping subsets of seed bodies, copied directly into
+their prompts without ranking or commentary. Keep the fourth blind for another
+independent spray. Use prefixes `W2-A` through `W2-D` and output paths
+`docs/api-brainstorm/raw/wave-2-mutations-a.md` through
+`docs/api-brainstorm/raw/wave-2-mutations-d.md`; `W2-D` is the blind
+assignment. Do not expose the complete ledger, requirements, current design,
+history, references, or other agents' work beyond the assigned packet.
+
+Any pre-session human seeds join the ordinary sampling pool at Wave 2. They
+receive no guaranteed packet placement, ranking, or special curation status.
 
 Each agent adds at least eight more seeds by applying moves such as:
 
@@ -219,26 +269,36 @@ Each agent adds at least eight more seeds by applying moves such as:
 
 Target after Wave 2: **80 or more seeds**.
 
+Every packet-backed mutation records the stable identifiers of its parents.
+Repeat the file, prefix, count, unique-ID, parent, and index checks before
+continuing. Resume or replace failed workers autonomously.
+
 ### Wave 3 — Gap and weirdness hunt
 
 Only now make a loose map of the explored space. Do not score ideas. Look for
 empty combinations, repeated assumptions, and models that every agent avoided.
 
-Run a final short wave aimed specifically at those gaps. Each participant adds
-at least five more seeds, including ideas that may require compiler help,
-code generation, unusual ownership rules, or TypeScript capabilities that do
-not quite exist. These are probes, not implementation commitments. Preserve
-useful fragments even when the enclosing API is implausible.
+Launch four fresh agents against four different gaps, using prefixes `W3-A`
+through `W3-D` and output paths
+`docs/api-brainstorm/raw/wave-3-gaps-a.md` through
+`docs/api-brainstorm/raw/wave-3-gaps-d.md`. Each adds at least five seeds,
+including ideas that may require compiler help, code generation, unusual
+ownership rules, or TypeScript capabilities that do not quite exist. These are
+probes, not implementation commitments. Preserve useful fragments even when
+the enclosing API is implausible.
 
 Target after Wave 3: **100 or more seeds**, with a visible speculative fringe
 rather than only safe variations.
+
+Repeat the capture audit before declaring generation complete. Resume or
+replace failed workers autonomously.
 
 ### Stop the generative phase
 
 Stop when new seeds are mostly cosmetic mutations, not when a favorite appears.
 Keep the unfiltered ledger as an artifact; clustering must never replace it.
 
-## Disk capture and human handoff
+## Disk capture
 
 The brainstorm does not live only in agent messages. The durable source of
 truth is the [`docs/api-brainstorm/`](api-brainstorm/) directory.
@@ -249,19 +309,55 @@ edit the same result file. This prevents concurrent work from overwriting ideas
 and ensures that an abbreviated agent response cannot become the only surviving
 copy.
 
-After each wave, the coordinating agent incorporates every seed into the
-append-only [raw seed ledger](api-brainstorm/raw-seeds.md). Seeds receive stable
-identifiers and are not silently deleted, rewritten into another idea, or
-replaced by a cluster summary.
+Raw agent files become immutable when accepted or declared abandoned. Agents
+create seeds with stable, reserved identifiers; the coordinator does not rename
+them later. After each wave, the coordinating agent adds every well-formed,
+uniquely identified seed to the append-only
+[raw-seed index](api-brainstorm/raw-seeds.md), linking to the original body.
+Seeds are not silently deleted, rewritten into another idea, or replaced by a
+cluster summary.
 
-After the generative phase, produce two additional disk artifacts:
+If an agent finishes without a valid file, resume it against the same path
+before accepting it. If that is impossible, declare the partial file abandoned,
+index any well-formed, uniquely identified seeds it contains as recovered, and
+launch a replacement using
+`<original-stem>-retry-N.md` and `<original-prefix>-R<N>`. Recovered seeds do
+not reduce the replacement's minimum count. Abandoned malformed fragments
+remain as provenance but are not seeds.
 
+## Plural curation before human review
+
+Do not let one coordinator decide what counts as the breakthrough set.
+
+After the final capture audit, launch four fresh curators while the coordinator
+builds the atlas. Each curator reads the raw index and linked seed bodies, sees
+no other curator output or requirements inventory, and uses one lens:
+
+- most alien or assumption-breaking;
+- strongest single mechanisms and donor fragments;
+- quiet foundations that could become exceptional after one transplant; and
+- contradictions or unresolved tensions that deserve competing answers.
+
+Each curator writes concise nominations with raw seed IDs to a separate
+`docs/api-brainstorm/raw/curation-<lens>.md` file. Each curator nominates exactly
+three raw seeds and may identify a specific donor fragment within each. Take
+the distinct nominated seeds, then sample unnominated seeds until the pool has 12. Every pool entry becomes a deck card; the coordinator does not cut or rank
+the pool. Report its resulting coverage across mechanisms, waves, source
+agents, quiet foundations, donor fragments, and speculative ideas. The atlas
+maps the whole space and does not veto the nomination pool.
+
+## Human handoff
+
+After the atlas and curation are complete, build the breakthrough deck. The
+human handoff consists of:
+
+- the [breakthrough deck](api-brainstorm/breakthrough-deck.md), a small,
+  deliberately varied set of surprising or high-leverage sparks prepared for
+  human review;
 - the [idea atlas](api-brainstorm/idea-atlas.md), a browsable catalogue of the
   distinct mechanisms and territories, with links back to raw seed identifiers;
   and
-- the [breakthrough deck](api-brainstorm/breakthrough-deck.md), a small,
-  deliberately varied set of surprising or high-leverage sparks prepared for
-  human review.
+- the complete [raw-seed index](api-brainstorm/raw-seeds.md).
 
 The final task response gives only a short orientation and clickable links to
 those files; it does not paste or replace them. Human reactions and later
@@ -270,38 +366,7 @@ conversation.
 
 ## After breadth has been achieved
 
-Evaluation is a separate session.
-
-1. Cluster seeds by underlying model, allowing one seed to belong to several
-   clusters.
-2. Mark surprising mechanisms or fragments before considering whole APIs.
-3. Select a varied set of seeds for slightly larger sketches; do not choose
-   only the most immediately practical ones.
-4. Probe those sketches with state-specific data, conditional or unavailable
-   inputs, multiple possible targets, effects, and time.
-5. Test survivors against a small Marking Menu slice.
-6. Only then consult the detailed requirements inventory and TypeScript
-   feasibility constraints.
-7. Present several coherent families and several orphaned breakthrough
-   fragments for human discussion. Do not silently synthesize one winner.
-
-## References for later mutation rounds
-
-Do not make every agent read all of these up front. They are mutation material
-after independent ideas exist:
-
-- [Totorobot design notes](design-notes.md)
-- [Totorobot design explorations](design-explorations.md)
-- [Robot3](https://thisrobot.life/)
-- [XState](https://stately.ai/docs/xstate)
-- [yay-machine](https://github.com/maurice/yay-machine)
-- [JavaScript State Machine](https://github.com/jakesgordon/javascript-state-machine)
-- [Machinist](https://github.com/VincentQuillien/machinist)
-- [`@doeixd/machine`](https://github.com/doeixd/machine)
-- [JSSM](https://github.com/StoneCypher/jssm)
-
-Machinist and `@doeixd/machine` are useful nearby points; JSSM is a useful
-provocation about definition medium. None should become the default base.
-
-The current Totorobot API is evidence from one explored branch of the design
-space, not the center of the next search.
+Evaluation is a separate session. The coordinating agent stops after the human
+handoff. It does not expand cards into coherent API families, run design or
+feasibility trials, consult the detailed requirements inventory, test the
+Marking Menu case, or select and synthesize a winner.
