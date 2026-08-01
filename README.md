@@ -86,6 +86,11 @@ state map.
 - [FSM library requirements](docs/requirements.md) prioritizes the target
   behavior, type guarantees, design latitude, and non-goals for the next API
   exploration.
+- [API brainstorm session brief](docs/api-brainstorm-brief.md) prepares a
+  divergent, multi-agent exploration without treating that inventory as a
+  specification.
+- [API brainstorm artifacts](docs/api-brainstorm/) will preserve the raw seed
+  ledger, human-browsable atlas, and breakthrough deck on disk.
 - [Design notes](docs/design-notes.md) explains the current API, its type
   guarantees, runtime semantics, and known limitations.
 - [Design explorations](docs/design-explorations.md) records the Robot3
