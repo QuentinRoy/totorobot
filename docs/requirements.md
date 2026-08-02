@@ -190,6 +190,11 @@ The first design may rely on all of the following:
 These are freedoms available to the design, not outcomes the API must force
 when they provide no benefit.
 
+
+### P0.13 — Avoid solutions that will obviously require large runtime code
+
+Final library size must be small so it wouldn't bloat a typical library bundle. Ideally, the library remain under 2–3 KB minified and gzipped, but the exact budget is deferred until after the first API exploration.
+
 ## P1 — Important
 
 ### P1.1 — Produce readable, local TypeScript diagnostics
@@ -228,6 +233,10 @@ Prefer an architecture in which deterministic state evolution can be used by
 itself and an optional, library-supported reaction layer manages effects. This
 is stronger than merely forbidding effects during transition decisions, but it
 must yield if enforcing the separation makes the primary API materially worse.
+
+### P1.6 — Avoid compilation steps
+
+Prefer an architecture in which the library can be used directly in TypeScript or JavaScript without a build step or code generation. This is stronger than merely avoiding a separate compilation step for the library itself, but it must yield if enforcing the separation makes the primary API materially worse.
 
 ## P2 — Useful
 
