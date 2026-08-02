@@ -22,7 +22,27 @@ outranks a later one when they conflict.
 
 ## P0 — Defining
 
-### P0.1 — Optimize for small interaction machines
+### P0.1 — Optimize for human understanding and editing
+
+Machine definitions are source code for humans first. A developer unfamiliar
+with a small representative machine should be able to understand its states,
+available inputs, conditions, and transition paths quickly, without tracing
+type-level machinery, consulting generated artifacts, or jumping among
+unrelated implementation code.
+
+Common changes such as adding, removing, or modifying a state or transition
+must be straightforward and local. The source state, input, decision, and
+ordinary transition targets should be visible near one another, and a fact
+should not normally need to be updated in several places. Type cleverness,
+brevity, or inference does not compensate for behavior that is hard to find or
+change confidently.
+
+A representative machine must remain easy to understand after normal automatic
+formatting, without hand alignment or other formatting tricks. Representative
+candidate APIs should therefore always be reviewed and edited in their
+automatically formatted form.
+
+### P0.2 — Optimize for small interaction machines
 
 The main use case is interaction-technique development: roughly 2–20 control
 states and dozens rather than hundreds of transitions. The current
@@ -35,7 +55,7 @@ Larger-machine features must not add ceremony to this case.
 Optimization for hundreds of states, enterprise workflow orchestration, or the
 full statechart feature set is outside the target.
 
-### P0.2 — Make typestates the central type guarantee
+### P0.3 — Make typestates the central type guarantee
 
 Knowing the current state must provide precise state-specific data and
 capabilities. A state may have no associated data. No particular TypeScript
@@ -58,16 +78,6 @@ On the strongly typed path:
 The full result must survive exporting a machine from a package and generating
 TypeScript declaration files. Downstream users must not have to redeclare its
 typestates.
-
-### P0.3 — Keep definitions readable
-
-A representative machine must remain easy to read after normal automatic
-formatting, without hand alignment or other formatting tricks. Ordinary
-transition targets must be apparent locally in the source rather than existing
-only in inferred types or being hidden behind unrelated implementation code.
-
-Representative candidate APIs should therefore always be reviewed in their
-automatically formatted form.
 
 ### P0.4 — Keep type narrowing truthful over time
 
@@ -197,7 +207,16 @@ Final library size must be small so it wouldn't bloat a typical library bundle. 
 
 ## P1 — Important
 
-### P1.1 — Produce readable, local TypeScript diagnostics
+### P1.1 — Prefer familiar FSM mental models
+
+People naturally understand an FSM as a directed graph, with control states as
+nodes and transitions as edges, so an API that keeps that model recognizable
+starts with an advantage. Familiarity is desirable, not required, and does not
+prescribe a notation or topology location. An unfamiliar breakthrough may win
+if it is quick to learn and makes representative machines easier to understand
+and edit. Novelty alone does not offset its learning cost.
+
+### P1.2 — Produce readable, local TypeScript diagnostics
 
 An invalid source read, target, input, or target-state value should report near
 the mistake and explain it in familiar terms. A readable error-bearing helper
@@ -207,34 +226,34 @@ precisely, but obscure type-level failures are not.
 Perfect error placement does not outrank the readability of valid machine
 definitions.
 
-### P1.2 — Avoid duplicate topology declarations
+### P1.3 — Avoid duplicate topology declarations
 
 Users should not normally describe the same states, capabilities, and targets
 once for TypeScript and again for runtime behavior. If a separate type-level
 model proves worthwhile, the compiler must detect drift between it and the
 implementation.
 
-### P1.3 — Degrade gracefully outside the fully typed path
+### P1.4 — Degrade gracefully outside the fully typed path
 
 JavaScript users and TypeScript users who provide incomplete types should
 still receive a usable runtime API. Types may widen as information is lost,
 but should not collapse into an unusable `never`-heavy surface. This does not
 weaken the strict, fully typed contract.
 
-### P1.4 — Keep the runtime small
+### P1.5 — Keep the runtime small
 
 A dependency-free implementation is preferred. A dependency remains
 acceptable when it clearly improves correctness or the implementation enough
 to justify its cost.
 
-### P1.5 — Separate the pure core from supported reactions
+### P1.6 — Separate the pure core from supported reactions
 
 Prefer an architecture in which deterministic state evolution can be used by
 itself and an optional, library-supported reaction layer manages effects. This
 is stronger than merely forbidding effects during transition decisions, but it
 must yield if enforcing the separation makes the primary API materially worse.
 
-### P1.6 — Avoid compilation steps
+### P1.7 — Avoid compilation steps
 
 Prefer an architecture in which the library can be used directly in TypeScript or JavaScript without a build step or code generation. This is stronger than merely avoiding a separate compilation step for the library itself, but it must yield if enforcing the separation makes the primary API materially worse.
 
