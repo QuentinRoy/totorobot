@@ -6,6 +6,11 @@ particular, it does not choose events over methods, a declarative configuration
 over immutable operations, or a particular TypeScript representation for
 typestates.
 
+It also does not require the library to own evolving state. A candidate may
+provide caller-owned evolution, a library-owned live execution, or both.
+Requirements stated in terms of submission, commitment, reactions, or
+observation apply to a library-owned live execution when one is provided.
+
 The list is a priority stack rather than a checklist of independent features.
 Related interview answers are folded together. An earlier item within a band
 outranks a later one when they conflict.
@@ -16,9 +21,48 @@ outranks a later one when they conflict.
 - **P1 — Important:** preserve these unless doing so materially harms P0.
 - **P2 — Useful:** pursue these after the core works, and only while the P0
   experience stays simple.
-- **P3 — Reserved:** leave room for these where inexpensive, but do not let them
-  shape the first API.
+- **Deferred probes:** unscored possibilities that may be explored against
+  finalists, but must not shape or earn credit for the first API.
 - **P4 — Outside the target:** do not spend core complexity on these.
+
+## Accepted scope and design latitude
+
+The first design may assume all of the following:
+
+- a fixed, finite set of control states known before execution;
+- one canonical initial control state;
+- compile-time capability availability determined by the control state rather
+  than arbitrary values inside that state's data;
+- at most one transition outcome for each applied input or capability;
+- current-generation TypeScript;
+- TypeScript strict mode for the strongest guarantees; and
+- modern ESM-capable environments rather than legacy browsers or a
+  CommonJS-first package.
+
+These assumptions may simplify the design. The interface need not expose them
+as user choices or ceremony when they provide no benefit.
+
+## Candidate evidence
+
+The requirements inventory is for evaluating coherent candidates after
+divergent ideation, not for rejecting incomplete early seeds. Evidence grows
+with candidate maturity:
+
+1. A coherent candidate shows its automatically formatted definitions and use
+   sites for the shared [acceptance cases](acceptance-cases.md), and documents
+   its decisions and remaining unknowns.
+2. A type prototype records passing and failing typestate examples, resulting
+   diagnostics, and a downstream declaration-file consumer.
+3. A runtime prototype records deterministic traces for ordinary transitions,
+   reentrancy, effects, timing races, stale results, and disposal where those
+   concerns are library-owned.
+4. A finalist is exercised through common comprehension, editing, and debugging
+   tasks. Runtime, bundle-size, type-checking, and editor measurements use the
+   same cases and toolchain across candidates.
+
+Exploratory measurements reveal realistic budgets; they are not retroactive
+grounds for rejecting early ideas. Any quantitative thresholds must be fixed
+before finalists are compared.
 
 ## P0 — Defining
 
@@ -45,11 +89,11 @@ automatically formatted form.
 ### P0.2 — Optimize for small interaction machines
 
 The main use case is interaction-technique development: roughly 2–20 control
-states and dozens rather than hundreds of transitions. The current
-[Marking Menu](https://github.com/QuentinRoy/Marking-Menu) behavior is the
-reference acceptance case. A candidate must express its state-specific data,
+states and dozens rather than hundreds of transitions. The reduced
+[Marking Menu case](acceptance-cases.md#case-1-reduced-marking-menu) is the
+primary acceptance case. A candidate must express its state-specific data,
 pointer-driven transitions, timing races, stale-result protection, effects,
-and recursive submenu data cleanly.
+and recursive submenu data.
 
 Larger-machine features must not add ceremony to this case.
 Optimization for hundreds of states, enterprise workflow orchestration, or the
@@ -63,12 +107,13 @@ encoding, including a discriminated union, is prescribed.
 
 On the strongly typed path:
 
-- transition logic knows its precise source state and input;
+- applying a state-specific capability preserves its precise source state and
+  input;
 - input payloads or arguments are specific to the capability being applied;
 - only valid target states are available;
 - target-state data is checked against the selected target;
-- the result exposes the exact target typestate, or the true union of possible
-  target typestates;
+- an exposed transition outcome contains the exact target typestate, or the
+  true union of possible target typestates;
 - consumers can handle the complete state space exhaustively;
 - declared states and capabilities are implemented exhaustively, with terminal
   states being intentional; and
@@ -85,10 +130,12 @@ If TypeScript narrows an observed value to state `S`, later machine activity
 must not cause that same value to represent another state while TypeScript
 still treats it as `S`.
 
-Committed state evolution must not mutate an already observed state value in
-place. The library itself never mutates stored state data. Because arbitrary
-values are allowed and deep cloning or freezing is outside the target, users
-remain responsible for not mutating objects they place inside state data.
+A candidate may satisfy this with immutable snapshots, scoped access, opaque
+handles, or another sound ownership model. It must document the lifetime and
+aliasing rules of state observations. Because arbitrary values are allowed and
+deep cloning or freezing is outside the target, users remain responsible for
+objects they place inside state data unless a candidate explicitly assumes
+ownership of them.
 
 ### P0.5 — Make transition decisions deterministic and synchronous
 
@@ -97,9 +144,12 @@ submitted input, and data or dependencies explicitly made available by the
 user. Conditions are supported, but their expression is an API question.
 
 Transition decision logic does not perform effects or await asynchronous work.
-A direct state change is committed before input submission returns; it is not
-implicitly deferred to a microtask. If transition logic throws unexpectedly,
-no new state is committed and the programming error is surfaced.
+Caller-owned evolution returns its result synchronously. A direct state change
+from a non-reentrant submission to a library-owned live execution is committed
+before input submission returns; it is not implicitly deferred to a microtask.
+A reentrant submission may return after being queued but before being applied,
+as specified by P0.7. If transition logic throws unexpectedly, no result is
+applied and the programming error is surfaced.
 
 ### P0.6 — Represent all ordinary transition outcomes
 
@@ -116,105 +166,94 @@ force; their apparent tension is deliberately left for API exploration.
 
 ### P0.7 — Process submitted inputs predictably
 
-Every submitted input is considered once and in submission order. The library
-does not silently drop, coalesce, debounce, or reorder inputs. Those policies
-may be applied explicitly before submission.
+Every input submitted to a library-owned live execution receives a deterministic
+disposition: it is considered once in submission order, or explicitly rejected
+because the execution has been disposed. An active execution does not silently
+drop, coalesce, debounce, or reorder inputs. Those policies may be applied
+explicitly before submission.
 
 If a reaction or observer submits another input during a transition cycle, the
 current commit and reaction cycle finishes first. The new input is queued
 rather than processed against a half-committed state. Commit, reaction, and
-observation ordering must be deterministic and documented.
+observation ordering must be deterministic and documented. Unless the execution
+is disposed during the cycle, the queue drains before the outermost submission
+returns rather than being deferred to a microtask.
 
-A live execution does not retain transition history. The library provides no
-built-in undo, redo, or time-travel behavior, and old state values and inputs
-become eligible for garbage collection when user code no longer holds them.
+A live execution does not retain unbounded transition history by default. The
+library provides no built-in undo, redo, or time-travel behavior, and drops its
+own references to old state values and inputs when they are no longer
+operationally needed. References retained by user code remain the user's
+responsibility.
 
 ### P0.8 — Support effects without mixing them into transition decisions
 
-Effects must be supported, although whether their descriptions live inside or
-outside the machine definition remains open.
+Effects must have a supported integration, although their representation and
+ownership remain open. They may be returned descriptions, external reactions,
+library-owned lifecycles, or another model that keeps them out of transition
+decisions.
 
 The supported effect model must provide:
 
-- state-lifetime work with cleanup when leaving or re-entering a state;
-- a way for asynchronous success, failure, or progress to return as later
-  inputs;
+- work that has become irrelevant can be cancelled, cleaned up, or made unable
+  to affect later evolution;
+- asynchronous success, failure, or progress can influence later evolution;
 - enough lifecycle or identity information to make supported integrations safe
   from stale asynchronous results; and
 - explicit shutdown or disposal if a library-owned runtime starts and owns
   effectful resources.
 
-The library cannot prevent arbitrary external code from submitting a stale
+The library cannot prevent arbitrary external code from presenting a stale
 result, but it must make race-safe integrations possible. An effect failure
-does not roll back an already committed transition. Expected failures may be
-fed back as inputs; unexpected exceptions are surfaced.
+does not roll back an already committed transition. Expected failures may
+influence later evolution; unexpected exceptions are surfaced.
 
 ### P0.9 — Treat time as a first-class interaction concern
 
 Interaction machines need scheduling, cancellation, protection from stale
-timer callbacks, and a controllable clock for deterministic tests. The core
-transition computation remains synchronous; timer callbacks provide later
-inputs.
+timer callbacks, and deterministic tests through a controllable clock,
+explicit scheduler, returned schedule descriptions, or an equivalent
+mechanism. Transition computation remains synchronous; elapsed time may
+influence only later evolution.
 
-Whether timing is described by the machine or by the supported reaction layer
-is an API question.
+Whether timing is described by the machine, returned work, a supported runtime,
+or another integration is an API question.
 
 ### P0.10 — Make committed transitions observable
 
-Every committed transition, including a same-state update, must be observable
-externally. Strongly typed observations preserve the correlation among source
-state, input, and target state rather than widening each independently.
+Every committed transition in a library-owned live execution, including a
+same-state update, must be observable externally. Caller-owned evolution
+exposes the corresponding outcome directly. Strongly typed transition records
+preserve the correlation among source state, input, and target state rather
+than widening each independently.
 
 The exact subscription or reaction mechanism remains open.
 
 ### P0.11 — Fit high-frequency, platform-neutral browser code
 
-The primary runtime target is modern ESM-capable browsers. The core remains
-independent of the DOM, UI frameworks, RxJS, and any particular scheduler so it
-can also run in other modern JavaScript environments.
+The primary runtime target is modern ESM-capable browsers. State evolution
+remains independent of the DOM, UI frameworks, RxJS, and any particular
+scheduler so it can also run in other modern JavaScript environments.
 
 The hot path must have small, synchronous, predictable overhead. It must not
 require a microtask, deep clone or freeze, serialization pass, runtime schema
 validation, or framework render for every transition. Exact performance
-budgets can be established with representative benchmarks later.
+budgets are established through the staged candidate evidence above.
 
 Type-checking and editor performance are also acceptance criteria.
 Representative 2–20-state machines must remain responsive and must not trigger
 pathological type-checking behavior. Current TypeScript performance means this
 is not a reason to weaken the design pre-emptively.
 
-### P0.12 — Preserve the accepted simplifying latitude
-
-The first design may rely on all of the following:
-
-- a fixed, finite set of control states known when the machine is defined;
-- one canonical initial control state;
-- compile-time capability availability determined by the control state rather
-  than arbitrary values inside that state's data;
-- at most one committed transition for each submitted input;
-- current-generation TypeScript;
-- TypeScript strict mode for the strongest guarantees; and
-- modern ESM-capable environments rather than legacy browsers or a
-  CommonJS-first package.
-
-These are freedoms available to the design, not outcomes the API must force
-when they provide no benefit.
-
-
-### P0.13 — Avoid solutions that will obviously require large runtime code
-
-Final library size must be small so it wouldn't bloat a typical library bundle. Ideally, the library remain under 2–3 KB minified and gzipped, but the exact budget is deferred until after the first API exploration.
-
 ## P1 — Important
 
-### P1.1 — Prefer familiar FSM mental models
+### P1.1 — Minimize conceptual learning cost
 
-People naturally understand an FSM as a directed graph, with control states as
-nodes and transitions as edges, so an API that keeps that model recognizable
-starts with an advantage. Familiarity is desirable, not required, and does not
-prescribe a notation or topology location. An unfamiliar breakthrough may win
-if it is quick to learn and makes representative machines easier to understand
-and edit. Novelty alone does not offset its learning cost.
+A candidate should present a compact, coherent mental model that can be learned
+from representative use. Familiar FSM graph concepts may help some users, but
+no representation receives preference merely for familiarity.
+
+An unfamiliar model remains viable when its learning cost buys materially
+easier understanding, editing, or correct use. Novelty alone is not a benefit.
 
 ### P1.2 — Produce readable, local TypeScript diagnostics
 
@@ -236,118 +275,125 @@ implementation.
 ### P1.4 — Degrade gracefully outside the fully typed path
 
 JavaScript users and TypeScript users who provide incomplete types should
-still receive a usable runtime API. Types may widen as information is lost,
-but should not collapse into an unusable `never`-heavy surface. This does not
-weaken the strict, fully typed contract.
+still receive a usable interface. Types may widen as information is lost, but
+should not collapse into an unusable `never`-heavy surface. This does not weaken
+the strict, fully typed contract.
 
-### P1.5 — Keep the runtime small
+### P1.5 — Keep shipped code small
 
 A dependency-free implementation is preferred. A dependency remains
 acceptable when it clearly improves correctness or the implementation enough
-to justify its cost.
+to justify its cost. Candidate measurements must establish a realistic
+minified-and-gzipped budget before finalist comparison. The initial 2–3 KB idea
+is an exploratory hypothesis, not a requirement or scoring threshold.
 
-### P1.6 — Separate the pure core from supported reactions
+### P1.6 — Support independent uses of the same behavior
 
-Prefer an architecture in which deterministic state evolution can be used by
-itself and an optional, library-supported reaction layer manages effects. This
-is stronger than merely forbidding effects during transition decisions, but it
-must yield if enforcing the separation makes the primary API materially worse.
+Equivalent machine behavior should support multiple independent evolving
+values or live executions, each with its own initial state data. This does not
+require a reusable definition object or prescribe who owns the evolving state.
 
 ### P1.7 — Avoid compilation steps
 
-Prefer an architecture in which the library can be used directly in TypeScript or JavaScript without a build step or code generation. This is stronger than merely avoiding a separate compilation step for the library itself, but it must yield if enforcing the separation makes the primary API materially worse.
+Prefer an architecture in which the library can be used directly in TypeScript
+or JavaScript without a build step or code generation. This is stronger than
+merely avoiding a separate compilation step for the library itself, but it must
+yield if enforcing the separation makes the primary API materially worse.
 
 ## P2 — Useful
 
-### P2.1 — Reuse one definition for independent executions
+### P2.1 — Compose independently defined machines
 
-Support multiple independent executions of the same definition. If this is
-provided, each execution must be able to receive its own initial state data.
+Independently defined machine behavior should be usable together while each
+part keeps its own typestate and effect ownership. Where live executions exist,
+a coordinator should be able to start, stop, and communicate with them.
+Composition must not require hierarchical or parallel states in the core API.
 
-### P2.2 — Compose independently defined machines
-
-A coordinator should be able to start, stop, and communicate with smaller
-machines while each keeps its own typestate and effect lifetime. Composition
-must not require hierarchical or parallel states in the core API.
-
-### P2.3 — Distinguish same-state updates from explicit re-entry
+### P2.2 — Distinguish same-state updates from explicit re-entry
 
 An ordinary same-state data update should be able to preserve state-lifetime
 resources, while an explicit re-entry can restart exit/entry lifecycle
 behavior. Exact terminology and representation are deferred.
 
-### P2.4 — Offer small asynchronous-work conveniences
+### P2.3 — Offer small asynchronous-work conveniences
 
 First-class helpers may cover promises or other common invoked work, provided
-they build on state-lifetime effects, cleanup, and later inputs rather than
-making transition computation asynchronous. A general actor or observable
-model is unnecessary.
+they build on the supported effect integration and later evolution rather than
+making transition computation asynchronous. A general actor or observable model
+is unnecessary.
 
-### P2.5 — Represent formal completion when useful
+### P2.4 — Represent formal completion when useful
 
 A state with no capabilities already behaves as terminal. A formal final-state
 concept may additionally support typed completion output and composition.
 
-### P2.6 — Support concise effect-free sequence tests
+### P2.5 — Support concise effect-free sequence tests
 
 Pure, synchronous transitions already make sequence testing straightforward.
 Dedicated helpers may improve assertions over inputs, resulting typestates,
 and no-transition outcomes.
 
-### P2.7 — Make topology inspectable
+### P2.6 — Make topology inspectable
 
 Tooling should be able to recover states, accepted inputs, and possible targets
 without executing transition logic. Conditions and effects may remain opaque.
 
-### P2.8 — Validate malformed runtime definitions
+### P2.7 — Validate malformed runtime definitions
 
 When static guarantees are unavailable or degraded, development-time runtime
 checks may catch unknown initial states, unknown targets, or otherwise
 malformed definitions. This is structural validation, not validation of user
 data.
 
-### P2.9 — Reject excess target-state fields when practical
+### P2.8 — Reject excess target-state fields when practical
 
 Missing fields and fields of the wrong type are part of the core typestate
 guarantee. Rejecting extra fields as well is useful, but may be traded for
 clearer types and errors.
 
-### P2.10 — Reuse behavior shared by several states
+### P2.9 — Reuse behavior shared by several states
 
 It should be possible to avoid repeating common behavior such as cancellation
 or reset while preserving precise state typing. This is low priority: explicit
 repetition is acceptable when the behavior is already easy to define and a
 reuse mechanism would obscure targets.
 
-## P3 — Reserved
+## Deferred extension probes
 
-### P3.1 — Hierarchical and parallel control states
+These are not requirements, and candidates receive no credit for anticipating
+them. Their absence is not a weakness. A probe may be applied to finalists only
+after the primary cases work, to learn whether a later extension is plausible
+without adding ceremony now.
 
-These are possible additions, potentially enabled by composition. They must
-not add cost or ceremony to the flat, small-machine API.
+### Probe 1 — Hierarchical and parallel control states
 
-### P3.2 — Automatic or eventless transitions
+A finalist may be tested by sketching how composition or an optional extension
+could represent them. No accommodation belongs in the initial interface solely
+for this probe.
 
-Keep them on the horizon without letting them shape the initial execution
-model. If introduced, their cascading and observability semantics will need to
-be explicit.
+### Probe 2 — Automatic or eventless transitions
 
-### P3.3 — Explicit Resource Management interoperability
+A finalist may be tested by sketching their cascading and observability
+semantics. The initial execution model need not reserve a representation for
+them.
+
+### Probe 3 — Explicit Resource Management interoperability
 
 If the library eventually manages effect lifetimes internally, it may
 interoperate with `Disposable`, `AsyncDisposable`, and `using`. This has no
 independent value for a library that leaves effects entirely external.
 
-### P3.4 — Restore serializable state
+### Probe 4 — Restore serializable state
 
 Users may always place non-serializable values in state data. Much later, a
 machine whose user-provided data happens to be serializable could support
 restoration. This must not impose serializability on the normal case.
 
-### P3.5 — Visualization and dedicated development tools
+### Probe 5 — Visualization and dedicated development tools
 
-These are extremely distant possibilities and will probably never justify
-their own complexity. Inspectable topology at P2 is sufficient for now.
+If a concrete tooling need later appears, a finalist may be tested against it.
+No metadata or topology representation is required solely to preserve this
+possibility.
 
 ## P4 — Outside the target
 
@@ -364,7 +410,8 @@ Users may add their own validation at system boundaries.
 ### P4.3 — Semantic middleware or plugins
 
 Do not build a middleware system that can intercept and change transition
-semantics. External observation and supported reactions are sufficient.
+semantics. Observation or effect integrations must not be able to rewrite an
+already selected transition.
 
 ### P4.4 — A general actor or observable runtime
 
@@ -373,13 +420,9 @@ asynchronous orchestration system.
 
 ### P4.5 — Formal verification toolchains
 
-Model checking, SCXML compatibility, and code generation are outside the
-project's target.
-
-### P4.6 — A dedicated environment channel
-
-A separate read-only dependency or environment channel is not an independent
-feature goal. The idea can be revisited only if API ergonomics later demand it.
+Model checking, SCXML compatibility, and generation for those toolchains are
+outside the project's target. General API code generation remains disfavored by
+P1.7 rather than prohibited here.
 
 ## Deliberately undecided API questions
 
@@ -388,8 +431,14 @@ The requirements above do not decide:
 - whether inputs look like events, methods, commands, or another capability;
 - whether definitions use configuration objects, functions, builders,
   immutable state objects, or a combination;
+- whether evolving state is caller-owned, runtime-owned, or available both
+  ways;
 - how conditional behavior is written;
-- whether effect descriptions live inside or outside machine definitions;
+- whether effects are returned descriptions, external reactions,
+  runtime-managed lifecycles, or another model;
+- whether pure evolution and supported effect integration are separate modules;
+- how user dependencies are supplied, including whether a dedicated channel is
+  useful;
 - how state-indexed capabilities coexist with runtime handling of unavailable
   inputs;
 - whether an unavailable input is silent, observable, or diagnostic;
@@ -399,4 +448,4 @@ The requirements above do not decide:
 - how initial state data is supplied; or
 - which conveniences, if any, deserve shorthand.
 
-Those are the subject of the API-brainstorming phase.
+Those remain subjects for API exploration and candidate comparison.

@@ -78,17 +78,16 @@ first-round agents. It is for much later stress-testing, not ideation.
 
 ## Grounding case—later, not now
 
-[Marking Menu](https://github.com/QuentinRoy/Marking-Menu) is the eventual
-grounding case because it combines state-specific interaction data, dense
-pointer input, conditional evolution, timers, cleanup, and stale-result
-protection.
+[Marking Menu at commit
+`7fb63a59`](https://github.com/QuentinRoy/Marking-Menu/tree/7fb63a59fa55a4ad6de416000843d079388cbf56)
+is the eventual grounding case because it combines state-specific interaction
+data, dense pointer input, conditional evolution, timers, cleanup, and
+stale-result protection. The stable reduced case and comparison tasks live in
+[FSM API acceptance cases](acceptance-cases.md).
 
 Do not reproduce it during the first rounds. Early examples should be just
 large enough to reveal an idea. Promising families can later be tested against
-a small slice of the real
-[machine](https://github.com/QuentinRoy/Marking-Menu/blob/main/src/engine/machine.ts)
-and
-[runtime](https://github.com/QuentinRoy/Marking-Menu/blob/main/src/engine/runtime.ts).
+the reduced local fixture, which links to the pinned real machine and runtime.
 
 ## What counts as a new seed
 

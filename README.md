@@ -86,6 +86,8 @@ state map.
 - [FSM library requirements](docs/requirements.md) prioritizes the target
   behavior, type guarantees, design latitude, and non-goals for the next API
   exploration.
+- [FSM API acceptance cases](docs/acceptance-cases.md) defines the pinned
+  Marking Menu fixture and shared comparison tasks for coherent candidates.
 - [API brainstorm session brief](docs/api-brainstorm-brief.md) prepares a
   divergent, multi-agent exploration without treating that inventory as a
   specification.
