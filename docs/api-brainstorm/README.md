@@ -17,6 +17,10 @@ source of truth. An idea is captured only when it exists in this directory.
   generative waves.
 - [`breakthrough-deck.md`](breakthrough-deck.md) is the varied selection
   prepared for human reaction.
+- [`findings.md`](findings.md) records the practical mechanisms and synthesis
+  extracted during human review.
+- [`propositions.md`](propositions.md) develops three general FSM definition
+  interfaces from those findings and recommends one for prototyping.
 
 Later expanded API families may receive their own files or directory, but they
 must link back to the raw seed identifiers from which they grew.
