@@ -135,6 +135,53 @@ Each failure mode required paired passing and failing tests to detect. The
 complexity existed mainly to compensate for information arriving too late.
 This prototype also never supported multiple guards on one transition.
 
+### Correction: the general conclusion drawn here is false
+
+> Added 2026-08-05 after
+> [research note 06](research/06-typescript-type-engineering.md), which built and
+> ran prototypes on `typescript@5.9.3` and `typescript@7.0.2`.
+
+The three failure modes above are accurate **for this prototype**. What is not
+accurate is the conclusion that was drawn from them and carried into every later
+design: that inferring states and their data from one object literal necessarily
+produces remote, machine-wide errors, and that a separately declared model type
+is therefore required.
+
+Measured: a single-declaration-site typestate machine works. States, per-state
+data and transitions live in one object literal, and errors land on the exact
+offending sub-expression, with exact columns. It needs no `const` type
+parameter, no `NoInfer`, no `satisfies`, and no curried call.
+
+**What went wrong here was architectural, not a compiler limit.** This prototype
+built each state through its own generic helper call — `state(...)` receiving a
+`transition` builder whose context was supplied by an explicit annotation. Each
+such call is inferred in isolation and cannot see its siblings, so the target
+state's context genuinely was unavailable while the reducer was checked, and the
+machine-wide validator existed to compensate.
+
+The working shape instead passes the helpers **as parameters of a single
+contextually-typed callback for the whole machine**. TypeScript then defers
+context-sensitive properties (`CheckMode.SkipContextSensitive`) and infers the
+non-function siblings first, so target data is known by the time a reducer body
+is checked. The information does not arrive too late; it arrived too late _for
+this arrangement of calls_.
+
+Two caveats, so the correction is not over-read in the other direction:
+
+- Removing the second declaration site is **fragile**. The one library that did
+  it soundly, `@cassiozen/useStateMachine`, was silently broken by TypeScript
+  5.4 and remains broken. Zag v1 deliberately moved the other way, replacing
+  inference with a hand-written schema. See
+  [research note 07](research/07-js-fsm-library-landscape.md).
+- `--isolatedDeclarations` consumers cannot export an inferred machine at all
+  (TS9010), so an explicit-model path must stay available as an option.
+
+The `.create()` chain and `defineMachine<Spec>()` currying that this document
+treats as forced should therefore be treated as **a choice with a real
+maintenance argument behind it**, not as the only thing TypeScript permits.
+`defineMachine<M>()(...)` specifically is a workaround for
+microsoft/TypeScript#53999, an open partial-type-argument-inference gap.
+
 ## Attempt 2: a Kysely-inspired builder
 
 The next proposal used a fluent API inspired by
@@ -281,6 +328,18 @@ The prototypes established three constraints that shaped Totorobot:
 Declaring the spec first is more explicit than inferring everything from the
 implementation, but it satisfies those constraints with the most predictable
 errors found so far.
+
+> **Amended 2026-08-05.** The three constraints stand — they are about outcomes,
+> and they are the right outcomes. The final sentence does not: declaring the
+> spec first is no longer "the most predictable errors found so far". A
+> single-declaration-site design has since been built and measured that also
+> satisfies all three, with errors on the exact offending sub-expression. See
+> the correction under [Attempt 1](#attempt-1-infer-states-from-the-map) and
+> [research note 06](research/06-typescript-type-engineering.md).
+>
+> Note in particular that constraint 1 was never in conflict with a single
+> declaration site. It was in conflict with _building each state through its own
+> generic call_, which is a different thing that this document conflated with it.
 
 ## Considered: dropping `.create()` for a plain function call
 

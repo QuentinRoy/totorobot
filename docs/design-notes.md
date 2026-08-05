@@ -103,6 +103,18 @@ split explicit instead of exposing it as a bare curried function.
 The inferred map type is also what allows `service.current.send` to know which
 events each state actually handles.
 
+> **Note added 2026-08-05.** The argument above is sound as far as it goes —
+> partial type-argument inference is a real, open TypeScript gap
+> (microsoft/TypeScript#53999). But it only rules out _keeping `Spec` explicit
+> while inferring the map in the same call_. It does not rule out the third
+> option: declaring no `Spec` at all and inferring states, their data and the
+> vocabulary from the map alone. That option was written off on the strength of
+> a conclusion since shown to be false; it has now been built and measured with
+> errors landing on the exact offending sub-expression. See
+> [research note 06](research/06-typescript-type-engineering.md) and the
+> correction in [design-explorations.md](design-explorations.md). The split here
+> is therefore a defensible choice, not a necessity.
+
 ### Builders come from the callback
 
 `state`, `transition`, `invoke`, `guard`, `reduce`, and `action` all come from

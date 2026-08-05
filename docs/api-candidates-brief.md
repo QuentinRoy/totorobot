@@ -73,9 +73,13 @@ whose small machines are obviously right at a glance.
 
 Two amendments to that document, established by research (§5 below):
 
-- **P0.4 is not satisfiable as written** and must be read as Fugue's leak rule:
-  state claims attach to immutable snapshots and to focus-scoped handler
-  parameters, not to live handles.
+- **P0.4 is satisfiable, but only by an ownership model.** If evolution returns
+  a **new value**, a narrowed observation can never come to mean anything else,
+  and the requirement holds with no type-level cleverness. What cannot be made
+  sound in TypeScript is a **live mutable handle** — one object identity whose
+  state changes underneath a narrowing. Choose snapshots. And keep two things
+  apart: a snapshot narrowed to `S` describes `S` forever, but a capability
+  reached through it may be stale authority over a machine that has moved on.
 - **P0.3's cross-boundary exactness is the least supported requirement** in the
   document. Treat it as opt-in rather than defining.
 

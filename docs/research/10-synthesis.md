@@ -272,7 +272,16 @@ document.** In Coblenz et al., _every_ participant inserted dynamic checks
 rather than couple one object's typestate to another's — in a language purpose-
 built for that coupling. This lands directly on the dwell-timer case.
 
-## 10. P0.4 is not satisfiable as written, in any language available here
+## 10. P0.4 constrains the ownership model, not the type system
+
+> **Corrected 2026-08-05.** This finding was first written as "P0.4 is not
+> satisfiable as written, in any language available here". That overstates it,
+> and P0.4 itself already says so: it permits "immutable snapshots, scoped
+> access, opaque handles, or another sound ownership model". If evolution
+> returns a **new value**, a narrowed observation can never come to mean
+> something else, because later activity produces a different value. The
+> requirement is met. What follows is the reason only that family of designs
+> meets it.
 
 Note 05, F1-F2. Typestate was sound in Strom and Yemini's 1986 NIL only because
 NIL had **no aliases at all**. Every system since buys aliasing back through
@@ -284,10 +293,17 @@ Brady shows a full-spectrum dependently typed language still type-checking a
 double-close on a state-indexed handle until _uniqueness types_ are added.
 TypeScript is permanently at that failed attempt.
 
-**Therefore:** a narrowable value must be an immutable snapshot. P0.4 should be
-rewritten as Fugue's rule — state claims attach only to frozen snapshots and to
-focus-scoped handler parameters — rather than as a promise about live handles,
-which cannot be kept. Note 06, F10 reached the same conclusion by measurement.
+**Therefore:** a narrowable value must be an immutable snapshot, and evolution
+must return a new one. The thing that cannot be made sound is a **live mutable
+handle** — one object identity whose state changes underneath a narrowing. That
+is a statement about one design, not about the requirement. Note 06, F10 reached
+the same conclusion by measurement.
+
+Two properties that must not be conflated: a snapshot narrowed to `S` still
+truthfully _describes_ `S` forever, but an operation reached through it may no
+longer be legal to apply to a machine that has moved on. P0.4 covers the first
+only. Stale authority is a separate problem, solved by tokens or epochs
+(finding 15's timer discussion, and note 02).
 
 Fowler (ECOOP 2020) then vindicates the surrounding architecture: directly
 embedding linear resources into a GUI is, in his words, a non-starter, and the

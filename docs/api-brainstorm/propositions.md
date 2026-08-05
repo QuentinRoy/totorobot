@@ -1341,6 +1341,15 @@ The propositions retain these findings from previous approaches:
 - Inferring state data and behavior from one object literal produced remote
   machine-wide errors. None of these propositions gives up local target-data
   checking merely to remove a type declaration.
+  > **Corrected 2026-08-05.** This inherits a false generalisation from
+  > `design-explorations.md`. A single-declaration-site design _has_ since been
+  > built and measured that keeps errors on the exact offending sub-expression;
+  > the earlier prototype failed because it built each state through its own
+  > generic call, not because one object literal cannot work. The conclusion
+  > drawn from it — that these propositions must carry a separate model type —
+  > is therefore unsupported. See
+  > [research note 06](../research/06-typescript-type-engineering.md) and the
+  > correction in [design-explorations.md](../design-explorations.md).
 - The fluent builder made event inference order-dependent and spread one error
   through later calls. No proposition accumulates the graph through a chain.
 - Top-level configuration prototypes showed that ordinary object state maps can

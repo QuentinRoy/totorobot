@@ -25,6 +25,39 @@ outranks a later one when they conflict.
   finalists, but must not shape or earn credit for the first API.
 - **P4 — Outside the target:** do not spend core complexity on these.
 
+## Status: amended, not superseded (2026-08-05)
+
+This document remains the statement of intent. The priority stack, the accepted
+design latitude, and the P4 boundary all still hold, and nothing below replaces
+them.
+
+A research round has since produced evidence that **amends six entries**. The
+amendments are recorded inline, at the entry they affect, as blockquotes. Read
+them; do not inherit an un-amended entry.
+
+| Entry       | Amendment                                                              |
+| ----------- | ---------------------------------------------------------------------- |
+| P0.2        | 2-9 states, not 2-20 — measured. Plus an open framing question.        |
+| P0.3        | Cross-boundary exactness is the least supported requirement here.      |
+| P0.4        | Satisfiable, but only by an ownership model — rules out a live handle. |
+| P0.9        | Timing should be library-owned, against this document's stance.        |
+| P2.1 / P2.9 | Composition is the missing axis; P2.9 is the wrong lever.              |
+| P0.7        | Under-specified: run-to-completion is eight decisions, not one.        |
+
+Two entries are _confirmed_ rather than amended, and are worth reading in that
+light: **P0.1** already required source, input, decision and target to be
+visible near one another — the previous round's propositions violated it, and
+the "arrow test" is simply that sentence made testable. **P1.3** is achievable;
+see the P0.3 note.
+
+Companions, neither of which replaces this file:
+
+- [api-candidates-brief.md](api-candidates-brief.md) — the working brief for the
+  next design round: what to build, what to measure, what not to propose.
+- [research/10-synthesis.md](research/10-synthesis.md) — the fifteen findings
+  and where each amendment comes from.
+- [research/README.md](research/README.md) — the nine underlying notes.
+
 ## Accepted scope and design latitude
 
 The first design may assume all of the following:
@@ -99,6 +132,25 @@ Larger-machine features must not add ceremony to this case.
 Optimization for hundreds of states, enterprise workflow orchestration, or the
 full statechart feature set is outside the target.
 
+> **Amended 2026-08-05 — the size band, plus an open framing question.**
+>
+> **Size.** "2-20" is generous. Measured: in the SwingStates teaching benchmark,
+> students implementing published interaction techniques produced machines of
+> **2 to 9 states and 8 to 32 transitions**
+> ([note 03](research/03-hci-interaction-state-machines.md), F5). Marking Menu
+> was one of the eight techniques in that benchmark. Design for the bottom of
+> the band: ceremony invisible at 20 states is still paid in full at 3.
+>
+> **Framing — needs a decision, not an edit by an agent.** This entry says the
+> main use case _is_ interaction-technique development. The working brief
+> ([api-candidates-brief.md](api-candidates-brief.md), §1) now says the library
+> is a **general** FSM library for which interaction technique development is
+> the _motivating domain_ — the reason timing, staleness and same-state updates
+> are weighted — but not the subject matter. Those two framings are compatible
+> but not identical, and they are load-bearing for what a candidate optimizes.
+> Reconcile them deliberately. Until then the brief's reading is the one the
+> next design round is working from.
+
 ### P0.3 — Make typestates the central type guarantee
 
 Knowing the current state must provide precise state-specific data and
@@ -124,6 +176,29 @@ The full result must survive exporting a machine from a package and generating
 TypeScript declaration files. Downstream users must not have to redeclare its
 typestates.
 
+> **Amended 2026-08-05.** The core of this entry is confirmed and is the
+> project's reason to exist: **no surveyed library enforces per-state
+> capabilities at the send site**, and neither XState nor Zag has per-state data
+> at all ([note 07](research/07-js-fsm-library-landscape.md), F5).
+>
+> Two qualifications:
+>
+> - **Cross-boundary exactness is the least supported item here.** In the only
+>   controlled typestate experiment, _every_ participant inserted dynamic checks
+>   rather than couple one object's typestate to another's — in a language built
+>   for that coupling ([note 05](research/05-typestate-and-behavioural-types.md)).
+>   Consider making the exact-outcome-across-boundaries guarantee opt-in rather
+>   than defining.
+> - **Declaration-file survival is real but has three named failure modes**:
+>   TS4023 (a type reachable in the inferred machine type is unexported), TS2742
+>   (package layout), and TS9010 — `--isolatedDeclarations` categorically cannot
+>   export an inferred machine, so an explicit-model path must stay available as
+>   an option ([note 06](research/06-typescript-type-engineering.md), F8/F9).
+>
+> Related: **P1.3 is achievable.** Describing topology once, for both TypeScript
+> and runtime, has been built and measured — see the correction in
+> [design-explorations.md](design-explorations.md).
+
 ### P0.4 — Keep type narrowing truthful over time
 
 If TypeScript narrows an observed value to state `S`, later machine activity
@@ -136,6 +211,46 @@ aliasing rules of state observations. Because arbitrary values are allowed and
 deep cloning or freezing is outside the target, users remain responsible for
 objects they place inside state data unless a candidate explicitly assumes
 ownership of them.
+
+> **Amended 2026-08-05 — this entry stands, and it is sharper than it looks.**
+>
+> P0.4 is satisfiable, and this entry already names the mechanism that satisfies
+> it. If evolution **returns a new value** rather than mutating something, a
+> narrowed observation can never come to mean anything else: later activity
+> produces a _different_ value, so "that same value" is never reinterpreted.
+> Nothing in the type system has to be clever for this to hold.
+>
+> What the research adds is that this is a constraint on the **ownership model,
+> not on the type system**, and that exactly one family of implementations
+> satisfies it in TypeScript — Fugue's leak rule: once a value is observable,
+> its state claim is frozen (DeLine and Fähndrich, ECOOP 2004). Every
+> observation must be an immutable snapshot, and evolution must produce a new
+> one.
+>
+> **What it rules out is a live mutable handle** — an object whose identity
+> stays the same while its state changes underneath, so that narrowing it and
+> continuing to use it is unsound. That case is not a TypeScript weakness: Brady
+> shows a full-spectrum dependently typed language still accepting a
+> double-close on a state-indexed handle until _uniqueness types_ are added
+> ([note 05](research/05-typestate-and-behavioural-types.md), F1-F2).
+> TypeScript has no uniqueness types and will not get them. So the requirement
+> is met by choosing snapshots, not by trying harder at the type level.
+>
+> Two practical consequences a candidate must address:
+>
+> - **A truthful snapshot can still carry a stale capability.** P0.4 guarantees
+>   that a value narrowed to `S` still _describes_ `S`. It says nothing about
+>   whether an operation reached through that value is still legal to apply to a
+>   machine that has since moved on. Truthful narrowing and live authority are
+>   separate properties; do not let one appear to imply the other.
+> - **Narrowing is dead inside closures created after the check**, unless the
+>   narrowed value is captured in a `const`
+>   ([note 06](research/06-typescript-type-engineering.md), F10, measured).
+>   Interaction code lives in callbacks, so this is the common case, not an edge
+>   case.
+>
+> The current implementation's `service.current` view is the pattern most at
+> risk here; see [design-notes.md](design-notes.md).
 
 ### P0.5 — Make transition decisions deterministic and synchronous
 
@@ -185,6 +300,28 @@ own references to old state values and inputs when they are no longer
 operationally needed. References retained by user code remain the user's
 responsibility.
 
+> **Amended 2026-08-05 — under-specified, and cheap to fix.**
+>
+> Run-to-completion is not one decision but **eight** semantic aspects
+> (Esmaeilsabzali, Day, Atlee and Niu, _Requirements Engineering_ 15(2), 2010),
+> of which at least five stay live in a flat 2-9 state machine
+> ([note 02](research/02-execution-semantics-and-time.md)). Flatness dodges the
+> hierarchy-dependent statechart disagreements; it does **not** dodge the
+> timing ones.
+>
+> This entry should therefore be _more_ prescriptive, not less — because
+> execution semantics is the one capability that **adds zero authoring syntax**.
+> Under this document's own logic, a capability that costs no ceremony should be
+> specified completely; the discipline belongs on vocabulary (postpone,
+> immediate transitions, priority) instead.
+>
+> Precedent worth copying: XState v5's commit order, read from `createActor.ts`,
+> is **snapshot → deferred effects → observers**, all inside a mailbox flush, so
+> a send from an effect or an observer is queued and never nested — about 30
+> lines. And a warning: XState v4 shipped a named bug here
+> (`predictableActionArguments`) whose cause was exactly a pure step with a
+> deferred command list, which is the effect model this project favours.
+
 ### P0.8 — Support effects without mixing them into transition decisions
 
 Effects must have a supported integration, although their representation and
@@ -217,6 +354,31 @@ influence only later evolution.
 
 Whether timing is described by the machine, returned work, a supported runtime,
 or another integration is an API question.
+
+> **Amended 2026-08-05 — the evidence favours library-owned timers.**
+>
+> Leaving this fully open is probably wrong. Every system surveyed that got
+> timing right — `gen_statem`, XState, SCXML — **owns the timer**, and an
+> injectable clock is the only route to deterministic tests
+> ([note 02](research/02-execution-semantics-and-time.md)). Proton++ had to
+> encode a one-third-second dwell as ten literal touch-move symbols at a forced
+> 30 Hz sample rate, which is decisive evidence against expressing duration in
+> the transition notation ([note 04](research/04-hci-critiques-and-alternatives.md),
+> F4).
+>
+> But **state-scoped timers do not remove staleness tokens in general.**
+> `gen_statem` ships a _named_ timeout that deliberately survives state changes,
+> because cross-state windows (double-click, press-and-hold) cannot be expressed
+> otherwise. Elm cannot cancel `Process.sleep` at all and its community answer
+> is an id carried in the message; React's `useEffect` docs prescribe a
+> closure-scoped `ignore` flag. Ownership moves; the problem does not vanish,
+> and Case 3's request race still needs identity.
+>
+> Consequence for [acceptance-cases.md](acceptance-cases.md): Case 1's
+> `timerToken` bookkeeping is _one implementation_ of stale-dwell protection,
+> written into the case as though it were the specification. Decide timer
+> ownership before freezing that case, so it specifies the race rather than a
+> particular fix for it.
 
 ### P0.10 — Make committed transitions observable
 
@@ -357,6 +519,25 @@ It should be possible to avoid repeating common behavior such as cancellation
 or reset while preserving precise state typing. This is low priority: explicit
 repetition is acceptable when the behavior is already easy to define and a
 reuse mechanism would obscure targets.
+
+> **Amended 2026-08-05 — this is the wrong axis, and P2.1 is the right one.**
+>
+> The SwingStates authors report that state explosion is **not** an issue within
+> a single interaction technique and appears only when _combining_ techniques.
+> Their fix, and ConstraintJS's independently (a radio button as 2×2×4 = 16
+> states), is **parallel small machines with light communication — never
+> hierarchy, and never shared-state reuse**
+> ([note 04](research/04-hci-critiques-and-alternatives.md), F2, C3).
+>
+> So the pressure this entry tries to relieve does not arise at the scale this
+> library targets, and the pressure that _does_ arise is composition — which
+> lives in **P2.1**, also scored "useful". Three independent systems converged
+> on composition; consider promoting P2.1 and leaving P2.9 where it is.
+>
+> Relatedly: SwingStates' own published Marking Menu is **three parallel
+> machines** (linear menu, marking menu, item highlighting), while
+> [acceptance-cases.md](acceptance-cases.md) Case 1 folds recognition, timing
+> and feedback into one. The case may be testing the wrong shape.
 
 ## Deferred extension probes
 
