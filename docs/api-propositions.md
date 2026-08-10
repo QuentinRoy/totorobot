@@ -21,9 +21,9 @@ There is **no proposition K** — the letter was skipped by accident.
 | 4   | Re-entry vs stay           | **settled**      | deleted; it had exactly one referent              |
 | 5   | Self-transition spelling   | **settled**      | dissolved — just name the state twice             |
 | 6   | Input vocabulary           | **settled**      | declared: `types<{ inputs, states }>()`           |
-| 7   | Returned commands (`emit`) | **open**         | keep as data, or remove for purity                |
+| 7   | Returned commands (`emit`) | **settled**      | out — a listener recovers it from the transition  |
 | 8   | Fall-through refusal       | **settled**      | no `else`; dev-mode warning instead               |
-| 9   | Timers                     | **not started**  | the one thing that could revive axis 4            |
+| 9   | Async / work-in-flight     | **open**         | the last real question; timers are its small case |
 
 Axis 1 reopened because two later propositions beat the notation that had won
 it. Axes 2, 5 and 6 closed as a **side effect** of that — see below.
@@ -171,14 +171,66 @@ These are reusable and were each discovered by a test asserting something
 
 ---
 
+## Why axis 7 closed on (c)
+
+`emit` let a handler return command descriptions for something outside to
+interpret. It is gone, for three reasons, in ascending order of force:
+
+1. **Another concept to learn and to type**, on a project whose whole thesis is
+   that the table should be readable without explanation.
+2. **Strictly redundant.** A listener receives `{ on, input, from, to }` with
+   data on both ends, and a transition is identified by (source, input, target).
+   Everything a pure handler could compute is already in `to.data`, so there is
+   no command whose content a listener cannot recover.
+3. **The direction is asymmetric.** Adding `emit` later is additive — one more
+   optional context member. Removing it later is breaking. Starting without it
+   keeps the option open; starting with it spends it.
+
+It survives only in `d1`, which predates the decision. Note that `n2` and `o1`
+never had it, so the recommended notation was already at (c) by omission.
+
+Not an argument for keeping it: the async visibility problem. That is about
+inputs arriving *on their own* (`Sub`), which is outgoing `emit`'s opposite
+direction. The two were briefly conflated; they are independent.
+
+---
+
 ## Still open
 
-- **Axis 7, `emit`.** Returned commands are data, not side effects — but they
-  are still consequences in the definition. Removing them is the coherent end of
-  the axis-3 argument and is what makes machines composable. Not decided.
-- **Axis 9, timers.** Untouched, and the one thing that could revive re-entry: a
-  state-scoped timer restarting is a real question, and it should be answered by
-  the timer's own declaration, not by a keyword every edge makes room for.
+- **Axis 9, async — the last real question.** Not "timers": a timer is the
+  smallest case of *something starts, takes time, and produces an input later*,
+  alongside a fetch, a socket, an animation, a child machine. Elm's split is the
+  right frame, and it cuts along a real seam:
+  - **`Cmd`** — one-shot, started *by a transition*. A fetch. Needs no residency
+    scoping; under axis 7 it is a listener calling `send()` when it resolves.
+  - **`Sub`** — continuous, a function of *which state you are in*, alive while
+    you are there. A timer, a socket, a poll. This one needs residency scoping
+    and cancellation, and it is the half that could revive axis 4: a countdown
+    is the first thing that makes "did we re-enter or stay?" observable.
+
+  Free win already in hand: the **stale-response problem is solved by the
+  runtime**, not the types. A `loaded` arriving after we left `loading` matches
+  no row and returns `{ kind: 'none', reason: 'unavailable' }`. That is
+  *ignoring a result*, though — not *cancelling work*. The fetch still ran.
+
+  Five options worked through in [api-async.md](api-async.md): `within` effects,
+  triggers on the edge, declarative resources, input-declared sources, and async
+  handlers. Then reframed by composition in
+  [api-async-composition.md](api-async-composition.md): a promise *is* a state
+  machine, so the async vocabulary collapses into one leaf primitive plus a
+  library of composable machines. Then constrained by
+  [api-async-effect-free.md](api-async-effect-free.md), which is the one that
+  governs: `step()` is **already pure**, and every `within` / `invoke` shape
+  would take that away by putting IO closures in the definition and forcing a
+  scheduler into the core. Describing effects as **data**, reconciled by a
+  driver outside, keeps the engine pure and makes cancellation structural.
+  Current lean: **ship nothing (P) now; grow into an out-of-machine
+  `resources` function (R).**
+
+  The real difficulty: every notation decision so far assumed a transition is
+  `(data, input) -> data`, pure and instantaneous. `Sub` means the machine owns
+  a lifecycle, and whatever declares it is a **second declaration site** — in
+  direct tension with the one-table property that won axis 1.
 - **Whitespace tolerance costs the grep story.** `n2` accepts `load:idle->booting`
   and normalises it. All type-level tooling normalises too — but **human grep
   cannot**. `->published` will not match `-> published`. Completions still emit
