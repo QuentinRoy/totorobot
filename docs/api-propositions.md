@@ -13,20 +13,99 @@ There is **no proposition K** — the letter was skipped by accident.
 
 ## The decisions, and where each stands
 
-| #   | Axis                       | Status           | Current answer                                   |
-| --- | -------------------------- | ---------------- | ------------------------------------------------ |
-| 1   | Overall layout             | **REOPENED**     | three live: target keys / string keys / records   |
-| 2   | Data-free states           | **settled**      | `void` in the declared vocabulary                 |
-| 3   | Entry/exit actions         | **settled**      | out — attach listeners instead                    |
-| 4   | Re-entry vs stay           | **settled**      | deleted; it had exactly one referent              |
-| 5   | Self-transition spelling   | **settled**      | dissolved — just name the state twice             |
-| 6   | Input vocabulary           | **settled**      | declared: `types<{ inputs, states }>()`           |
-| 7   | Returned commands (`emit`) | **settled**      | out — a listener recovers it from the transition  |
-| 8   | Fall-through refusal       | **settled**      | no `else`; dev-mode warning instead               |
-| 9   | Async / work-in-flight     | **open**         | the last real question; timers are its small case |
+| #   | Axis                       | Status       | Current answer                                   |
+| --- | -------------------------- | ------------ | ------------------------------------------------ |
+| 1   | Overall layout             | **REOPENED** | three live: target keys / string keys / records  |
+| 2   | Data-free states           | **settled**  | `void` in the declared vocabulary                |
+| 3   | Entry/exit actions         | **REOPENED** | actions are back in scope — see axis 10          |
+| 4   | Re-entry vs stay           | at risk      | deleted; survives only if residency = the name   |
+| 5   | Self-transition spelling   | at risk      | dissolved; depends on axis 4 staying deleted     |
+| 6   | Input vocabulary           | **settled**  | declared: `types<{ inputs, states }>()`          |
+| 7   | Returned commands (`emit`) | **settled**  | out — a listener recovers it from the transition |
+| 8   | Fall-through refusal       | **settled**  | no `else`; dev-mode warning instead              |
+| 9   | Async / work-in-flight     | **open**     | subsumed by axis 10 — effects, not timers        |
+| 10  | Actions in the machine     | **open**     | `actions:`, trigger-keyed, wrappers for policy   |
 
 Axis 1 reopened because two later propositions beat the notation that had won
 it. Axes 2, 5 and 6 closed as a **side effect** of that — see below.
+
+**Axis 10 supersedes axis 9** and reopens axis 3. The effect-free core was
+costing more than it paid: keeping effects out of the definition forced either a
+description vocabulary and a reconciling driver, or a `within(state, childFsm)`
+that grows the input vocabulary through a fluent chain and reopens the declared
+vocabulary. Actions are back in the machine.
+
+**Where they go is decided by the concern structure, not by taste.** The
+declaration is one block per job — `inputs` what can happen, `states` what we can
+be, `transitions` how we move — and the transition handler was **already** doing
+two jobs before actions arrived (`with` decides _and_ projects; o1 folded them to
+recover narrowing). Every proposition that put actions on the edge took it to
+three or four. So actions **attach to residency**, in their own block, with
+`transitions` left exactly as it is.
+
+There is also a merits argument, not only a structural one: a command placed on
+an edge duplicates across every edge _into_ the state — `load: idle -> loading`
+and `retry: failed -> loading` both have to start the fetch, and an edge added
+later silently does not.
+
+**The block is `actions:`, not `states:`.** States are already declared in
+`types<>` and every one appears in the table; the block declares **what runs**.
+
+Its shape: **keyed by trigger**, in the key languages that already exist — a bare
+state name means residency, a key with a colon is an edge pattern. Values are
+bare functions, or the result of a **wrapper** where the default does not hold:
+
+```ts
+actions: {
+	'loading':            ({ data, send }) => fetchUser(data.id, …),      // residency
+	'connected': persistent(({ data, send }) => subscribe(data.url, send)),
+	'cancel: draft -> *': () => track('cancelled'),                       // an edge
+	'*: * -> loading':    () => …,                                        // entry
+	'*: draft -> *':      () => releaseLock(),                            // exit
+}
+```
+
+Entry and exit need no vocabulary of their own — they are edge patterns with one
+end pinned, which the existing grammar already parses. Axis 3's original question
+answers itself.
+
+Wrappers return the record a hand-written object value would have been
+(`persistent(fn)` → `{ run: fn, restart: 'never' }`), so the block stays
+inspectable as data and new policies — `keyed`, later `once` or `debounced` — are
+new wrappers rather than new syntax. Constructors appear only at the exceptions,
+which is the one thing that made them acceptable here.
+
+Three consequences now live:
+
+- **Axes 4 and 5 stay dissolved — via the action, not the notation.** They were
+  closed _because_ axis 3 had removed entry/exit; restoring it gives
+  self-transitions something to denote again. The answer is a per-action restart
+  policy: the transition author declares movement, the action declares whether it
+  is sensitive to it. `draft -> draft` remains an ordinary transition, and no
+  keyword is added. **The default is to restart** — it fails safe (a missed
+  opt-out costs a teardown, not a stale closure) and puts the wrapper on the rarer
+  thing. This also subsumes the stale-resident-data question, since resident data
+  can only change via a transition into the state you are already in.
+- **Axis 6 stays shut.** Merging the state declaration — declaring each state once
+  with its data type _and_ its behaviour — was briefly a candidate, since
+  `actions:` names states a second time. It does not apply: `actions` is keyed by
+  **trigger**, not by state, so `'cancel: draft -> *'` has no home in a per-state
+  block. The marker-call `any`-leak that `types<>` solved stays solved.
+- **One key language, one rule.** **A key with no `->` names a state; an edge
+  always carries an arrow, even when both ends are `*`.** This replaces the
+  listener language's bare-input arm
+  ([`Pattern`'s first](../explorations/candidates/n2-declared-types/lib.ts:138)),
+  so `.on('submit', …)` becomes `.on('submit: * -> *', …)`. Without it the same
+  bare syntax would mean an input in `.on()` and a state in `actions`, and a name
+  that is legally both would compile under the wrong reading with no error. The
+  rule is decidable from the string alone — a reader never has to know which block
+  they are in. Three lines to implement; nothing currently uses the bare form.
+- **A latent runtime bug, now harmless.** `step` calls losing candidates'
+  handlers ([lib.ts:269](../explorations/candidates/n2-declared-types/lib.ts:269)).
+  Under this decision handlers only project, so nothing observable happens — but
+  it becomes real the moment any proposition puts effects back in a handler.
+
+Detail: [api-actions.md](api-actions.md)
 
 ---
 
@@ -34,11 +113,11 @@ it. Axes 2, 5 and 6 closed as a **side effect** of that — see below.
 
 ### The three that are live
 
-| Name                | Dir  | Shape                                                | Evidence                                    |
-| ------------------- | ---- | ---------------------------------------------------- | ------------------------------------------- |
-| **target keys**     | `d1` | `submit: { review: fn, published: fn }`              | ✅ complete, traces pass                    |
-| **string keys**     | `n2` | `'submit: draft -> review': fn`                      | ✅ complete, traces pass                    |
-| **classic records** | `o1` | `{ event, from, to, with }`                          | ✅ complete, traces pass                    |
+| Name                | Dir  | Shape                                   | Evidence                 |
+| ------------------- | ---- | --------------------------------------- | ------------------------ |
+| **target keys**     | `d1` | `submit: { review: fn, published: fn }` | ✅ complete, traces pass |
+| **string keys**     | `n2` | `'submit: draft -> review': fn`         | ✅ complete, traces pass |
+| **classic records** | `o1` | `{ event, from, to, with }`             | ✅ complete, traces pass |
 
 ```ts
 // target keys                    // string keys                 // classic records
@@ -54,22 +133,22 @@ draft: {                          transitions: {                 transitions: [
 },
 ```
 
-|                                | target keys      | string keys        | classic records   |
-| ------------------------------ | ---------------- | ------------------ | ----------------- |
-| neutral machine, transitions   | 77 (whole file)  | **41**             | 59                |
-| all 4 coordinates on one line  | no               | **yes**            | no (Prettier)     |
-| question B, "what can I do?"   | **one block**    | grep `: draft ->`  | grep `from:`      |
-| question C / D by grep         | scan keys        | **yes, all three** | yes               |
-| reverse index (`Sources`)      | derivable        | **free**           | **free**          |
-| completions                    | per key          | key union          | **additive**      |
-| instantiations @ 20 states     | —                | **14 864**         | 98 398 (6.6x)     |
-| extensible (priority, labels)  | no               | no                 | **yes, add a field** |
-| errors land on the bad line    | **yes**          | **yes**            | **yes**           |
+|                               | target keys     | string keys        | classic records      |
+| ----------------------------- | --------------- | ------------------ | -------------------- |
+| neutral machine, transitions  | 77 (whole file) | **41**             | 59                   |
+| all 4 coordinates on one line | no              | **yes**            | no (Prettier)        |
+| question B, "what can I do?"  | **one block**   | grep `: draft ->`  | grep `from:`         |
+| question C / D by grep        | scan keys       | **yes, all three** | yes                  |
+| reverse index (`Sources`)     | derivable       | **free**           | **free**             |
+| completions                   | per key         | key union          | **additive**         |
+| instantiations @ 20 states    | —               | **14 864**         | 98 398 (6.6x)        |
+| extensible (priority, labels) | no              | no                 | **yes, add a field** |
+| errors land on the bad line   | **yes**         | **yes**            | **yes**              |
 
 ### The settled failures
 
-| Name              | ID  | Why it died                                     |
-| ----------------- | --- | ----------------------------------------------- |
+| Name              | ID  | Why it died                                      |
+| ----------------- | --- | ------------------------------------------------ |
 | annotated outcome | B   | works, but the target lives in a type annotation |
 | by destination    | E   | question B scatters; its one win is derivable    |
 | transition table  | F   | unverified crux; superseded by `n2`              |
@@ -147,7 +226,7 @@ These are reusable and were each discovered by a test asserting something
 
 1. **The round-1 cross-product rule was too strong.** It said a cross-product of
    discriminants at value positions kills contextual typing. `o1` is a
-   cross-product of *three* (`event`, `from`, `to`) and TypeScript 7.0.2
+   cross-product of _three_ (`event`, `from`, `to`) and TypeScript 7.0.2
    discriminates it correctly. Narrow the old finding to the encodings actually
    tested then.
 2. **Marker calls leak `any`.** `state<T = void>()` puts the call in a position
@@ -162,10 +241,10 @@ These are reusable and were each discovered by a test asserting something
    result to `never`. `const T` does not help. Per-row precision has to come from
    a union instead.
 5. **Capturing a literal alongside a checking member disables excess-property
-   checking** against that member — a key is "known" if *any* intersection member
+   checking** against that member — a key is "known" if _any_ intersection member
    has it. Cost `n1` its per-line errors until a second member restored them.
    Same class as the `object &` bug in `d1`.
-6. **Reverse-mapped inference needs one non-closure leaf** *and* only bites when
+6. **Reverse-mapped inference needs one non-closure leaf** _and_ only bites when
    the type parameter also appears in a closure parameter. Neither alone is
    enough.
 
@@ -190,7 +269,7 @@ It survives only in `d1`, which predates the decision. Note that `n2` and `o1`
 never had it, so the recommended notation was already at (c) by omission.
 
 Not an argument for keeping it: the async visibility problem. That is about
-inputs arriving *on their own* (`Sub`), which is outgoing `emit`'s opposite
+inputs arriving _on their own_ (`Sub`), which is outgoing `emit`'s opposite
 direction. The two were briefly conflated; they are independent.
 
 ---
@@ -198,12 +277,12 @@ direction. The two were briefly conflated; they are independent.
 ## Still open
 
 - **Axis 9, async — the last real question.** Not "timers": a timer is the
-  smallest case of *something starts, takes time, and produces an input later*,
+  smallest case of _something starts, takes time, and produces an input later_,
   alongside a fetch, a socket, an animation, a child machine. Elm's split is the
   right frame, and it cuts along a real seam:
-  - **`Cmd`** — one-shot, started *by a transition*. A fetch. Needs no residency
+  - **`Cmd`** — one-shot, started _by a transition_. A fetch. Needs no residency
     scoping; under axis 7 it is a listener calling `send()` when it resolves.
-  - **`Sub`** — continuous, a function of *which state you are in*, alive while
+  - **`Sub`** — continuous, a function of _which state you are in_, alive while
     you are there. A timer, a socket, a poll. This one needs residency scoping
     and cancellation, and it is the half that could revive axis 4: a countdown
     is the first thing that makes "did we re-enter or stay?" observable.
@@ -211,12 +290,12 @@ direction. The two were briefly conflated; they are independent.
   Free win already in hand: the **stale-response problem is solved by the
   runtime**, not the types. A `loaded` arriving after we left `loading` matches
   no row and returns `{ kind: 'none', reason: 'unavailable' }`. That is
-  *ignoring a result*, though — not *cancelling work*. The fetch still ran.
+  _ignoring a result_, though — not _cancelling work_. The fetch still ran.
 
   Five options worked through in [api-async.md](api-async.md): `within` effects,
   triggers on the edge, declarative resources, input-declared sources, and async
   handlers. Then reframed by composition in
-  [api-async-composition.md](api-async-composition.md): a promise *is* a state
+  [api-async-composition.md](api-async-composition.md): a promise _is_ a state
   machine, so the async vocabulary collapses into one leaf primitive plus a
   library of composable machines. Then constrained by
   [api-async-effect-free.md](api-async-effect-free.md), which is the one that
@@ -231,6 +310,7 @@ direction. The two were briefly conflated; they are independent.
   `(data, input) -> data`, pure and instantaneous. `Sub` means the machine owns
   a lifecycle, and whatever declares it is a **second declaration site** — in
   direct tension with the one-table property that won axis 1.
+
 - **Whitespace tolerance costs the grep story.** `n2` accepts `load:idle->booting`
   and normalises it. All type-level tooling normalises too — but **human grep
   cannot**. `->published` will not match `-> published`. Completions still emit
@@ -244,18 +324,18 @@ direction. The two were briefly conflated; they are independent.
 
 ## Where the code is
 
-| Directory                | Proposition                | State                                        |
-| ------------------------ | -------------------------- | -------------------------------------------- |
-| `n2-declared-types`      | **string keys + `types<>`**| ✅ whitespace-tolerant, listeners narrow      |
-| `o1-classic-table`       | **classic records + `with`**| ✅ narrowing verified, traces pass           |
-| `n1-transition-table`    | string keys, inferred vocab| ✅ has the `playground.ts` completions demo   |
-| `d1-target-keys`         | target keys                | ✅ complete                                   |
-| `d4-self-target`         | target keys + `&`          | ✅ compiles — moot since axis 4               |
-| `c2-annotated-outcome`   | annotated outcome          | ✅ Cases 1–4, live runtime, send-site checks  |
-| `d3-radical`             | by destination             | 🟡 lib + neutral only                         |
-| `c1-edge-records`        | edge records               | 🟡 cannot express the neutral machine         |
-| `c3-target-list`         | target list                | ⛔ intentionally does not compile             |
-| `baselines`              | 3 rivals                   | ✅ switch-union, radix, sequential            |
+| Directory              | Proposition                  | State                                        |
+| ---------------------- | ---------------------------- | -------------------------------------------- |
+| `n2-declared-types`    | **string keys + `types<>`**  | ✅ whitespace-tolerant, listeners narrow     |
+| `o1-classic-table`     | **classic records + `with`** | ✅ narrowing verified, traces pass           |
+| `n1-transition-table`  | string keys, inferred vocab  | ✅ has the `playground.ts` completions demo  |
+| `d1-target-keys`       | target keys                  | ✅ complete                                  |
+| `d4-self-target`       | target keys + `&`            | ✅ compiles — moot since axis 4              |
+| `c2-annotated-outcome` | annotated outcome            | ✅ Cases 1–4, live runtime, send-site checks |
+| `d3-radical`           | by destination               | 🟡 lib + neutral only                        |
+| `c1-edge-records`      | edge records                 | 🟡 cannot express the neutral machine        |
+| `c3-target-list`       | target list                  | ⛔ intentionally does not compile            |
+| `baselines`            | 3 rivals                     | ✅ switch-union, radix, sequential           |
 
 ## The API as it currently stands
 

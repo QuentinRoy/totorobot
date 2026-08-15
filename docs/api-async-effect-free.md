@@ -1,12 +1,20 @@
 # Axis 9 — keeping the engine effect-free
 
+> **Superseded by [api-actions.md](api-actions.md).** The constraint this
+> document defends was dropped: an effect-free core forced either a description
+> vocabulary plus a reconciling driver (Q, R), or a `within(state, childFsm)`
+> that grows the input vocabulary through a fluent chain. Actions are now in the
+> machine, attached to **states**. Its recommendation — "P now, R as the shape it
+> grows into" — no longer holds; option **Y** in the actions document is R, kept
+> on record. Read for the option analysis, not for the conclusion.
+
 API only.
 
 ## The correction
 
 [api-async-composition.md](api-async-composition.md) says composition
 "relocates the effect boundary, it does not remove it." That is true of
-composition *alone*, and it made the wrong thing sound inevitable. It is not.
+composition _alone_, and it made the wrong thing sound inevitable. It is not.
 
 Two claims were running together:
 
@@ -23,7 +31,7 @@ definition**, and then the library needs a scheduler to call them, track their
 lifetimes, and cancel them. That scheduler is the effectful runtime you did not
 want. robot3 has one; that is what its `service` is.
 
-The alternative is the one Elm ships: **the machine computes a *description* of
+The alternative is the one Elm ships: **the machine computes a _description_ of
 what should be running, and something outside makes reality match it.**
 
 ## The mechanism: reconciliation
@@ -133,7 +141,7 @@ And it is the worst option for visibility: the answer to "what starts the fetch"
 is now in a different file entirely, with no `loading.` prefix in the table to
 hint that anything is coming.
 
-## S — handlers return data *and* commands
+## S — handlers return data _and_ commands
 
 Elm's `update`. The `Cmd` half, as a pure return value:
 
@@ -151,7 +159,7 @@ handler stays pure: it returns a description, it does not perform anything.
 **The cost.** Every handler's return type becomes "data, or a tuple of data and
 commands," which is a tax on the 90% of transitions that command nothing. This
 is `emit` again — and worth being precise, because **axis 7 does not settle
-this.** That decision was about *outgoing notifications* (`notify`, `track`),
+this.** That decision was about _outgoing notifications_ (`notify`, `track`),
 which a listener genuinely can recover from `{ on, input, from, to }`.
 **Starting work is not recoverable that way**, so the redundancy argument does
 not transfer. If S is ever adopted, it reopens axis 7 on new evidence rather
@@ -185,16 +193,16 @@ so it is a second handler kind.
 
 ## Side by side
 
-|                             | P nothing | Q `while:` data | R outside   | S return cmds | T generators |
-| --------------------------- | --------- | --------------- | ----------- | ------------- | ------------ |
-| engine stays pure           | **✓**     | **✓**           | **✓**       | **✓**         | **✓**        |
-| core API added              | **none**  | `while:`        | **none**    | tuple return  | new handler  |
-| cancellation structural     | ✗         | **✓**           | **✓**       | ✗ (`Cmd`)     | ✗            |
-| visible in/near the table   | ✗         | ✓               | **✗✗**      | **✓✓**        | ✓            |
-| drift from state names      | n/a       | checked         | **unchecked**| checked      | checked      |
-| needs a description vocab   | no        | **yes**         | user's own  | **yes**       | **yes**      |
-| expresses `Sub` (socket)    | manual    | **✓**           | **✓**       | ✗             | ✗            |
-| serialisable / replayable   | ✓         | **✓**           | **✓**       | **✓**         | ✗            |
+|                           | P nothing | Q `while:` data | R outside     | S return cmds | T generators |
+| ------------------------- | --------- | --------------- | ------------- | ------------- | ------------ |
+| engine stays pure         | **✓**     | **✓**           | **✓**         | **✓**         | **✓**        |
+| core API added            | **none**  | `while:`        | **none**      | tuple return  | new handler  |
+| cancellation structural   | ✗         | **✓**           | **✓**         | ✗ (`Cmd`)     | ✗            |
+| visible in/near the table | ✗         | ✓               | **✗✗**        | **✓✓**        | ✓            |
+| drift from state names    | n/a       | checked         | **unchecked** | checked       | checked      |
+| needs a description vocab | no        | **yes**         | user's own    | **yes**       | **yes**      |
+| expresses `Sub` (socket)  | manual    | **✓**           | **✓**         | ✗             | ✗            |
+| serialisable / replayable | ✓         | **✓**           | **✓**         | **✓**         | ✗            |
 
 ## Where this points
 
