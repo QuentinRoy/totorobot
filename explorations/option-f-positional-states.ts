@@ -23,7 +23,7 @@
  * Separately, and independent of the trade-off: nothing in this shape catches
  * the same state being declared twice.
  *
- * See [Design explorations](../docs/design-explorations.md).
+ * See [Design explorations](../docs/api-rationale.md).
  */
 
 import {

@@ -25,7 +25,7 @@
  * directives become "unused '@ts-expect-error'" errors and this file will fail
  * loudly - which is the point.
  *
- * See [Design explorations](../docs/design-explorations.md).
+ * See [Design explorations](../docs/api-rationale.md).
  */
 
 import {

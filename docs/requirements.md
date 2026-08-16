@@ -52,7 +52,7 @@ see the P0.3 note.
 
 Companions, neither of which replaces this file:
 
-- [api-candidates-brief.md](api-candidates-brief.md) — the working brief for the
+- [api-rationale.md](api-rationale.md) — the working brief for the
   next design round: what to build, what to measure, what not to propose.
 - [research/10-synthesis.md](research/10-synthesis.md) — the fifteen findings
   and where each amendment comes from.
@@ -143,7 +143,7 @@ full statechart feature set is outside the target.
 >
 > **Framing — needs a decision, not an edit by an agent.** This entry says the
 > main use case _is_ interaction-technique development. The working brief
-> ([api-candidates-brief.md](api-candidates-brief.md), §1) now says the library
+> ([api-rationale.md](api-rationale.md), §1) now says the library
 > is a **general** FSM library for which interaction technique development is
 > the _motivating domain_ — the reason timing, staleness and same-state updates
 > are weighted — but not the subject matter. Those two framings are compatible
@@ -197,7 +197,7 @@ typestates.
 >
 > Related: **P1.3 is achievable.** Describing topology once, for both TypeScript
 > and runtime, has been built and measured — see the correction in
-> [design-explorations.md](design-explorations.md).
+> [api-rationale.md](api-rationale.md).
 
 ### P0.4 — Keep type narrowing truthful over time
 

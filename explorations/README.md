@@ -1,7 +1,7 @@
 # Explorations
 
 Compilable evidence for the API shapes considered in
-[Design explorations](../docs/design-explorations.md). None of this is the
+[Design explorations](../docs/api-rationale.md). None of this is the
 library; nothing here is exported from `totorobot`. Almost every function is
 `declare`d, because only the signatures matter - each file exists to record what
 TypeScript can and cannot infer for a proposed call shape.

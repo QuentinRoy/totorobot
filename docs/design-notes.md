@@ -3,7 +3,7 @@
 Totorobot is an experimental finite-state-machine library built around
 per-state context. This document describes the current design and its known
 trade-offs. For the experiments that led here, see
-[Design explorations](design-explorations.md).
+[Design explorations](api-rationale.md).
 
 ## Contents
 
@@ -112,7 +112,7 @@ events each state actually handles.
 > a conclusion since shown to be false; it has now been built and measured with
 > errors landing on the exact offending sub-expression. See
 > [research note 06](research/06-typescript-type-engineering.md) and the
-> correction in [design-explorations.md](design-explorations.md). The split here
+> correction in [api-rationale.md](api-rationale.md). The split here
 > is therefore a defensible choice, not a necessity.
 
 ### Builders come from the callback

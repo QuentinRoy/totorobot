@@ -26,7 +26,7 @@
  * instead, and both are below: currying (`defineMachine<AuthSpec>()({...})`) or
  * carrying the spec as a value (`defineMachine({ types: {} as AuthSpec, ... })`).
  *
- * See [Design explorations](../docs/design-explorations.md).
+ * See [Design explorations](../docs/api-rationale.md).
  */
 
 import {

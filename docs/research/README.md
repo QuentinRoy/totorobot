@@ -1,7 +1,7 @@
 # Research round: FSM theory and library quality
 
 Outside evidence for the next API decision, gathered after the propositions in
-`../api-brainstorm/propositions.md` failed to convince.
+`../api-rationale.md` failed to convince.
 
 Read in this order:
 
@@ -32,7 +32,7 @@ revised; the notes are not silently rewritten.
 
 Note 06 is the only note whose central claims are **measured rather than
 cited**, and it falsifies both an earlier project conclusion
-(`design-explorations.md`, "Attempt 1") and two claims in the first draft of the
+(`api-rationale.md`, "Attempt 1") and two claims in the first draft of the
 synthesis. Where it disagrees with another note, it wins.
 
 ## Provenance and caveats
