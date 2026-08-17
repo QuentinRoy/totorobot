@@ -41,14 +41,60 @@ All assertions go through the public entry point. No test imports an internal mo
 - 02 — Doc clarifications (the `available` skip-only behaviour must be specified before
   it is asserted)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Tests exist for observable behaviours 4–16, each titled with its number
-- [ ] `available` ordering, deduplication, emptiness and skip-only inclusion are each
-      asserted separately
-- [ ] The all-decline case asserts the same observable outcome as the no-match case
-- [ ] Declaration-order priority is asserted with at least two rows sharing one
-      source/input pair and different targets
-- [ ] `current` stability is asserted by both deep equality against a prior clone and
-      object identity
-- [ ] Every test fails only because the v1 entry point does not exist
+- [x] Tests exist for observable behaviours 4–16, each titled with its number —
+      `tests/reading.test.ts` (items 4–7) and `tests/sending.test.ts` (items 8–16), 16
+      tests total, some numbers covered by more than one test where the checklist below
+      called for separate assertions
+- [x] `available` ordering, deduplication, emptiness and skip-only inclusion are each
+      asserted separately — four `[6]`/`[7]` tests in `tests/reading.test.ts`, against a
+      new `editor` fixture (`tests/fixtures.ts`) whose `draft` state has five rows
+      (`revise`, `touch`, `submit` ×2, `poke`, `lock`) so ordering, the `submit`
+      duplicate and the always-declining `poke` row are all exercised on one topology,
+      and whose `locked` state has none
+- [x] The all-decline case asserts the same observable outcome as the no-match case —
+      `[9]` and `[10]` in `tests/sending.test.ts` are written with the same shape
+      (unchanged `current`, no listener fired) on purpose, `[10]` sends `editor`'s
+      always-declining `poke`
+- [x] Declaration-order priority is asserted with at least two rows sharing one
+      source/input pair and different targets — two `[11]` tests: a one-off `priority`
+      machine with two unconditional rows for `start -go>` (`first` reachable, `second`
+      shadowed) proves order alone decides, and `editor`'s guarded `draft -submit>`
+      pair (`review` declared before `published`) shows the same rule under realistic
+      guards
+- [x] `current` stability is asserted by both deep equality against a prior clone and
+      object identity — `[5]` in `tests/reading.test.ts` captures `current.data` and a
+      clone before a `revise`, then checks the retained value both deep-equals the
+      clone and stays `toBe` the same reference, so mutation-in-place fails even where
+      the mutated value would coincidentally still match the clone
+- [x] Every test fails only because the v1 entry point does not exist — both new files
+      import only `editor`/`toggle` from `tests/fixtures.ts` and `machine`/`types` from
+      `../src/totorobot.ts` (plus one inline `machine`/`types` use each in the `[11]`
+      and `[13]` tests); at runtime, `tests/fixtures.ts` already throws on import
+      (ticket 03's `TypeError: types is not a function`), so both new files fail to
+      load with that one error, same as `construction.test.ts`. `pnpm typecheck` and
+      `pnpm format:check` are both clean
+
+Sanity-checked against a throwaway local v1 implementation (not committed): all 16 new
+tests pass against a correct implementation, `[5]` fails when a transition mutates the
+source data in place instead of replacing it, and both `[11]` tests fail when rows are
+tried in reverse declaration order — the pure `priority` machine catches it, the guarded
+`editor` scenario does not (only one candidate ever matches there regardless of order),
+which is why both are kept.
+
+**Found while rebasing onto 05 and 06, not caused by this ticket:** `pnpm test` (the
+full run, typecheck included) is red across the whole suite as of ticket 06 —
+`construction.test.ts`, `observing.test.ts` and `queue.test.ts` too, not just this
+ticket's files. `tests/untyped.test-d.ts` (ticket 06) is the suite's first
+`.test-d.ts` file; adding it turns on Vitest's typecheck pool, which runs `tsc` over
+the whole `tests/tsconfig.json` program rather than only the files it lists under
+`typecheck.include`. That surfaces `noImplicitAny` errors on every destructured
+handler parameter (`{ data, input }`) in every ticket's tests, because there is no
+real `machine`/`types` yet to infer them from — a pre-existing condition of an
+unbuilt v1, not new breakage. `tests/reading.test.ts` and `tests/sending.test.ts` hit
+the same class of error and nothing else; verified in isolation against
+`origin/v1-test-suite` before this ticket's commit (6 of 7 test files already red,
+same error shapes). Left as found rather than fixed here, since a real fix (either
+scoping `typecheck.include`/`exclude` in `vitest.config.ts`, or annotating every
+handler by hand) touches tickets 03, 05 and 06 as much as this one.

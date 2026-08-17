@@ -20,3 +20,45 @@ export const toggle = machine({
 		'on -toggle> off': () => {},
 	},
 })
+
+type EditorInputs = {
+	open: { text: string }
+	revise: { text: string }
+	touch: void
+	submit: { route: 'review' | 'publish' }
+	poke: void
+	lock: void
+}
+type EditorStates = {
+	idle: void
+	draft: { text: string; revision: number }
+	review: { text: string; revision: number }
+	published: { text: string; revision: number }
+	locked: void
+}
+
+/**
+ * A richer topology for the reading and sending behaviour groups: `draft` carries
+ * data, has two rows for one input (`submit`, deduplicated in `available`), a row
+ * that always declines (`poke`), a self-transition (`revise`) and `locked` has no
+ * outgoing rows at all.
+ */
+export const editor = machine({
+	initial: 'idle',
+	inputs: types<EditorInputs>(),
+	states: types<EditorStates>(),
+	transitions: {
+		'idle -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
+		'draft -revise> draft': ({ data, input }) => ({
+			text: input.text,
+			revision: data.revision + 1,
+		}),
+		'draft -touch> draft': ({ data }) => ({ ...data }),
+		'draft -submit> review': ({ data, input, skip }) =>
+			input.route === 'review' ? { ...data } : skip(),
+		'draft -submit> published': ({ data, input, skip }) =>
+			input.route === 'publish' ? { ...data } : skip(),
+		'draft -poke> draft': ({ skip }) => skip(),
+		'draft -lock> locked': () => {},
+	},
+})
