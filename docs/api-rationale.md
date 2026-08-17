@@ -23,7 +23,7 @@
 9. [Actions](#9-actions)
 10. [Composition](#10-composition)
 11. [Sending inputs](#11-sending-inputs)
-12. [Definition and instance](#12-definition-and-instance)
+12. [The host](#12-the-host)
 13. [Type-system findings](#13-type-system-findings)
 14. [The graveyard](#14-the-graveyard)
 15. [Still open](#15-still-open)
@@ -32,7 +32,7 @@
 
 ## 1. The ledger
 
-Fifteen axes. Eleven are closed.
+Seventeen axes. Fourteen are closed.
 
 | #   | Axis                       | Answer                                                       | §   |
 | --- | -------------------------- | ------------------------------------------------------------ | --- |
@@ -49,8 +49,10 @@ Fifteen axes. Eleven are closed.
 | 11  | The word for what you send | `inputs`, not `events` — the core is not a mailbox           | 5   |
 | 12  | Typed send site            | **dropped** — broad `send` only; reversible later            | 11  |
 | 13  | Composition                | **deferred from v1** — designed; outcome as state, not input | 10  |
-| 14  | Actions in v1              | **deferred** — residency via `.on()` on the host instead     | 9   |
-| 15  | Immediate transitions      | `'from -> to'`, no input — designed; **release undecided**   | 7   |
+| 14  | Actions in v1              | **deferred** — v1 has no effect mechanism at all             | 9   |
+| 15  | Immediate transitions      | `'from -> to'`, no input — designed; **deferred to v1.2**    | 7   |
+| 16  | Observation                | one observer, at construction; no listener registry          | 12  |
+| 17  | Commit ordering            | one transition per input; commit, notify, queue, drain       | 12  |
 
 The axes are not independent. Declaring the vocabulary (§5) settles 2, 5 and 6 in
 one move. Removing entry/exit settles 3, which makes 4 and 5 unobservable and
@@ -494,10 +496,9 @@ reason — the answer moved to the action.
 
 ## 7. Immediate transitions
 
-> **Designed, not built, and not yet scoped to a release.** No outstanding
-> objection to the shape. What makes the release question urgent is the execution
-> model rather than the grammar: the grammar is additive, and run-to-completion is
-> not.
+> **Designed; deferred to v1.2, with composition.** No objection to the shape. The
+> reason to wait is that chaining is the one feature that forfeits guaranteed
+> termination — see the end of this section.
 
 A transition that fires on **entering** a state rather than on an input. The
 spelling is the transition key with the input part removed:
@@ -624,18 +625,20 @@ input edges out of that state (`'cancel: loading.ok -> empty'`) become meaningfu
 
 ### What it forces open
 
-- **Run-to-completion becomes unavoidable — and this is why the release question
-  cannot drift.** One `send` can now cause a chain of transitions. When listeners
-  fire, what `send` returns, and whether a caller ever sees the intermediate states
-  are P0.7's eight decisions, and this is what makes paying that bill compulsory
-  rather than optional. A v1 that settles commit ordering on the assumption that
-  one `send` produces at most one transition has to **change** what `send` returns
-  and when listeners fire in order to admit chains later. Adding the key form is
-  additive; adding the chain is not.
-- **Termination.** `'a -> b'` with `'b -> a'` spins. Two answers on the table: a
-  step budget with a dev-mode error, or **each state entered at most once per
-  settlement**, which is the statechart microstep rule and detects the cycle
-  precisely rather than by threshold.
+- **Termination — and this is why it is deferred.** `'a -> b'` with `'b -> a'`
+  spins. Note 02's F6 puts it at the level of a guarantee rather than a cost:
+  _"the only way to have a big step that provably terminates is to forbid chaining
+  — one input, at most one transition. Every 'immediate' / 'always' / eventless /
+  transient transition feature buys expressiveness by giving up the termination
+  guarantee."_ XState #721 is that bug in the wild, and Stately's own docs concede
+  only that XState "will help guard against most infinite loop scenarios". A step
+  budget or **each state entered at most once per settlement** (the statechart
+  microstep rule) is mitigation, not recovery. v1 keeps the guarantee; composition
+  is where the expressiveness is actually needed and where the price is worth
+  paying.
+- **Run-to-completion stops being avoidable.** One `send` causes a chain, so
+  Big-Step Maximality and Order of Small Steps both go live (§12), on top of the
+  queue v1 already has.
 - **Does the initial state settle?** If `initial: 'checking'` and `checking` has
   immediate rows, the machine is never observably in `checking`. Consistent with
   "on entering", and it means `run()` can return a host already somewhere else.
@@ -1030,55 +1033,44 @@ server working. Actions fixed `within`'s **lifetime** problem and inherited its
 lifetime rule bolted to an opaque closure**, which is `useEffect` with better
 scoping.
 
-**So `actions` is deferred**, replaced by residency-scoped subscriptions — which is
-proposition X, the one that lost above. Re-testing the arguments that beat it, now
-that composition is also deferred:
+**So `actions` is deferred, and v1 ships no effect mechanism at all** — not a block,
+and not the residency-keyed listener that was briefly going to stand in for one. An
+intermediate plan had `.on()` carry residency in v1 and `actions` arrive beside it in
+v1.1. That plan died with the listener registry (§12): the two would have been the
+same shape with two owners, and §9's own open question — "if both attach to `draft`,
+what is the run and teardown order?" — is a question worth never having.
 
-| the argument for a block                 | still distinguishes?                                    |
-| ---------------------------------------- | ------------------------------------------------------- |
-| expresses a socket (the kind-3 test)     | **no** — residency-keyed `.on()` is equally node-scoped |
-| a command on an edge duplicates (kind 2) | **no** — same reason                                    |
-| symmetry: everything else is a block     | weak alone                                              |
-| **the definition is complete**           | **yes** — the only one that survives                    |
+What v1 has instead is proposition **AB**: a named function, driven by the observer.
+Listed above as _"not rejected — the baseline this has to beat"_, and shipping the
+baseline first is a coherent plan rather than a retreat.
 
-Exactly one argument distinguishes them, and it is a reason to add `actions`
-**later**, not a reason to have it now. Three positive reasons to defer:
+Three reasons to defer:
 
-1. **Actions cannot be specified until commit ordering is.** §10's immediate
-   transitions make it worse — one `send` can cause a chain — and P0.7 was already
-   amended to say run-to-completion is **eight decisions, not one**. Shipping
-   actions first means guessing at all eight.
-2. **Two steps to the intended end state, not a migration.** The two already have
-   separate jobs: `actions` is the machine's own behaviour, `.on()` is a
-   subscription attached by whoever instantiates it. v1 ships the subscriber half;
-   v1.1 adds the owner half beside it. Nothing is taken away and nothing moves.
-3. **v1 becomes the effect-free core for free.** 8 wanted exactly this and
-   rejected it because making it _complete_ needed a description vocabulary, a
-   reconciling driver and an identity rule. None of that is needed if the caller
-   attaches effects imperatively: the definition stays pure, serialisable and
-   replayable, and only ergonomics pay.
+1. **Actions cannot be specified until commit ordering is.** v1's ordering is four
+   rules because only one thing happens per commit (§12). With actions, teardown,
+   setup and notification all happen inside one commit and need an order, plus an
+   answer for a throwing action. Shipping actions first means guessing.
+2. **The residency mechanism should exist exactly once.** Whichever way it is
+   spelled, there should never be two of them.
+3. **v1 becomes the effect-free core for free.** §8 wanted exactly this and rejected
+   it because making it _complete_ needed a description vocabulary, a reconciling
+   driver and an identity rule. None of that is needed if the caller attaches
+   effects imperatively: the definition stays pure, serialisable and replayable, and
+   only ergonomics pay.
 
-So `.within()` need not exist — one method, two key forms already in the grammar:
+**What v1 gives up, plainly.** An imported machine is topology and data only, and
+scoping an effect to a state — start on entry, stop on exit — is the caller's
+bookkeeping:
 
 ```ts
-const doc = run(publication)
-
-doc.on('* -> published', (e) => notify(e.to.data)) // an edge — notification
-doc.on('draft', ({ data }) => {
-	// a bare state — residency
-	const t = setTimeout(() => autosave(data), 2_000)
-	return () => clearTimeout(t) // teardown on leaving
+let cancel
+const doc = run(publication, (e) => {
+	if (e.from.state === 'loading') cancel?.()
+	if (e.to.state === 'loading') cancel = startFetch(e.to.data.id, doc.send)
 })
 ```
 
-On the **host**, not the definition — which 12 requires independently, and which
-dissolves the definition-completeness objection: nobody expects an imported
-topology to carry behaviour.
-
-**What v1 gives up, plainly.** An imported machine is topology and data only.
-Anything that must `send` from a residency handler — the whole async story —
-reopens commit ordering, so v1 either accepts that or scopes residency to effects
-that do not feed back. That choice is the first thing v1.1 has to make anyway.
+That is the cost, and it is the thing `actions` exists to delete.
 
 ## 10. Composition
 
@@ -1421,7 +1413,7 @@ _sum_ of states, not a _product_. ConstraintJS's radio button — focus × check
 mouse-phase — is a product, and inlining it produces the 2 × 2 × 4 = 16 states
 their paper exists to complain about. **Concurrency is out of reach here.**
 
-### Where this points
+#### Where this points
 
 **Children.** It is the only one that answers both halves while keeping the
 definition complete **and keeping every edge in the table** — the test that
@@ -1661,7 +1653,12 @@ region earns its keep in everyday code.
 **Recorded as cheaper ways back in**: `sendIf` adds one method and no concepts;
 `from` if a handle turns out to be wanted for reading as well as sending.
 
-## 12. Definition and instance
+## 12. The host
+
+Three questions about the live object: whether it is separate from the definition,
+how the outside world observes it, and what happens during a commit.
+
+### Definition and instance
 
 **Are the thing you write and the thing you drive two objects, or one?**
 
@@ -1684,7 +1681,7 @@ Nobody disputes 1 and 2. The whole question is whether 3 exists.
 | **D4** | a class, `new Doc({…})`                      | `new` makes instantiation unmistakable; drags in `this`, invites inheritance                                            |
 | **D5** | two — no host at all, pure snapshot chaining | what Elm and Rust typestate do; **no home for actions**, which is the entire catch                                      |
 
-### The question is not really about instances
+#### The question is not really about instances
 
 The pattern across prior art is exact: **everything that owns effects has a host,
 and everything that does not, does not.** Elm has no instance because the platform
@@ -1695,7 +1692,7 @@ So D1-vs-D5 is not a fresh decision — **it is axis 10 again**, and the honest
 framing is that **the host is the price of `actions`**. Worth stating plainly,
 because it is the one place the project pays visibly for that decision.
 
-### What the split buys — four arguments, three of which fail
+#### What the split buys — four arguments, three of which fail
 
 | argument                                   | verdict                                    |
 | ------------------------------------------ | ------------------------------------------ |
@@ -1724,7 +1721,7 @@ time, and a child mounted at `loading` starts again on re-entry, from a blueprin
 If a machine is a running thing, composing two of them means composing two running
 things, which is not a coherent operation.
 
-### Where this points
+#### Where this points
 
 **One argument survives, and the decision reduces to it:**
 
@@ -1738,18 +1735,127 @@ Keeping the split as forward-compatibility is defensible, but it should be
 **D3 is worth taking on top if the split stays** — `publication.start(data)` reads
 better than `run(publication, data)` and removes an import.
 
-**And subscriptions belong on the host** regardless of how this resolves. The
+**And observation belongs to the host** regardless of how this resolves. The
 prototype attaches `.on()` to the definition, which contradicts the ownership split
-9 relies on: two hosts running one definition would **share** listeners, and a
-value documented as inert is quietly mutated. Putting them on the host makes the
-split structural rather than conventional and leaves the definition genuinely
-immutable — which is what lets it be exported, imported, diffed and visualised. The
-cost is that the fluent `machine({…}).on(…)` one-liner stops being available at the
-definition site. Under v1, where `.on()` _is_ the effect mechanism, this stops
-being cosmetic.
+§9 relies on: two hosts running one definition would **share** listeners, and a
+value documented as inert is quietly mutated. Putting observation on the host makes
+the split structural rather than conventional and leaves the definition genuinely
+immutable — which is what lets it be exported, imported, diffed and visualised.
 
 Still open: what the host is called (`run` / `interpret` / `start`), and whether
 the initial data is an argument or lives in the definition beside `initial:`.
+
+### One observer, supplied at construction
+
+`.on()` — a listener registry with the pattern language — is **dropped**. The host
+takes exactly one observer callback when it is constructed, robot3's
+`interpret(machine, onChange)` shape.
+
+**Why a registry was the wrong unit.** Multiplicity, not the callback, is what makes
+dispatch hard. With listeners L1, L2, L3 on one transition and L1 sending during its
+own notification, either the later listeners are told about a transition the machine
+has already left, or the send has to be deferred — and which of those you get
+depends on registration order, which nobody controls. With one observer the question
+does not arise. Everything expensive about `.on()` was downstream of the list.
+
+**Why a `subscribe()` method is not the answer either.** A registration API implies
+a list; you cannot offer one and then declare "only one". Passing the callback to
+the constructor makes singularity structural rather than documented, and it deletes
+the unsubscribe question — the observer's lifetime is the host's lifetime.
+
+**What it costs**, stated plainly, because it is not nothing:
+
+- **No residency, no teardown, no matching.** Scoping an effect to a state is now
+  the caller's bookkeeping. That is proposition AB, which §9 lists as _"not
+  rejected — the baseline this has to beat"_. v1 ships the baseline; `actions`
+  beats it.
+- **The secondary use case loses.** Analytics attached to an imported machine was
+  the pattern language's real customer. It comes back with `actions`, or as an
+  additive `.on()` later — nothing about re-adding it is breaking.
+
+**Three things it buys beyond simplicity:**
+
+- **`actions` stops having a rival.** §9 flags an unresolved v1.1 problem: `actions`
+  residency and `.on()` residency are the same shape with two owners, so "if both
+  attach to `draft`, what is the run and teardown order?" Dropping `.on()` deletes
+  the question before it is asked. Residency exists in exactly one place, ever.
+- **It is `useSyncExternalStore`'s contract.** A callback plus `doc.current` is what
+  the primary consumer — a UI that re-renders on any change — actually wants.
+  Pattern matching does nothing for it.
+- **The key rule's second half stops being load-bearing in v1.** With no listener
+  keys, v1 has only transition keys. The rule still holds and still matters for
+  `actions`; it just has nothing to adjudicate yet.
+
+**One thing not to copy from robot3.** Its observer receives the live service — no
+`from`, no `to`, no input — which is why it cannot say what _caused_ a change. Axis
+7 dropped `emit` on the grounds that "a listener recovers everything from
+`{ on, input, from, to }`". Deliver the **transition record** and that argument
+stands; deliver a snapshot and axis 7 reopens. Same data, none of the pattern
+machinery: take robot3's cardinality, not its payload.
+
+### Commit ordering
+
+Most of run-to-completion is already dead here. Esmaeilsabzali et al. deconstruct
+big-step semantics into **eight aspects** ([note 02](research/02-execution-semantics-and-time.md)
+F5), and P0.7 was amended to say so. Filtered against v1:
+
+| aspect                                   | status                                                                   |
+| ---------------------------------------- | ------------------------------------------------------------------------ |
+| Concurrency and Consistency              | **dead** — needs AND-states                                              |
+| Priority                                 | **dead** — declaration order plus `skip()` already answers it            |
+| Combo-Step Maximality                    | **dead** — no internal events to batch                                   |
+| Enabledness Memory (guards)              | **answered** — a handler receives source data; nothing else is in flight |
+| Assignment Memory (what a reaction sees) | **answered** — commit precedes notification                              |
+| Order of Small Steps                     | live only with chaining; FIFO if it ever exists                          |
+| Event Lifeline                           | **P0.7 dictates it** — a raised input joins the next step, not this one  |
+| **Big-Step Maximality**                  | **the live one** — one transition per input, or a chain?                 |
+
+**Big-Step Maximality is the immediate-transitions question** (§7), and note 02 F6
+settles v1's answer: _"the only way to have a big step that provably terminates is
+to forbid chaining — one input, at most one transition."_ v1 keeps the guarantee.
+
+That leaves the four rules:
+
+1. **One input yields at most one transition.**
+2. **Commit, then notify.** The observer always sees a fully committed machine, so
+   `e.to` and `doc.current` agree.
+3. **A send from inside the observer is queued**, and the queue drains before the
+   outermost `send` returns — not on a microtask, and not nested.
+4. **`send` answers `moved`, `none`, or `queued`**, the last only from inside a
+   dispatch.
+
+#### Queue, not stack — and why it is close
+
+With one observer and commit-before-notify, nesting and queueing deliver **the same
+events in the same order**. Three things differ:
+
+|                                                     | nested               | queued                          |
+| --------------------------------------------------- | -------------------- | ------------------------------- |
+| what the observer's own `send` returns              | the real outcome     | nothing yet → `queued`          |
+| what the machine is in for the rest of the callback | the new state        | the state it was notified about |
+| stack depth over a chain                            | a frame pair per hop | constant                        |
+
+Nesting is free — it is what happens if you write nothing — keeps `send` always
+returning a real outcome, and fails loudly on runaway recursion with a stack trace.
+Queueing costs about ten lines and turns that runaway into a hang, which is a
+**worse** diagnostic. Neither is safer than the other.
+
+Two arguments decide it, and neither is stack depth (a transient chain is one or two
+hops, not fifty):
+
+- **The observer is never re-entered.** "This callback may be called while it is
+  already running" is a materially harder contract to write against than one that
+  cannot be — and in v1 the observer is where every effect lives, so it is the most
+  likely place to hold mutable state.
+- **It is the terminal state anyway.** `actions`, composition and immediate
+  transitions each require the queue. Choosing nesting now means the semantics of
+  send-from-a-reaction _changes_ when actions land, which is the asymmetry that
+  settled axis 7 and the typed send site.
+
+So the honest framing is not "queue is better" but **the difference is invisible
+today and the queue is where this ends up**; nesting is a saving repaid with a
+semantic change. Robot3 nests — measured, and its reentrant send runs to completion
+inside the outer callback — which also makes it non-compliant with P0.7 as written.
 
 ## 13. Type-system findings
 
@@ -1824,9 +1930,15 @@ block · H derived mounting (same set problem as D) · P/Q/R/S/T effect-free var
 (reconciliation needs identity)
 
 **Actions.** U handler performs · V `do:` on the edge · X listeners as the action
-layer (which v1 ships anyway) · Y actions as data · Z handler acts with
-multi-target return · AA `Symbol.dispose` on the data · AB no feature at all (the
-baseline)
+layer · Y actions as data · Z handler acts with multi-target return · AA
+`Symbol.dispose` on the data · AB no feature at all — **not rejected; this is what
+v1 ships**
+
+**Observation.** A listener registry with pattern keys (multiplicity is what makes
+dispatch ordering hard) · a `subscribe()` method (a registration API implies a
+list) · handing the observer a snapshot or the live host instead of the transition
+record (loses the cause, reopens `emit`) · nesting a reaction's send instead of
+queueing it (robot3 does this; P0.7 forbids it)
 
 **Composition.** Peers (wiring lives outside the definition) · inlining (cannot
 express a product) · a `children:` map · an outcome map in `actions` (a hidden
@@ -1851,19 +1963,18 @@ pinned) · a class or `new` for instantiation.
 - **Editor completion responsiveness at ~4 000 union members is unmeasured.**
   TS 7.0.2's `--lsp` did not answer `textDocument/completion` even for a 4-member
   union.
-- **Run-to-completion is eight decisions, not one** (P0.7, amended), and immediate
-  transitions make paying that bill unavoidable before `actions` or composition can
-  ship.
-- **Whether a residency handler may `send`** — the largest v1 scoping call, because
-  it decides how much of commit ordering v1 needs at all.
 - **Whether the definition/instance split survives v1** (§12), now that the
-  condition it was made on points the other way.
-- **Whether immediate transitions are in v1** (§7). The design has no outstanding
-  objection; what is undecided is the release, and the reason it cannot wait is
-  that it claims a key form the pattern language would otherwise take as sugar.
-  Termination and whether the initial state settles are open inside it.
+  condition it was made on points the other way. **The largest v1 question left.**
+- **Host construction** — the name, where the initial data goes, and whether the
+  observer is required or optional for a machine driven by polling `doc.current`.
+- **Disposal.** P0.7 refers to an execution being disposed, and with the observer
+  fixed at construction there is no other way to detach. What `stop()` does to a
+  queued send, and what `send` answers afterwards.
+- **What happens when the observer throws** mid-drain. Smaller than the `actions`
+  version of the question, but not empty.
 - **Composition is designed and deferred** (§10), with the fork between the dotted
-  form and the callback unresolved.
+  form and the callback unresolved, and **immediate transitions** (§7) deferred with
+  it — which is where the rest of run-to-completion has to be paid.
 - **If handlers ever gain effects, whether losing candidates run becomes
   observable.** Under this design handlers only project, so the order in which
   candidate rows are tried is invisible. It stops being invisible the moment

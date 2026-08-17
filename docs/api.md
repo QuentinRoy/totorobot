@@ -6,9 +6,9 @@
 > working prototype is
 > [`explorations/candidates/n2-declared-types/`](../explorations/candidates/n2-declared-types/).
 >
-> **v1 is topology and data.** Effects are attached by whoever runs the machine.
-> `actions` and composition are designed and deferred — see
-> [Designed, not in v1](#designed-not-in-v1).
+> **v1 is topology and data.** One observer, no effect mechanism, one transition
+> per input. `actions`, composition and immediate transitions are designed and
+> deferred — see [Designed, not in v1](#designed-not-in-v1).
 
 ## The whole thing at a glance
 
@@ -50,18 +50,20 @@ export const publication = machine({
 	},
 })
 
-const doc = run(publication)
-doc.on('* -> published', (e) => notify(e.to.data))
+const doc = run(publication, (e) => {
+	if (e.to.state === 'published') notify(e.to.data)
+})
 ```
 
 | block         | answers                               |
 | ------------- | ------------------------------------- |
 | `types`       | what can happen, and what we can be   |
 | `transitions` | how we move, and what the new data is |
-| `.on()`       | what runs, and what an observer hears |
+| the observer  | what the outside world does about it  |
 
-No `enter`, no `exit`, no `keep`, no `repeat`, no `else`, no `nothing`, no
-`state()`, no type annotation on any handler.
+Two blocks and one callback. No `enter`, no `exit`, no `keep`, no `repeat`, no
+`else`, no `nothing`, no `state()`, no listener registry, no type annotation on any
+handler.
 
 ---
 
@@ -150,7 +152,7 @@ _"`submit` in `draft` declined, all 2 branches skipped"_.
 ```
 
 No `keep`, no `repeat`, no `&`, no `stay`, no symbol. Whether anything restarts
-because of this is a question for the residency handler, not for the table.
+because of this is a question for `actions`, when it arrives — not for the table.
 
 ### What you get for free
 
@@ -166,10 +168,13 @@ are a plain text search, and the reverse index is derivable:
 ## The host
 
 A machine is driven through a **host** — the stateful thing that owns the current
-state, dispatches to listeners, and owns their teardown.
+state and notifies **one** observer, supplied when it is constructed.
 
 ```ts
-const doc = run(publication) // one host per independent use
+const doc = run(publication, (e) => {
+	// e is the transition record: { on, input, from, to }
+	if (e.to.state === 'published') notify(e.to.data)
+})
 
 doc.send('open', { text: 'hello' })
 doc.send('submit', { route: 'review' })
@@ -214,79 +219,48 @@ if (now.state === 'draft') {
 }
 ```
 
-### `.on()` — effects and observation
+### One observer, supplied at construction
 
-One method, two key forms. An **edge** pattern observes committed transitions; a
-**bare state key** scopes something to residency, and its return value is the
-teardown:
+Not a `subscribe()` method and not a listener list. A registration API implies a
+list, and you cannot offer one and then declare "only one" — passing the callback to
+the constructor makes singularity structural. It also removes the unsubscribe
+question: the observer's lifetime is the host's lifetime.
 
-```ts
-doc.on('* -> published', (e) => notify(e.to.data))
-doc.on('cancel: draft -> *', () => track('cancelled'))
+**It receives the transition record, not a snapshot** — `{ on, input, from, to }`,
+discriminated by `on`, so `e.on === 'submit'` narrows `e.input`, and `e.from` /
+`e.to` each carry their end's state and data. That matters more than it looks:
+handing over a snapshot instead would make "which input caused this" unrecoverable
+and would reopen the case for `emit`. Robot3 hands its observer the live service and
+pays exactly that price.
 
-doc.on('draft', ({ data }) => {
-	const t = setTimeout(() => autosave(data), 2_000)
-	return () => clearTimeout(t) // runs on leaving draft, by any route
-})
-```
+**Effects are the caller's, and v1 gives them no help.** No residency, no teardown,
+no pattern matching — starting a fetch on entering `loading` and cancelling it on
+the way out is a function the caller writes and the observer drives. That is a real
+cost, taken deliberately: it is the baseline `actions` has to beat, and `actions` is
+[designed and deferred](#designed-not-in-v1).
 
-For edges, the event is a union discriminated by `on`, so `e.on === 'submit'`
-narrows `e.input`, and `e.from` / `e.to` carry each end's data. `*` is allowed at
-any position, which is how entry and exit are expressed without being their own
-concept:
+### Commit ordering
 
-```ts
-'* -> loading' //    entry: every arrival, including re-entry
-'draft -> *' //      exit:  every departure
-'*: draft -> *' //   narrower: every departure *caused by an input*
-```
+Four rules, and they are the whole execution model:
 
-**Declaring and matching are the same language**, used two ways. A transition key
-_names_ an edge, so every coordinate is concrete. A pattern _selects_ edges, so a
-coordinate may be left unconstrained. The two ways of leaving a coordinate open are
-not the same, and the difference is worth knowing:
+1. **One input yields at most one transition.** Big steps provably terminate. This
+   is what deferring immediate transitions buys, and the reason to want it.
+2. **Commit, then notify.** The observer always sees a fully committed machine, so
+   `e.to` and `doc.current` agree.
+3. **A send from inside the observer is queued**, and the queue drains before the
+   outermost `send` returns — never on a microtask, and never nested. So the
+   observer is never re-entered while an earlier call is still running.
+4. **`send` answers `moved`, `none`, or `queued`.** `queued` only ever appears when
+   sending from inside a dispatch; ordinary callers see the first two.
 
-- **`*` means "any input, and there is one."** It does not match the absence of one.
-- **An omitted input position is unconstrained** — it matches input-driven edges
-  _and_ transitions that have no input at all.
+## The key rule
 
-So `'draft -> *'` is the right spelling for an exit and `'*: draft -> *'` is a
-narrower thing that would miss a departure taken without an input. Nothing turns on
-this until [immediate transitions](api-rationale.md#7-immediate-transitions) exist,
-and it is why they are worth settling early.
+> **A key with no `->` names a state. An edge always contains an arrow.**
 
-For residency, **setup and teardown are lexically paired**, so the correlation no
-library could check becomes one no author can break: the cleanup closes over what
-the setup created because it was written beside it. The teardown runs when the
-state stops being current, **by any route, including a self-transition** — the
-default is to restart. Reach for an edge pattern instead when the trigger needs
-narrower scoping than "arriving" or "leaving": by the input
-(`'submit: draft -> *'`), or by the other end of the edge (`'idle -> loading'`).
-
-**Edge handlers have no teardown.** An edge fires at a moment rather than
-occupying a span, so there is nothing for a returned function to be scoped to and
-the return value is ignored. The residency form expresses entry and exit too, and
-often reads better: `loading: fn` is an entry with nothing to tear down, and
-`draft: () => fn` is an exit with nothing to set up.
-
-**Listeners live on the host, not the definition.** An imported definition is
-inert: topology and data, nothing that runs. Two hosts over one definition share
-nothing.
-
-## The one key rule
-
-> **A key with no `->` names a state. An edge always contains an arrow, even when
-> both ends are `*`.**
-
-That is the whole grammar. It is decidable from the string alone, so a reader never
-has to know which position they are reading.
-
-The rule costs one thing: `.on('submit', fn)` is not legal and becomes
-`.on('submit: * -> *', fn)`. Without it the same bare syntax would mean an input in
-one place and a state in another, and a name that is legally both — `review` is
-plausibly both, and it is a state in the example above — would compile under the
-wrong reading with no error. `'submit: * -> *'` is arguably better anyway: it makes
-"across all edges" explicit rather than implied.
+Decidable from the string alone, so a reader never has to know where they are. v1
+has only transition keys, so nothing currently exercises the first half — it earns
+its keep when `actions` arrives and a bare key means residency. Recorded now because
+the grammar has to be consistent from the start.
 
 ---
 
@@ -295,8 +269,7 @@ wrong reading with no error. `'submit: * -> *'` is arguably better anyway: it ma
 - **Per-state data.** Narrowing the state narrows its data, with no nullable
   padding in states that logically guarantee a field. This is the half of typestate
   the project is actually claiming.
-- Unknown state or input names anywhere — in a transition key, a listener key, or a
-  pattern.
+- Unknown state or input names anywhere in a transition key.
 - A handler returning the wrong shape for its target state.
 - Reads of source data that the source state does not have.
 - Malformed keys, reported as `not a transition: '…'` on the offending line.
@@ -317,41 +290,42 @@ are in [the rationale](api-rationale.md#11-sending-inputs).
   compare, serialise, or hold in component state.
 - **Sending is broad.** Every declared input is accepted from every state; the ones
   the current state does not handle answer `unavailable`.
-- **Effects need a host**, and only a host. Everything else is a function of the
-  definition and a value.
+- **Big steps terminate.** One input, at most one transition — no chaining, so no
+  step budget, no cycle detection, no unbounded settle.
 - **Stale results are free.** A `loaded` arriving after we left `loading` matches no
-  row and returns `unavailable`. That is _ignoring a result_, not _cancelling work_
-  — but cancelling is what a residency teardown is for.
+  row and returns `unavailable`. That is _ignoring a result_, not _cancelling work_;
+  cancelling is the caller's, until `actions` arrives.
 - Flat. No hierarchy, no parallel regions.
 - EFSM, not FSM: reachability and "this guard can never fire" are out of reach and
   are not claimed.
 
 ## Deliberately absent
 
-| absent            | because                                                                                                                                       |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `enter` / `exit`  | edge patterns with one end pinned already express both                                                                                        |
-| `keep` / `repeat` | unobservable without entry/exit; now a restart policy                                                                                         |
-| `emit`            | a listener recovers everything from `{ on, input, from, to }`                                                                                 |
-| `else`            | throws at runtime, buys no static guarantee; a dev warning instead                                                                            |
-| typed `send`      | unsound in TS (narrowing survives mutation); a sound design is [recorded but unbuilt](api-rationale.md#if-it-comes-back-it-comes-back-as-s12) |
-| hierarchy         | the key grammar would become paths, and every layout decision reopens                                                                         |
+| absent                | because                                                                                                                                       |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| a listener registry   | one observer at construction; a registration API implies a list, and the list is what makes dispatch ordering hard                            |
+| listener patterns     | the observer gets every transition and an `if`; matching returns with `actions`, where it also scopes a lifetime                              |
+| `enter` / `exit`      | edge patterns with one end pinned express both — deferred with `actions`                                                                      |
+| `keep` / `repeat`     | unobservable without entry/exit; a restart policy when it matters                                                                             |
+| `emit`                | the observer recovers everything from `{ on, input, from, to }`                                                                               |
+| `else`                | throws at runtime, buys no static guarantee; a dev warning instead                                                                            |
+| typed `send`          | unsound in TS (narrowing survives mutation); a sound design is [recorded but unbuilt](api-rationale.md#if-it-comes-back-it-comes-back-as-s12) |
+| immediate transitions | chaining forfeits guaranteed termination; deferred to where it is needed                                                                      |
+| hierarchy             | the key grammar would become paths, and every layout decision reopens                                                                         |
 
 ---
 
 ## Designed, not in v1
 
-Both are settled shapes with the argument written down, deferred because
-[commit ordering](#what-still-gates-v1) has to be answered first and neither can be
-specified without it.
+Three settled shapes with the argument written down, each deferred for its own
+reason.
 
 ### `actions` — effects owned by the definition
 
-Structurally identical to `.on()` — the same two key forms, the same teardown, the
-same restart rule — but declared inside `machine({…})` rather than attached by the
-caller. The split is ownership, not capability: `actions` is the machine's own
-behaviour and travels with it when it is imported; `.on()` is a subscription
-attached by whoever instantiates it.
+v1's answer to effects is "the caller writes a function". `actions` is the answer
+that beats it: trigger-keyed, declared inside `machine({…})`, so behaviour travels
+with the definition when it is imported instead of being a convention every caller
+has to remember.
 
 ```ts
 actions: {
@@ -376,10 +350,25 @@ mount could not manage.
 
 Being a block, it holds **one action per trigger** — two activities in one state
 compose into one function that starts both and returns a combined teardown. Array
-values stay available later as a pure widening if that ever reads badly. `.on()`
-has no such limit, since a subscription list is additive by nature.
+values stay available later as a pure widening if that ever reads badly.
+
+This is where the key rule's bare form and the pattern language earn their keep: a
+key with no arrow scopes to residency, and `'*: draft -> *'` scopes to an edge. It
+is also where commit ordering grows — more than one thing happens per commit, so
+teardown, setup and notification need an order.
 
 Full argument: [rationale §9](api-rationale.md#9-actions).
+
+### Immediate transitions — `'from -> to'`, no input
+
+A transition that fires on entering a state, with `skip()` fall-through giving a
+guarded choice for free. Deferred not because it is hard but because chaining is the
+one thing that forfeits guaranteed termination: with it, a big step can run forever,
+and a step budget or a visited-set is mitigation rather than recovery. v1 keeps the
+guarantee; composition is where the expressiveness is actually needed and where the
+price is worth paying.
+
+Full argument: [rationale §7](api-rationale.md#7-immediate-transitions).
 
 ### Composition — invoked children
 
@@ -406,25 +395,25 @@ Full argument, the rival designs, and what is still unresolved:
 
 ## What still gates v1
 
-|     | question                                        | why it blocks                                                                                                                                                                                                                                         |
-| --- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | **May a residency handler `send`?**             | Yes → commit ordering must define reentrancy. No → v1 cannot express fetch-then-transition at all, and the async story waits. The biggest scoping call left.                                                                                          |
-| 2   | **Commit ordering**                             | When listeners fire relative to the state change, what `send` returns, and what happens when a listener sends during a send.                                                                                                                          |
-| 3   | **`.on()` with a bare state key**               | v1's whole effect mechanism. The key rule makes it free; it is unbuilt.                                                                                                                                                                               |
-| 4   | **Does the definition/instance split survive?** | [§12](api-rationale.md#12-definition-and-instance) made it conditional on shipping composition, which is now deferred — so the conditional points at a single live object. Decide it, do not inherit it.                                              |
-| 5   | Host construction                               | `run(publication, data)` or `publication.start(data)`; initial data as an argument or beside `initial:`.                                                                                                                                              |
-| 6   | **Immediate transitions in v1?**                | `'from -> to'`, no input ([§7](api-rationale.md#7-immediate-transitions)). Designed, and wanted on its own account. The key form is additive; the **chain of transitions per `send`** is not, so item 2 has to be settled with this either in or out. |
+|     | question                                        | note                                                                                                                                                                                                      |
+| --- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Does the definition/instance split survive?** | [§12](api-rationale.md#12-the-host) made it conditional on shipping composition, which is deferred — so the conditional points at a single live object. Decide it, do not inherit it.                     |
+| 2   | **Host construction**                           | `run(publication, observer, data)` or `publication.start(…)`; where the initial data goes; and the observer's arity, since a machine driven purely by polling `doc.current` may not want one at all.      |
+| 3   | **Disposal**                                    | P0.7 refers to an execution being disposed, and with the observer fixed at construction there is no other way to detach. `doc.stop()`, what it does to a queued send, and what `send` answers afterwards. |
+| 4   | Error channel                                   | What happens when the observer throws mid-drain. Smaller than the `actions` version of the question, but not empty.                                                                                       |
 
 Known and shippable without answering: the layout remains revisitable
 ([three-way, still live](api-rationale.md#4-layout)); whitespace tolerance costs the
 grep story until a lint rule exists; editor completion at ~4 000 union members is
 unmeasured.
 
-**v1.1 — `actions`.** Needs commit ordering with effects in the loop, an error
-channel for a throwing action, an order rule for when `actions` and `.on()` both
-attach to one state, and the first real test of restart-by-default: a
-self-transition that changes resident data, which has never been built.
+**v1.1 — `actions`.** Needs commit ordering extended to effects — teardown, setup
+and notification order within one commit — an error channel for a throwing action,
+and the first real test of restart-by-default: a self-transition that changes
+resident data, which has never been built.
 
-**v1.2 — composition.** Needs the fork between the dotted form and the callback
-form resolved, cancellation semantics (does leaving cancel the child's work, or only
-stop us caring?), what data `loading.ok` carries, and `all` / `race`.
+**v1.2 — composition and immediate transitions.** Needs the fork between the dotted
+form and the callback form resolved, a termination rule now that chaining exists
+(step budget or each state entered once per settlement), cancellation semantics
+(does leaving cancel the child's work, or only stop us caring?), what data
+`loading.ok` carries, and `all` / `race`.

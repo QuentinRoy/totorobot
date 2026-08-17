@@ -85,7 +85,7 @@ state map.
 
 The code above is the **first generation**. The design has since settled on a
 different shape — a declared vocabulary, a flat string-keyed transition table, and
-effects attached by whoever runs the machine:
+one observer supplied by whoever runs the machine:
 
 ```ts
 const publication = machine({
@@ -97,11 +97,8 @@ const publication = machine({
 	},
 })
 
-const doc = run(publication)
-doc.on('* -> published', (e) => notify(e.to.data))
-doc.on('draft', ({ data }) => {
-	const t = setTimeout(() => autosave(data), 2_000)
-	return () => clearTimeout(t)
+const doc = run(publication, (e) => {
+	if (e.to.state === 'published') notify(e.to.data)
 })
 ```
 
