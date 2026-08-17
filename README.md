@@ -81,14 +81,56 @@ Notable missing features include immediate transitions and entry/exit hooks.
 Some inference also depends on keeping transition declarations inline in the
 state map.
 
+## The next API
+
+The code above is the **first generation**. The design has since settled on a
+different shape — a declared vocabulary, a flat string-keyed transition table with the input as an arrow label, and
+listeners attached by whoever runs the machine:
+
+```ts
+const publication = machine({
+	initial: 'empty',
+	inputs: types<Inputs>(),
+	states: types<States>(),
+	transitions: {
+		'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
+		'draft -submit> review': ({ data, input, skip }) => …,
+	},
+})
+
+const doc = publication.start()
+doc.on('* -> published', (e) => notify(e.to.data))
+```
+
+It is designed, not built. Read [the API](docs/api.md) for what it is, and
+[the design record](docs/api-rationale.md) for why.
+
 ## Documentation
 
-- [Design notes](docs/design-notes.md) explains the current API, its type
+**The next API**
+
+- [The API](docs/api.md) — the settled design: the blocks, the key language, what
+  is checked, what is deliberately absent, and what is deferred past v1.
+- [Design record](docs/api-rationale.md) — the decision ledger, what was
+  considered and rejected and on what evidence, and the reusable TypeScript
+  findings.
+
+**Inputs that still govern**
+
+- [FSM library requirements](docs/requirements.md) prioritizes the target
+  behavior, type guarantees, design latitude, and non-goals.
+- [FSM API acceptance cases](docs/acceptance-cases.md) defines the pinned
+  Marking Menu fixture and shared comparison tasks for coherent candidates.
+- [Research notes](docs/research/) — ten prior-art notes on automata theory,
+  execution semantics, HCI state machines, typestate, TypeScript type
+  engineering, and the JS FSM landscape.
+
+**The current implementation**
+
+- [Design notes](docs/design-notes.md) explains the shipped API, its type
   guarantees, runtime semantics, and known limitations.
-- [Design explorations](docs/design-explorations.md) records the Robot3
-  investigation and the discarded inline and Kysely-inspired APIs.
 - [Explorations](explorations/README.md) holds the compilable prototypes behind
-  those findings, including one built over Robot3 itself. They are type-checked
+  the findings, including one built over Robot3 itself. They are type-checked
   and the Robot3 one is tested, so a rejected option that starts working again
   fails the build rather than going unnoticed.
 
@@ -98,10 +140,13 @@ state map.
 - `examples/case-studies/` — traffic-light and asynchronous-auth examples.
 - `examples/index.ts` — runs both case studies.
 - `tests/totorobot.test.ts` — runtime and compile-time coverage.
-- `docs/design-notes.md` — reference for the current design.
-- `docs/design-explorations.md` — history of the experiments that led to it.
+- `docs/api.md` — the design the project is moving to.
+- `docs/api-rationale.md` — the evidence behind that design.
+- `docs/design-notes.md` — reference for the current, shipped design.
 - `explorations/` — prototypes of alternative API shapes, kept compiling as
   evidence for that history. Not part of the library.
+- `explorations/candidates/` — the notation candidates and the three rival
+  baselines they were measured against.
 
 ## Development
 

@@ -1,7 +1,7 @@
 # Explorations
 
 Compilable evidence for the API shapes considered in
-[Design explorations](../docs/design-explorations.md). None of this is the
+[the design record](../docs/api-rationale.md). None of this is the
 library; nothing here is exported from `totorobot`. Almost every function is
 `declare`d, because only the signatures matter - each file exists to record what
 TypeScript can and cannot infer for a proposed call shape.
@@ -9,6 +9,28 @@ TypeScript can and cannot infer for a proposed call shape.
 The exception is [`robot3-wrapper.ts`](robot3-wrapper.ts), which has a real
 runtime because its claim is a runtime one, and is covered by
 [`robot3-wrapper.test.ts`](robot3-wrapper.test.ts).
+
+## Two rounds, checked two ways
+
+The files in this directory are the **first round** — call shapes for the
+generation-1 spec. [`candidates/`](candidates/) is the **second**: the nine
+notation prototypes and three rival baselines behind the layout decision in
+[api-rationale.md](../docs/api-rationale.md), which links into
+[`candidates/n2-declared-types/`](candidates/n2-declared-types/) by line number.
+
+They are checked separately, because they need different compiler settings:
+
+|                | covered by                  | config                            |
+| -------------- | --------------------------- | --------------------------------- |
+| this directory | `pnpm typecheck`            | the root `tsconfig.json`          |
+| `candidates/`  | `pnpm typecheck:candidates` | one `tsconfig.json` per candidate |
+
+Candidates relax `noUnusedLocals`/`noUnusedParameters` — a prototype keeps unused
+levers on purpose — so the root config excludes them.
+`scripts/check-candidates.ts` runs each under its own config and **asserts the
+negative results still fail**: `c3-target-list` is kept as evidence that a
+notation does not work, and it is reported as a failure if it ever starts
+compiling. Same tripwire idea as below, one level up.
 
 ## Why they are type-checked
 

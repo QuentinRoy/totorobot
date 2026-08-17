@@ -32,5 +32,10 @@
 		"forceConsistentCasingInFileNames": true,
 		"skipLibCheck": true
 	},
-	"include": ["src", "examples", "tests", "explorations"]
+	"include": ["src", "examples", "tests", "explorations"],
+
+	/* The notation candidates are checked by `pnpm typecheck:candidates`, each
+     under its own tsconfig: they relax noUnusedLocals/noUnusedParameters, and
+     c3-target-list is a negative result that must NOT compile. */
+	"exclude": ["explorations/candidates"]
 }

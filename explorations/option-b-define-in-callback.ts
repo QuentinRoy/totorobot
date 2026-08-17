@@ -18,7 +18,7 @@
  * instead of Option A's flat three arguments. The commented-out line at the end
  * is the demonstration - it cannot be uncommented.
  *
- * See [Design explorations](../docs/design-explorations.md).
+ * See [the design record](../docs/api-rationale.md).
  */
 
 import type {

@@ -17,7 +17,9 @@
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
 		"test": "vitest run",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"typecheck:candidates": "node scripts/check-candidates.ts",
+		"measure:completions": "node scripts/measure-completions.mjs"
 	},
 	"repository": {
 		"type": "git",
