@@ -32,7 +32,7 @@
 		"forceConsistentCasingInFileNames": true,
 		"skipLibCheck": true
 	},
-	"include": ["src", "examples", "tests", "explorations"],
+	"include": ["src", "examples", "explorations"],
 
 	/* The notation candidates are checked by `pnpm typecheck:candidates`, each
      under its own tsconfig: they relax noUnusedLocals/noUnusedParameters, and

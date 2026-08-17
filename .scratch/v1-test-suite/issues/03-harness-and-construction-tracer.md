@@ -48,14 +48,37 @@ tests from runtime tests. Test titles carry their spec item number.
 superseded suites are still present, since they would run under the new config and
 type-check against the old API.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The default test command runs both the runtime and the type pass and reports them
-      separately
-- [ ] A types-only command and a coverage command exist; coverage is not in the default
-- [ ] `pnpm typecheck` passes, covering source, examples and explorations but not tests
-- [ ] Construction tests exist for observable behaviours 1–3, titled with their numbers
-- [ ] Every construction test fails, and fails only because the v1 entry point does not
-      exist — no failure is caused by config, imports, or fixture mistakes
-- [ ] Coverage runs and fails on the thresholds rather than erroring
-- [ ] A shared fixtures module exists and is used by the construction tests
+- [x] The default test command runs both the runtime and the type pass and reports them
+      separately — `pnpm test` is `vitest run --typecheck`, and its output carries a
+      `Tests` line and a separate `Type Errors` line
+- [x] A types-only command and a coverage command exist; coverage is not in the default —
+      `test:types` (`vitest run --typecheck.only`) and `test:coverage`
+      (`vitest run --coverage`), both added alongside `test` rather than folded into it
+- [x] `pnpm typecheck` passes, covering source, examples and explorations but not tests —
+      `tests` is removed from the root `tsconfig.json`'s `include`, and `tests/tsconfig.json`
+      extends the root and covers `tests` on its own, referenced from
+      `vitest.config.ts`'s `typecheck.tsconfig`
+- [x] Construction tests exist for observable behaviours 1–3, titled with their numbers —
+      `tests/construction.test.ts`, five tests over items `[1]`, `[2]`, `[3]`
+- [x] Every construction test fails, and fails only because the v1 entry point does not
+      exist — no failure is caused by config, imports, or fixture mistakes — the run
+      reports one `TypeError: types is not a function` at `tests/fixtures.ts:16`, where
+      the shared fixture calls the not-yet-existing `types()`; `pnpm typecheck` and
+      `pnpm format:check` are both clean, so nothing else is wrong
+- [x] Coverage runs and fails on the thresholds rather than erroring — the `coverage`
+      block in `vitest.config.ts` also sets `reportOnFailure` to `true` (undocumented by
+      the ticket text but necessary: without it Vitest skips the coverage report
+      entirely once the run has already failed, so the threshold check never appears).
+      With it, `pnpm test:coverage` prints the V8 summary and four explicit
+      `ERROR: Coverage for … does not meet global threshold (100%)` lines against the
+      previous-generation `src/totorobot.ts`
+- [x] A shared fixtures module exists and is used by the construction tests —
+      `tests/fixtures.ts` exports the two-state `void`/`void` `toggle` machine, imported
+      by `tests/construction.test.ts`
+
+`@vitest/coverage-v8` was added as a devDependency (`^4.1.10`, matching the pinned
+`vitest` version) — the `v8` coverage provider is not bundled with `vitest` itself.
+`vitest.config.js` was renamed to `vitest.config.ts` for consistency with the rest of the
+TypeScript-first tooling in this repo.

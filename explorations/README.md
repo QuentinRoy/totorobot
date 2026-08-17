@@ -35,7 +35,7 @@ compiling. Same tripwire idea as below, one level up.
 ## Why they are type-checked
 
 These files are in `tsconfig.json`'s `include`, so `pnpm typecheck` covers them,
-and `vitest.config.js` includes the one test file, so `pnpm test` covers that.
+and `vitest.config.ts` includes the one test file, so `pnpm test` covers that.
 This matters more for the failures than the successes.
 
 A prototype that merely _describes_ a limitation rots: the compiler moves on and
