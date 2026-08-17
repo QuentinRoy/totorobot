@@ -76,8 +76,8 @@ inputs: types<{ submit: Submit; cancel: void }>(),
 states: types<{ empty: void; draft: { text: string; revision: number } }>(),
 ```
 
-Both maps are **declared**, not inferred from marker values. `types<T>()` erases at
-runtime; it exists only to carry `T`. One config key per concept, so `initial`,
+Both maps are **declared**, not inferred from marker values. `types<T>()` carries no
+runtime value; it exists only to carry `T`. One config key per concept, so `initial`,
 `inputs`, `states` and `transitions` are four siblings at one level rather than two
 of them nested inside a third.
 
@@ -89,7 +89,8 @@ of them nested inside a third.
   one exported name — pass `types<Publication['inputs']>()`.
 - Extraction goes through named helpers rather than the value's type:
   `InputsOf<typeof publication>`, `StatesOf<typeof publication>` — the same family as
-  `Handled<T, 'draft'>` and `Sources<T, 'review'>`.
+  `Handled<M, 'draft'>` and `Sources<M, 'review'>`, which take the machine type as
+  `M`.
 
 Declaring rather than inferring is what makes the rest of the design safe; the two
 silent holes it closed are in the
@@ -102,10 +103,8 @@ machine; a TypeScript caller who omits them gets state and input names as `strin
 key is a compile error whether or not a vocabulary was declared. Declaring one map
 and not the other is supported and checks that half.
 
-This does not fall out for free — the mechanism is constrained defaults plus
-`NoInfer` on `initial`, and it is built and asserted in
-[`explorations/vocabulary-degradation.ts`](../explorations/vocabulary-degradation.ts).
-See [observable behaviour](#observable-behaviour) items 27–29.
+This is a real guarantee rather than a happy accident, so it is stated as behaviour:
+see [observable behaviour](#observable-behaviour) items 27–29.
 
 **The cost, stated plainly:** states have no runtime existence. The machine object
 carries transition keys, not a list of states, so a visualiser or a dev-mode "valid
@@ -187,14 +186,14 @@ because of one is a question for `actions`, when it arrives — not for the tabl
 
 ### What you get for free
 
-The table is one flat block of parsed strings, so all three topology questions are a
+The table is one flat block of string keys, so all three topology questions are a
 plain text search, and the reverse index is derivable:
 
 | question                          | search     | derived type           |
 | --------------------------------- | ---------- | ---------------------- |
-| what can I do in `draft`?         | `'draft -` | `Handled<T, 'draft'>`  |
+| what can I do in `draft`?         | `'draft -` | `Handled<M, 'draft'>`  |
 | where can I `submit`?             | `-submit>` | —                      |
-| how does anything reach `review`? | `> review` | `Sources<T, 'review'>` |
+| how does anything reach `review`? | `> review` | `Sources<M, 'review'>` |
 
 All three are anchored rather than approximate, which is what fixed spacing buys.
 
@@ -218,10 +217,10 @@ one definition share no state and no listeners, and neither mutates the definiti
 ### Reading
 
 - **`current`** is `{ state, data }`, plain data. `data` is `undefined` for a state
-  declared `void`. The host **replaces** this value on every transition rather than
-  mutating it, so a value you are holding stays valid and unchanged — which is what
-  makes it safe to compare, serialise, or hold in component state. Nothing is frozen
-  at runtime; immutability is `readonly` in the types plus a promise not to mutate.
+  declared `void`. **A value read from it stays valid and unchanged across later
+  transitions**, which is what makes it safe to compare, serialise, or hold in
+  component state. Nothing is frozen, though: immutability is `readonly` in the types
+  plus a promise not to mutate, not a runtime guard.
 - **`available`** is the input names the current state handles, in the table's
   declaration order, without duplicates — one `'submit'` even though two rows carry
   it. This is what UI code needs to render buttons, and it is the runtime half of
@@ -238,10 +237,10 @@ current state does not handle changes nothing — it does not throw, corrupt, or
 half-apply, and that is also how a stale async result lands harmlessly.
 
 **`send` returns nothing.** What happened is `doc.current`, and every committed
-transition reaches the listeners; there is no third channel. Two of the outcomes an
-earlier draft returned are recoverable anyway — a move is `current`, and "not handled
-here" is `available` consulted before sending rather than after — and the one that is
-not, a `skip()` refusal, means precisely that nothing happened.
+transition reaches the listeners; there is no third channel. An outcome tag would say
+little that is not already available — a move is `current`, and "not handled here" is
+`available`, consulted before sending rather than reported after — and the one case
+neither covers, a `skip()` refusal, means precisely that nothing happened.
 
 **There is no typed send site**: `doc.send('decide', …)` compiles in `draft` and does
 nothing at runtime. That is a deliberate drop, not an omission. The narrow-then-send
@@ -291,8 +290,7 @@ There is deliberately no `-*>`. `*` appears only in state positions, so the inpu
 coordinate is either a name or absent — one wildcard, one meaning. The unlabelled
 form is the broad one: it matches input-driven edges and, once
 [immediate transitions](api-rationale.md#7-immediate-transitions) exist, edges with
-no input at all. The parse is already paid for by the table, so matching is three
-comparisons against a transition that has been parsed anyway.
+no input at all.
 
 **A bare key is not legal**: `doc.on('draft', fn)` names a state, states mean
 residency, and the host does not implement residency — which is the next point.
@@ -355,9 +353,9 @@ Rules 2–4 together are what make a listener **list** safe rather than merely
 convenient: without the queue, whether your event was stale on arrival would depend
 on what somebody else registered before you.
 
-**There is no `stop()`.** The host owns no resources — a current state, a listener
-array, and a queue that always finishes — so everything a disposal method would do,
-the caller already can: unsubscribe its listeners and stop sending.
+**There is no `stop()`.** The host holds nothing the caller did not give it and
+nothing that outlives a `send`, so everything a disposal method would do, the caller
+already can: unsubscribe its listeners and stop sending.
 
 ---
 
@@ -369,22 +367,22 @@ implementation to be driven from.
 **Construction**
 
 1. `start(data)` yields a host whose `current` is `{ state: initial, data }`.
-   `start()` takes no argument when the initial state is declared `void`.
+   `start()` takes no argument when the initial state is declared `void`, and its
+   `current.data` is then `undefined`.
 2. Two hosts from one definition share no current state and no listeners.
 3. Nothing ever mutates the definition.
 
 **Reading**
 
 4. `current` is `{ state, data }`; `data` is `undefined` for a `void` state.
-5. A value read from `current` before a transition is unchanged after it — the host
-   replaces, never mutates.
+5. A value read from `current` before a transition is unchanged after it.
 6. `available` lists the current state's inputs in table order, deduplicated.
 7. `available` is `[]` for a state with no outgoing rows.
 
 **Sending**
 
-8. A handled input commits: `current` becomes the handler's projection, and matching
-   listeners fire.
+8. A handled input commits: `current` becomes `{ state: target, data: projection }`,
+   and every listener whose pattern matches that edge fires.
 9. An input no row matches changes nothing and fires no listener.
 10. An input whose every candidate row calls `skip()` changes nothing and fires no
     listener. Externally indistinguishable from 9, deliberately.
@@ -420,11 +418,11 @@ implementation to be driven from.
 25. A queued send is evaluated against the state at drain time, so it may find no row
     and do nothing.
 26. A listener that throws propagates out of `send`. The listeners after it do not
-    run and that dispatch's queue is abandoned, but the transition stays committed
-    **and the host still works afterwards** — a throw must not leave it wedged
-    answering queued sends forever.
+    run and that dispatch's queue is abandoned, but the transition stays committed.
+    **The host still works afterwards**: a later `send` transitions and notifies
+    normally. (Easy to get wrong, and silent when it is.)
 
-**The untyped path** (P1.4 — these are the ones that do not come for free)
+**The untyped path** (P1.4)
 
 27. With `inputs` and `states` both omitted, a well-formed table compiles: state and
     input names are any `string`, `data` and `input` are `unknown`, and `initial`
