@@ -417,10 +417,8 @@ used and that was verified to work. The keys happen to be compound strings, and
 ## 5. The declared vocabulary
 
 ```ts
-types: types<{
-	inputs: { submit: Submit; cancel: void }
-	states: { empty: void; draft: { text: string; revision: number } }
-}>()
+inputs: types<{ submit: Submit; cancel: void }>(),
+states: types<{ empty: void; draft: { text: string; revision: number } }>(),
 ```
 
 Orthogonal to layout — it lands on any of the three — and it closed three axes at
@@ -463,6 +461,56 @@ transitions disappears entirely); state names appear in the type and again in
 every transition key with nothing but the checker tying them; and hover text
 inlines the whole literal unless the type is named, which is why
 `types<Publication>()` is the documented idiom.
+
+### Two markers, not one — and both optional
+
+`types: types<Publication>()` became `inputs: types<Inputs>()` and
+`states: types<States>()`, so every config key is one concept and `initial`, `inputs`,
+`states` and `transitions` are siblings at one level. `invokes:` (§10) then joins them
+as a fifth rather than as a third key nested inside `types`.
+
+**The risk was §6's option-e failure**: siblings in one object literal cannot see each
+other's inferred types, so would `transitions` still be contextually typed by a
+vocabulary assembled from two sibling properties? **Measured, and yes** — with
+exact-type assertions rather than "it compiles":
+
+```
+'draft -submit> review': ({ data, input }) => …
+  input  →  { route: 'review' }                    exact
+  data   →  { text: string; revision: number }     exact
+  input.nope  →  error, as it should
+```
+
+The reason it holds is that neither marker is _inferred from a value_: each carries an
+explicit type argument, so both are known immediately rather than being recovered
+from a sibling's inferred shape. Option-e failed because `states` was a value whose
+type had to be inferred.
+
+**A `null | T` marker was proposed and not taken.** `types<T>(): null | T` returns the
+smallest possible runtime value and makes extraction a built-in,
+`NonNullable<typeof publication.inputs>`. It infers `T` correctly — measured, no
+degradation to `null | T`. Two things decided against it: extraction reads better
+through a named helper anyway (`InputsOf<typeof publication>`, matching the
+`Handled`/`Sources` family), and `null | T` legalises a bare `inputs: null`, after
+which `keyof S & string` collapses to `never` and the failure surfaces somewhere else
+as an obscure type-level message — which is the class P1.2 rules out by name.
+
+**Both markers are optional, which is P1.4 rather than a concession.** A JavaScript
+caller writes `machine({ initial, transitions })`; a TypeScript caller who omits them
+should get `string` names and `unknown` data, with the key _grammar_ still enforced,
+since the grammar does not depend on the vocabulary.
+
+**That does not fall out for free, and this is the finding to carry into the build.**
+With `states` omitted, `S` gets **reverse-inferred from `initial`** — measured as
+`{ whatever: any }` from `initial: 'whatever'` — after which `Key<S>` admits only that
+one bogus state, every real key becomes invalid, and the error lands on the whole
+`transitions` block instead of on a line. So the degraded path fails **both** P1.4
+("should not collapse into an unusable surface") and P1.2 (locality) unless it is
+designed for. `NoInfer` on `initial` did not fix it; the cause is an interaction with
+the table's own inference sites and needs an implementation-time answer rather than a
+one-line patch. It is on the v1 test list as items 27–29 of
+[api.md](api.md#observable-behaviour) precisely because it will not be noticed
+otherwise.
 
 **The alternative shape** — `machine<Publication>()({ … })` — removes the `types:`
 property but needs the double call, because TypeScript has no partial
@@ -2169,6 +2217,10 @@ pinned) · a class or `new` for instantiation.
 
 ## 15. Still open
 
+- **The untyped path does not widen cleanly yet** (§5). Omitting `states`
+  reverse-infers a bogus vocabulary from `initial`, invalidating every key and moving
+  the error off the offending line. P1.4 and P1.2 both require better; it needs an
+  implementation-time answer.
 - **No prototype implements the adopted notation.** Axis 1 settled on the labelled
   arrow (§4) after the comparison was run, so `n1`/`n2` are one spelling behind. The
   key type's cardinality is identical, so the measurements transfer — but the parser

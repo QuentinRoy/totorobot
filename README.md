@@ -90,7 +90,8 @@ listeners attached by whoever runs the machine:
 ```ts
 const publication = machine({
 	initial: 'empty',
-	types: types<Publication>(),
+	inputs: types<Inputs>(),
+	states: types<States>(),
 	transitions: {
 		'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
 		'draft -submit> review': ({ data, input, skip }) => …,

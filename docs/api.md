@@ -17,24 +17,23 @@
 ```ts
 import { machine, types } from 'totorobot'
 
-type Publication = {
-	inputs: {
-		open: { text: string }
-		revise: { text: string }
-		submit: { route: 'review' | 'publish'; reviewer?: string }
-		cancel: void
-	}
-	states: {
-		empty: void
-		draft: { text: string; revision: number }
-		review: { text: string; revision: number; reviewer: string }
-		published: { text: string; revision: number }
-	}
+type Inputs = {
+	open: { text: string }
+	revise: { text: string }
+	submit: { route: 'review' | 'publish'; reviewer?: string }
+	cancel: void
+}
+type States = {
+	empty: void
+	draft: { text: string; revision: number }
+	review: { text: string; revision: number; reviewer: string }
+	published: { text: string; revision: number }
 }
 
 export const publication = machine({
 	initial: 'empty',
-	types: types<Publication>(),
+	inputs: types<Inputs>(),
+	states: types<States>(),
 
 	transitions: {
 		'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
@@ -60,7 +59,8 @@ doc.send('open', { text: 'hello' })
 | part          | answers                               |
 | ------------- | ------------------------------------- |
 | `initial`     | where a new host starts               |
-| `types`       | what can happen, and what we can be   |
+| `inputs`      | what can happen                       |
+| `states`      | what we can be                        |
 | `transitions` | how we move, and what the new data is |
 | `.on()`       | what the outside world does about it  |
 
@@ -69,27 +69,42 @@ No `enter`, no `exit`, no `keep`, no `repeat`, no `else`, no `nothing`, no
 
 ---
 
-## `types` — the vocabulary
+## `inputs` and `states` — the vocabulary
 
 ```ts
-types: types<{
-	inputs: { submit: Submit; cancel: void }
-	states: { empty: void; draft: { text: string; revision: number } }
-}>()
+inputs: types<{ submit: Submit; cancel: void }>(),
+states: types<{ empty: void; draft: { text: string; revision: number } }>(),
 ```
 
-Both maps are **declared**, not inferred from marker values. `types<T>()` erases to
-`{}` at runtime; it exists only to carry `T`.
+Both maps are **declared**, not inferred from marker values. `types<T>()` erases at
+runtime; it exists only to carry `T`. One config key per concept, so `initial`,
+`inputs`, `states` and `transitions` are four siblings at one level rather than two
+of them nested inside a third.
 
 - A data-free state is `void`. Not `data: nothing`, not `state()` — the actual type.
-- The vocabulary is an ordinary type, so it can be named, exported, imported,
-  generated, made generic, or built with `Omit`/`&`. **Name it.** Writing
-  `types<Publication>()` rather than `types<{ … }>()` keeps hover text and error
-  messages from inlining the whole literal.
+- Each map is an ordinary type, so it can be named, exported, imported, generated,
+  made generic, or built with `Omit`/`&`. **Name them.** Writing `types<Inputs>()`
+  rather than `types<{ … }>()` keeps hover text and error messages from inlining the
+  whole literal. A single `Publication = { inputs; states }` still works if you want
+  one exported name — pass `types<Publication['inputs']>()`.
+- Extraction goes through named helpers rather than the value's type:
+  `InputsOf<typeof publication>`, `StatesOf<typeof publication>` — the same family as
+  `Handled<T, 'draft'>` and `Sources<T, 'review'>`.
 
 Declaring rather than inferring is what makes the rest of the design safe; the two
 silent holes it closed are in the
 [rationale](api-rationale.md#5-the-declared-vocabulary).
+
+**Both are optional, and omitting them widens rather than breaks** (P1.4). A
+JavaScript caller writes `machine({ initial, transitions })` and gets a working
+machine; a TypeScript caller who omits them gets state and input names as `string`,
+`data` and `input` as `unknown`, and **the key grammar still enforced** — a malformed
+key is a compile error whether or not a vocabulary was declared. Declaring one map
+and not the other is supported and checks that half.
+
+This does not fall out for free — see [observable behaviour](#observable-behaviour)
+items 27–29, and the inference hazard recorded in
+[the rationale](api-rationale.md#5-the-declared-vocabulary).
 
 **The cost, stated plainly:** states have no runtime existence. The machine object
 carries transition keys, not a list of states, so a visualiser or a dev-mode "valid
@@ -407,6 +422,15 @@ implementation to be driven from.
     run and that dispatch's queue is abandoned, but the transition stays committed
     **and the host still works afterwards** — a throw must not leave it wedged
     answering queued sends forever.
+
+**The untyped path** (P1.4 — these are the ones that do not come for free)
+
+27. With `inputs` and `states` both omitted, a well-formed table compiles: state and
+    input names are any `string`, `data` and `input` are `unknown`, and `initial`
+    accepts any string.
+28. A malformed key is still rejected with no vocabulary declared, and the error still
+    lands on the offending line rather than on the `transitions` block.
+29. Declaring one map and omitting the other checks that half and widens the other.
 
 ## What the types check
 
