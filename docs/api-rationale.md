@@ -284,10 +284,25 @@ outgoing edges are greppable but no longer contiguous unless the author keeps
 them together, and a flat table optimises the global view over the local one that
 the research says dominates. Whitespace tolerance costs the grep story:
 `->published` will not match `-> published`, and no formatter can normalise
-inside a literal. And the completions dilemma is real — an explicit template
-literal type gives segment-by-segment completions but expands to
-|inputs| × |states|², fine at 80 members and ugly at Case 4's ~4 000; an inferred
-plain string scales but offers no completions at all.
+inside a literal. And the key type must be an explicit template literal, since an
+inferred plain `string` offers no completions at all and completion latency is an
+acceptance criterion — which means the type is a cross-product,
+|inputs| × |states|². **Measured** (`scripts/measure-completions.mjs`), and it is
+not the problem it looked like:
+
+| machine         | entries offered | response | cold  | warm  |
+| --------------- | --------------- | -------- | ----- | ----- |
+| 4 inputs × 4²   | 64              | 28 KB    | 40 ms | 2 ms  |
+| 10 inputs × 20² | 4 000           | 1.7 MB   | 48 ms | 26 ms |
+
+Latency is fine — 26 ms warm at 4 000 members is well inside a keystroke. But the
+server **does not narrow**: it returns all 4 000 entries with `isIncomplete: false`
+whatever prefix has been typed, so the collapse the playground asks about happens in
+the editor's client-side filter, not in TypeScript. The cost is therefore payload
+rather than compute — **~1.7 MB per completion request**, growing as |states|² — and
+it is the number to set a threshold against. At the stated 2–20-state target it is
+liveable; beyond it the split layouts, where each coordinate completes against
+|states| or |inputs| alone, win on this axis rather than on taste.
 
 **Why the other two stay alive.** Target keys remains the choice if co-location
 matters more — it is the only live notation where a state's data and its outgoing
@@ -336,8 +351,22 @@ the stated remedy is a lint rule enforcing canonical spelling. Mandatory spacing
 that lint rule, enforced by the compiler. The same move is available to the current
 form, so it is a wash rather than a point for either.
 
-**Against it:** `->` intact is the most recognisable token in the notation, and an
-arrow split around a word is something no reader has seen before. `'draft -*> *'`
+**Variable-length padding is rejected** — `'reading ---done> idle'` alongside
+`'reading -submit> idle'`, so the target column can be aligned by hand. It parses
+(measured: dash-trimming on both sides of the label, interior dashes in
+`double-click` intact), and the alignment would make all four coordinates sit at
+fixed columns, which no notation here has achieved. It loses on two counts. **Nothing
+can re-align it after a rename** — and that is the notation's own headline virtue
+inverted, since string keys won partly because no formatter can reflow inside a
+string literal, which means none can re-pad one either. And **it makes the key type
+infinite**, so the explicit template literal that completions require becomes
+impossible. If it is ever wanted, leading-only padding (`-+label>`) is the version to
+take: same alignment, and `label>` stays contiguous so question C is still a plain
+text search.
+
+**Against the labelled arrow itself:** `->` intact is the most recognisable token in
+the notation, and an arrow split around a word is something no reader has seen
+before. `'draft -*> *'`
 for "any input" is noisy where `'*: draft -> *'` is merely long. Not decided — it
 deserves the neutral machine and the four search questions like every other
 notation, rather than a preference.
@@ -2101,9 +2130,10 @@ pinned) · a class or `new` for instantiation.
   extensibility, and both are complete compiling prototypes.
 - **Whitespace tolerance costs the grep story** — `->published` will not match
   `-> published`. A lint rule enforcing the canonical form would close it.
-- **Editor completion responsiveness at ~4 000 union members is unmeasured.**
-  TS 7.0.2's `--lsp` did not answer `textDocument/completion` even for a 4-member
-  union.
+- **Completion payload grows as |states|².** Measured at 1.7 MB per request for a
+  4 000-member key union (§4); latency is fine but the server never narrows, so the
+  editor filters client-side. A threshold has not been set, and this is the axis on
+  which the split layouts are genuinely better.
 - **Host construction** — the name (`run` / `interpret` / `start`) and whether the
   initial data is an argument or lives in the definition beside `initial:`. The only
   v1 question left, and it is a spelling.

@@ -3,7 +3,7 @@
 // The whole point of the prototype. Things to try, in order:
 //
 //  1. Inside `transitions`, type an opening quote and hit ctrl-space. You get
-//     the full 5 x 4 x 4 = 80-member list.
+//     the full 4 x 4 x 4 = 64-member list.
 //  2. Type `sub` — does it narrow to the 8 `submit:` keys?
 //  3. Type `submit: dr` — does it narrow to the 4 `submit: draft -> *` keys?
 //     This is the question: does the cross-product collapse as you type?
@@ -45,7 +45,7 @@ export const small = machine({
 })
 
 // --- the same, but with a 4 000-member key union -----------------------------
-// 20 states x 10 inputs x 20 states. Try step 3 again in here.
+// 10 inputs x 20 states x 20 states = 4 000. Try step 3 again in here.
 
 const manyInputs = {
 	press: input<{ readonly key: string }>(),
