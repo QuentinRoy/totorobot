@@ -58,15 +58,43 @@ executing these files as well as type-checking them, so a mistyped directive fai
 
 **Blocked by:** 03 — Test harness and the construction tracer.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Four type-test files exist, flat in the tests directory, using the type-test suffix
-- [ ] Every claim listed above has an assertion; none is bundled into another
-- [ ] Malformed key spellings are enumerated one per assertion
-- [ ] `available` is asserted only as a readonly array of input names, not as a per-state
-      literal union
-- [ ] `skip()` is asserted as returnable for every target shape including `void`, with
-      wrong-shaped returns still rejected on the same row
-- [ ] No test imports or names the internal error-message carrier
-- [ ] Every assertion fails as unused `@ts-expect-error` or on the missing entry point,
-      and for no other reason
+- [x] Four type-test files exist, flat in the tests directory, using the type-test suffix
+      — `tests/vocabulary.test-d.ts`, `tests/keys.test-d.ts`, `tests/patterns.test-d.ts`,
+      `tests/scale.test-d.ts`
+- [x] Every claim listed above has an assertion; none is bundled into another — one
+      `test()` per claim (per malformed spelling within the one enumerated-spellings
+      test), titled in plain language rather than with a spec-item code, since this
+      section of `docs/api.md` carries no numbering to cite
+- [x] Malformed key spellings are enumerated one per assertion — seven spellings in
+      `keys.test-d.ts`, each its own row with its own `@ts-expect-error`: no space before
+      `-`, two spaces before `-`, a space after `-`, a space before `>`, no space after
+      `>`, two spaces after `>`, and no input label at all
+- [x] `available` is asserted only as a readonly array of input names, not as a per-state
+      literal union — `vocabulary.test-d.ts` asserts it against the full input-name union
+      without narrowing `current.state` first
+- [x] `skip()` is asserted as returnable for every target shape including `void`, with
+      wrong-shaped returns still rejected on the same row — `keys.test-d.ts`, two tests
+      covering a data-carrying target and a `void` target each
+- [x] No test imports or names the internal error-message carrier — only `machine`,
+      `types`, `InputsOf`, `StatesOf`, `Handled` and `Sources` are imported anywhere
+- [x] Every assertion fails as unused `@ts-expect-error` or on the missing entry point,
+      and for no other reason — verified with `pnpm test:types`; every reported error is
+      either "has no exported member" (the missing entry point), an "implicitly has an
+      'any' type" cascade from it, an `expectTypeOf` mismatch that traces back to the
+      same missing exports, or an unused `@ts-expect-error`. Three assertions do
+      currently pass despite nothing being implemented, and are recorded here rather than
+      hidden: `InputsOf`/`StatesOf`/`Handled`/`Sources` referenced purely as types (not
+      through a value) don't get a second diagnostic once the import itself has already
+      errored once — TypeScript doesn't cascade a type-only error through further generic
+      use, so `vocabulary.test-d.ts`'s helper-resolution test and `scale.test-d.ts`'s
+      "skip is only available from…" test show green today. `scale.test-d.ts`'s
+      wrong-owner-literal test is the documented `@ts-expect-error`-under-red-file
+      weakness from the spec itself: the directive has an implicit-any error to suppress
+      today, so it isn't reported as unused either. All three read correctly once
+      `machine`/`types` exist. Two of the three (the pure type-reference ones) were
+      mitigated where a fix existed: value-derived assertions (`current`, `available`)
+      were routed through an unannotated helper so they fail on the missing entry point
+      today instead of silently matching `any`; no equivalent exists for a bare type
+      reference to an unresolved export.
