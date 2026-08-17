@@ -21,11 +21,17 @@ rationale documents, still passes, and keeps its signal.
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** done — commit `eacbc80` on `v1-test-suite`
 
-- [ ] `tests/totorobot.test.ts` is deleted
-- [ ] `tests/robot3/` is deleted in full
-- [ ] No test file in the repo references `defineMachine`, `interpret`, or robot3
-- [ ] The commit message records which behavioural cases carry over to v1 and which
-      have no v1 equivalent
-- [ ] `explorations/` and `examples/` are unchanged, and `pnpm typecheck` still passes
+- [x] `tests/totorobot.test.ts` is deleted
+- [x] `tests/robot3/` is deleted in full (8 `.js` suites, `types/send.test.ts`, and
+      `types/tsconfig.json`; `tests/` is now empty and awaits the v1 suite)
+- [x] No test file in the repo references `defineMachine`, `interpret`, or robot3 —
+      with one deliberate exception: `explorations/robot3-wrapper.test.ts`, which
+      `explorations/` being untouched requires us to keep. `robot3` therefore stays a
+      devDependency.
+- [x] The commit message records which behavioural cases carry over to v1 and which
+      have no v1 equivalent — including the shared-trace-array style from
+      `invoke.test.js`, noted as prior art for the v1 ordering tests
+- [x] `explorations/` and `examples/` are unchanged, and `pnpm typecheck` still passes
+      (`pnpm test` also passes: 12 tests, the one remaining exploration suite)
