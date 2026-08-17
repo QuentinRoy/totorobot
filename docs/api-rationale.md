@@ -32,7 +32,7 @@
 
 ## 1. The ledger
 
-Seventeen axes. Fourteen are closed.
+Nineteen axes. Seventeen are closed.
 
 | #   | Axis                       | Answer                                                       | §   |
 | --- | -------------------------- | ------------------------------------------------------------ | --- |
@@ -53,6 +53,8 @@ Seventeen axes. Fourteen are closed.
 | 15  | Immediate transitions      | `'from -> to'`, no input — designed; **deferred to v1.2**    | 7   |
 | 16  | Observation                | `.on(pattern, fn)` on the host; no residency key             | 12  |
 | 17  | Commit ordering            | one transition per input; commit, notify in order, queue     | 12  |
+| 18  | Definition and instance    | **split kept** — one definition, many hosts                  | 12  |
+| 19  | Disposal and errors        | no `stop()` — the host owns nothing; a throw propagates      | 12  |
 
 The axes are not independent. Declaring the vocabulary (§5) settles 2, 5 and 6 in
 one move. Removing entry/exit settles 3, which makes 4 and 5 unobservable and
@@ -295,6 +297,50 @@ explaining to anyone who has ever seen an FSM. It costs 6.6× the instantiations
 and the arrow test. One non-stylistic piece of evidence for records turned up in
 9: a `do:` slot on an edge is absorbed by a record as one more field, while
 string keys and target keys grow a second value shape to hold it.
+
+### A late candidate: the label on the arrow
+
+`'draft -submit> review'` instead of `'submit: draft -> review'` — the input as an
+arrow label, which is how every drawing tool spells it (mermaid `A -->|submit| B`,
+DOT `A -> B [label="submit"]`, PlantUML `A --> B : submit`).
+
+**Three things genuinely favour it:**
+
+- **The source sits at column 1 on every row.** Under the current form the source
+  starts after a variable-width input name, so `submit: draft` and `open: draft`
+  put `draft` at different columns and scanning a table for one state means reading
+  past a ragged prefix. Question B is the one the research says dominates.
+- **The label/no-label distinction becomes visible.** An omitted input position means
+  "no input" (§7); in the labelled form that is literally an unlabelled arrow,
+  `draft -> ready`, against a labelled one. In the current form it is the absence of
+  a colon, which is subtler.
+- Marginally shorter, and multi-target rows share a longer aligned prefix.
+
+**Measured cost** (`scratchpad/arrow/`): a `-` is legal in a state or input name, so
+the separator is only unambiguous if **whitespace becomes load-bearing**. With a
+lazy `${infer F}-${string}>${string}`, an ordinary kebab-case name mis-splits and
+does so silently:
+
+```
+'waiting-for-input -submit> ready'   →  from: 'waiting',  on: 'for-input -submit'
+```
+
+Requiring the space — `${infer F} -${infer On}> ${infer T}` — parses correctly, and
+the compact spellings the current design accepts (`'draft-submit>review'`) then fail
+to parse at all rather than mis-parsing. So the choice is: mandatory spacing, or a
+last-dash recursion to disambiguate.
+
+**Mandatory spacing may be a feature rather than a cost.** Whitespace tolerance is
+what breaks the grep story today — `->published` does not match `-> published` — and
+the stated remedy is a lint rule enforcing canonical spelling. Mandatory spacing is
+that lint rule, enforced by the compiler. The same move is available to the current
+form, so it is a wash rather than a point for either.
+
+**Against it:** `->` intact is the most recognisable token in the notation, and an
+arrow split around a word is something no reader has seen before. `'draft -*> *'`
+for "any input" is noisy where `'*: draft -> *'` is merely long. Not decided — it
+deserves the neutral machine and the four search questions like every other
+notation, rather than a preference.
 
 ### Two decisions that fell out of the comparison
 
@@ -1728,12 +1774,14 @@ things, which is not a coherent operation.
 > **Ship composition → keep the split. Do not ship composition → D2 plus a factory
 > is simpler, and everything else offered here was rationalisation.**
 
-Composition is deferred from v1, so that conditional currently points at D2.
-Keeping the split as forward-compatibility is defensible, but it should be
-**decided**, not inherited.
+**Decided: the split is kept.** Composition is deferred rather than dropped, and the
+conditional's premise is about the eventual shape rather than the first release, so
+this is forward-compatibility taken deliberately. The cost is the one D1 always had:
+one extra line in the smallest case, and two names people will conflate.
 
-**D3 is worth taking on top if the split stays** — `publication.start(data)` reads
-better than `run(publication, data)` and removes an import.
+**D3 is worth taking on top now that the split stays** — `publication.start(data)`
+reads better than `run(publication, data)` and removes an import, at the cost of a
+method on the thing we want to be inert data. That is the one v1 question left.
 
 **And observation belongs to the host** regardless of how this resolves. The
 prototype attaches `.on()` to the definition, which contradicts the ownership split
@@ -1907,6 +1955,44 @@ Robot3 nests — measured, and its reentrant send runs to completion inside the 
 callback — which also makes it non-compliant with P0.7 as written. It gets away with
 it because it has exactly one observer; with a list it would not.
 
+#### No disposal, and a listener that throws
+
+**There is no `stop()`.** Not because disposal is hard, but because in v1 **the host
+owns no resources**: a current state, a listener array, and a queue that always
+finishes. Everything a `stop()` would do, the caller already can — unsubscribe the
+listeners it registered, stop calling `send`, and call the disposer the residency
+helper handed it.
+
+That is the residency dividing line arriving from a third direction. Disposal only
+becomes a real concept when the host owns a lifetime it did not receive from the
+caller, which is exactly what `actions` introduces. Until then it is API for nothing.
+
+Two things this deletes rather than defers:
+
+- **P0.7's conditional becomes unconditional.** Its drain guarantee is qualified
+  _"unless the execution is disposed during the cycle"_; with no disposal, **the
+  queue always drains before the outermost `send` returns**. Its other branch —
+  an input "explicitly rejected because the execution has been disposed" — is
+  vacuous, so every submitted input is considered exactly once. Stronger compliance,
+  from less API.
+- **The outcome union stays at three.** `moved | none | queued`, with no `stopped`.
+
+**A listener that throws propagates.** The exception unwinds out of `send`, which is
+where the caller is, and the core being synchronous means it surfaces at the exact
+call that caused it with the offending listener on the stack. No swallowing, no error
+channel, no API.
+
+What that costs, stated so it is not discovered later: **the listeners after it do
+not run, and the rest of that dispatch's queue is discarded** — the one case where a
+`queued` answer does not lead to a transition. The transition itself is already
+committed and stays committed; rolling back would produce a state no listener ever
+saw, which is worse. And the implementation must reset the drain flag on the way out
+(`try`/`finally`), or a single throw wedges the host into answering `queued` forever
+and never draining. That is the one thing "just let it throw" does not get for free.
+
+An error channel is additive later: catching, continuing, and reporting can be added
+without changing what the default does.
+
 ## 13. Type-system findings
 
 Each was discovered by a test asserting that something **illegal** fails. No
@@ -2007,6 +2093,9 @@ pinned) · a class or `new` for instantiation.
 
 ## 15. Still open
 
+- **A fourth layout candidate arrived late** (§4): the input as an arrow label,
+  `'draft -submit> review'`. Measured as feasible if whitespace becomes load-bearing.
+  Unscored against the neutral machine.
 - **Layout is a live three-way choice**, not a closed question. String keys is the
   recommendation; target keys wins co-location and classic records wins
   extensibility, and both are complete compiling prototypes.
@@ -2015,14 +2104,9 @@ pinned) · a class or `new` for instantiation.
 - **Editor completion responsiveness at ~4 000 union members is unmeasured.**
   TS 7.0.2's `--lsp` did not answer `textDocument/completion` even for a 4-member
   union.
-- **Whether the definition/instance split survives v1** (§12), now that the
-  condition it was made on points the other way. **The largest v1 question left.**
 - **Host construction** — the name (`run` / `interpret` / `start`) and whether the
-  initial data is an argument or lives in the definition beside `initial:`.
-- **Disposal.** P0.7 refers to an execution being disposed. What `stop()` does to a
-  queued send and to registered listeners, and what `send` answers afterwards.
-- **What happens when a listener throws** mid-drain — one bad handler should not
-  strand the listeners after it or the rest of the queue.
+  initial data is an argument or lives in the definition beside `initial:`. The only
+  v1 question left, and it is a spelling.
 - **Composition is designed and deferred** (§10), with the fork between the dotted
   form and the callback unresolved, and **immediate transitions** (§7) deferred with
   it — which is where the rest of run-to-completion has to be paid.

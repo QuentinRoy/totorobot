@@ -309,6 +309,13 @@ Five rules, and they are the whole execution model:
 5. **`send` answers `moved`, `none`, or `queued`.** `queued` only ever appears when
    sending from inside a dispatch; ordinary callers see the first two.
 
+**There is no `stop()`.** The host owns no resources — a current state, a listener
+array, and a queue that always finishes — so everything a disposal method would do,
+the caller already can: unsubscribe its listeners and stop sending. **A listener that
+throws propagates** out of `send`, at the call that caused it, with the offending
+handler on the stack; the listeners after it do not run and that dispatch's queue is
+discarded, but the transition stays committed.
+
 Rules 2–4 together are what make a listener **list** safe rather than merely
 convenient: without the queue, whether your event is stale on arrival would depend
 on what somebody else registered before you.
@@ -457,12 +464,12 @@ Full argument, the rival designs, and what is still unresolved:
 
 ## What still gates v1
 
-|     | question                                        | note                                                                                                                                                                                  |
-| --- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | **Does the definition/instance split survive?** | [§12](api-rationale.md#12-the-host) made it conditional on shipping composition, which is deferred — so the conditional points at a single live object. Decide it, do not inherit it. |
-| 2   | **Host construction**                           | `run(publication, data)` or `publication.start(data)`; whether the initial data is an argument or lives beside `initial:`.                                                            |
-| 3   | **Disposal**                                    | P0.7 refers to an execution being disposed. `doc.stop()`, what it does to a queued send and to registered listeners, and what `send` answers afterwards.                              |
-| 4   | Error channel                                   | What happens when a listener throws mid-drain — one bad handler should not strand the listeners after it or the rest of the queue.                                                    |
+One question, and it is not a large one.
+
+**Host construction.** `run(publication, data)` or `publication.start(data)`, and
+whether the initial data is an argument or lives in the definition beside `initial:`.
+The definition/instance split is [settled](api-rationale.md#12-the-host) — one
+definition, many hosts — so what is left is the spelling.
 
 Known and shippable without answering: the layout remains revisitable
 ([three-way, still live](api-rationale.md#4-layout)); whitespace tolerance costs the
