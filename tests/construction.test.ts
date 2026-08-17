@@ -19,7 +19,7 @@ function cloneDeep<T>(value: T): T {
 }
 
 describe('construction', () => {
-	test('[1] start(data) yields a host whose current is { state: initial, data }', () => {
+	test('start(data) yields a host whose current is { state: initial, data }', () => {
 		const counter = machine({
 			initial: 'ready',
 			inputs: types<{ increment: void }>(),
@@ -33,12 +33,12 @@ describe('construction', () => {
 		expect(host.current).toEqual({ state: 'ready', data: { count: 0 } })
 	})
 
-	test('[1] start() takes no argument for a void initial state, and current.data is undefined', () => {
+	test('start() takes no argument for a void initial state, and current.data is undefined', () => {
 		const host = toggle.start()
 		expect(host.current).toEqual({ state: 'off', data: undefined })
 	})
 
-	test('[2] two hosts from one definition share no current state', () => {
+	test('two hosts from one definition share no current state', () => {
 		const hostA = toggle.start()
 		const hostB = toggle.start()
 
@@ -48,7 +48,7 @@ describe('construction', () => {
 		expect(hostB.current).toEqual({ state: 'off', data: undefined })
 	})
 
-	test('[2] two hosts from one definition share no listeners', () => {
+	test('two hosts from one definition share no listeners', () => {
 		const hostA = toggle.start()
 		const hostB = toggle.start()
 
@@ -60,7 +60,7 @@ describe('construction', () => {
 		expect(log).toEqual([])
 	})
 
-	test('[3] nothing ever mutates the definition', () => {
+	test('nothing ever mutates the definition', () => {
 		const before = cloneDeep(toggle)
 
 		const host = toggle.start()

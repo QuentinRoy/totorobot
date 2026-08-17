@@ -59,37 +59,58 @@ invoke tests retired by ticket 01.
 
 **Status:** done
 
-- [x] Tests exist for observable behaviours 17–26, each titled with its number —
+- [x] Tests exist for observable behaviours 17–26, each titled with a plain description of
+      the behaviour it asserts (no spec-number prefix — a bracketed number means nothing
+      once this ticket and the plan are gone, and a failure should read on its own) —
       `tests/observing.test.ts` (17–21) and `tests/queue.test.ts` (22–26), matching the
-      file split in `plans/v1-tests.md`
+      file split in `plans/v1-tests.md`. `tests/construction.test.ts` (ticket 03) was
+      updated the same way for consistency, dropping its `[1]`/`[2]`/`[3]` prefixes.
 - [x] Ordering claims are asserted as whole sequences via a shared trace array — every
       ordering test pushes onto a `log: string[]` and asserts one `toEqual` against the
       whole sequence; `vi.fn()` is not used anywhere in either file
 - [x] The drain-flag test uses a send from **inside a listener** after an earlier throw,
-      not a top-level send — `[rationale] the drain flag resets after a throw…` in
-      `tests/queue.test.ts` unsubscribes the throwing listener, then has a *new* listener
+      not a top-level send — "the drain flag resets after a throw…" in
+      `tests/queue.test.ts` unsubscribes the throwing listener, then has a _new_ listener
       call `doc.send('toggle')` from inside itself and asserts the queued transition
       still drains
 - [x] Listener non-re-entrancy, self-transition double-match, and considered-exactly-once
-      each have their own test, marked as rationale-derived rather than spec-numbered —
-      three tests titled `[rationale] …` (two in `queue.test.ts`, one — the self-transition
+      each have their own test, described in prose as a guarantee beyond the numbered list
+      rather than tagged — three tests (two in `queue.test.ts`, one — the self-transition
       one, since it is about pattern matching — in `observing.test.ts`)
 - [x] The snapshot-before-dispatch behaviour is asserted in both directions:
-      unsubscribed-during still runs, registered-during does not — `[21]` in
-      `tests/observing.test.ts`, as two independent hosts in one test
-- [x] Every test fails only because the v1 entry point does not exist — `pnpm test`
-      reports the same single `TypeError: types is not a function` at
-      `tests/fixtures.ts:16` for both new files that `tests/construction.test.ts`
-      already reports; `pnpm typecheck` and `pnpm format:check` are both clean
+      unsubscribed-during still runs, registered-during does not — one test in
+      `tests/observing.test.ts`, as two independent hosts
+- [x] Every test fails only because the v1 entry point does not exist — at the runtime
+      level, `pnpm test` reports the same single `TypeError: types is not a function` (or,
+      once other tickets' fixtures load first, `machine is not a function`) at the same
+      root cause for both new files that `tests/construction.test.ts` already reports;
+      `pnpm typecheck` and `pnpm format:check` are both clean
 
-Two additional design notes not called out by the ticket text:
+Design notes not called out by the ticket text:
 
-- **FIFO (24) needed a machine with data**, not the `toggle` fixture. Two structurally
+- **No spec-number prefixes in test titles.** Titles were originally tagged `[17]`,
+  `[rationale]`, etc., matching `tests/construction.test.ts` from ticket 03 and the
+  convention `plans/v1-tests.md` describes ("test titles carry their spec item number").
+  Reviewer feedback: a bracketed code is opaque once the ticket/plan that explains it is
+  gone, so titles should just say what the test is about. Applied here and backported to
+  `construction.test.ts`; `plans/v1-tests.md` still documents the old convention and
+  wasn't changed — worth a follow-up if later tickets should also drop the numbers.
+- **FIFO needed a machine with data**, not the `toggle` fixture. Two structurally
   identical queued `toggle` sends can't distinguish FIFO from LIFO — both drain orders
   produce the same state sequence, since each is evaluated fresh at drain time (25) with
   no memory of which call queued it. The test uses a small counter machine that appends a
   distinct payload per queued send, so the drain order is legible in the resulting array.
 - **Recursive self-send tests all need a one-shot guard.** A listener that unconditionally
   calls `send` from inside itself queues another call to itself forever. Every test that
-  sends from a listener (22, 23, 24, 25, 26, and two of the three rationale tests) uses a
-  boolean flag so it queues exactly once.
+  sends from a listener (22, 23, 24, 25, 26, and two of the three rationale-derived tests)
+  uses a boolean flag so it queues exactly once.
+- **A pre-existing typecheck gap surfaced while re-verifying this ticket**, unrelated to
+  the title rename: once ticket 06 landed the suite's first `.test-d.ts` file, Vitest's
+  typecheck pass gained a real entry point and now type-checks the whole `tests/`
+  program (per `tests/tsconfig.json`'s `include: ["."]`), surfacing `noImplicitAny`
+  errors on every untyped handler parameter (`data`, `input`, `skip`, `e`) across
+  `construction.test.ts`, `observing.test.ts`, `queue.test.ts` and `untyped.test-d.ts`
+  alike, plus the expected "no exported member `machine`/`types`" errors. `pnpm test`'s
+  type-check pass is not clean as a result — `pnpm typecheck` (which excludes `tests/`)
+  still is. Left unfixed here: it's suite-wide and predates this ticket's tests, not
+  something introduced by them.

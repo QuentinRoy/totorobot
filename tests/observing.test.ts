@@ -4,7 +4,7 @@ import { machine, types } from '../src/totorobot.ts'
 import { toggle } from './fixtures.ts'
 
 describe('observing', () => {
-	test('[17] on returns an unsubscribe function, and calling it more than once is harmless', () => {
+	test('on returns an unsubscribe function, and calling it more than once is harmless', () => {
 		const doc = toggle.start()
 		const log: string[] = []
 
@@ -17,7 +17,7 @@ describe('observing', () => {
 		expect(log).toEqual([])
 	})
 
-	test('[18] listeners fire after the commit, in registration order', () => {
+	test('listeners fire after the commit, in registration order', () => {
 		const doc = toggle.start()
 		const log: string[] = []
 
@@ -28,7 +28,7 @@ describe('observing', () => {
 		expect(log).toEqual(['first', 'second'])
 	})
 
-	test("[19] inside a listener, the record's target end deep-equals current", () => {
+	test("inside a listener, the record's target end deep-equals current", () => {
 		const doc = toggle.start()
 		let seenTo: unknown
 		let seenCurrent: unknown
@@ -42,7 +42,7 @@ describe('observing', () => {
 		expect(seenTo).toEqual(seenCurrent)
 	})
 
-	test('[20] * matches any state, an unlabelled arrow matches any input, and a labelled one matches only that input', () => {
+	test('* matches any state, an unlabelled arrow matches any input, and a labelled one matches only that input', () => {
 		const fork = machine({
 			initial: 'a',
 			inputs: types<{ x: void; y: void }>(),
@@ -74,7 +74,7 @@ describe('observing', () => {
 		expect(logY).toEqual(['any-state:c', 'any-input'])
 	})
 
-	test('[21] the listener list is snapshotted before dispatch: unsubscribed-during still runs, registered-during does not', () => {
+	test('the listener list is snapshotted before dispatch: unsubscribed-during still runs, registered-during does not', () => {
 		// a listener unsubscribed by an earlier one still runs for the current transition
 		const docA = toggle.start()
 		const logA: string[] = []
@@ -98,7 +98,7 @@ describe('observing', () => {
 		expect(logB).toEqual(['only'])
 	})
 
-	test('[rationale] a self-transition matches both the exit pattern and the entry pattern', () => {
+	test('a self-transition matches both the exit pattern and the entry pattern', () => {
 		const pinger = machine({
 			initial: 'idle',
 			inputs: types<{ ping: void }>(),

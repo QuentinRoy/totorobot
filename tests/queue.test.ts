@@ -4,7 +4,7 @@ import { machine, types } from '../src/totorobot.ts'
 import { toggle } from './fixtures.ts'
 
 describe('the queue', () => {
-	test('[22] a send from inside a listener does not take effect before the remaining listeners for the current transition have run', () => {
+	test('a send from inside a listener does not take effect before the remaining listeners for the current transition have run', () => {
 		const doc = toggle.start()
 		const log: string[] = []
 		let queued = false
@@ -28,7 +28,7 @@ describe('the queue', () => {
 		expect(stateWhenSecondRan).toBe('on')
 	})
 
-	test('[23] the queue drains before the outermost send returns — synchronously, not on a microtask', () => {
+	test('the queue drains before the outermost send returns — synchronously, not on a microtask', () => {
 		const doc = toggle.start()
 		let queued = false
 
@@ -44,7 +44,7 @@ describe('the queue', () => {
 		expect(doc.current).toEqual({ state: 'off', data: undefined })
 	})
 
-	test('[24] several queued sends drain first-in-first-out', () => {
+	test('several queued sends drain first-in-first-out', () => {
 		const counter = machine({
 			initial: 'ready',
 			inputs: types<{ push: { value: number } }>(),
@@ -70,7 +70,7 @@ describe('the queue', () => {
 		expect(doc.current.data.order).toEqual([0, 1, 2])
 	})
 
-	test('[25] a queued send is evaluated against the state at drain time, so it may correctly find no row and do nothing', () => {
+	test('a queued send is evaluated against the state at drain time, so it may correctly find no row and do nothing', () => {
 		const stepper = machine({
 			initial: 'a',
 			inputs: types<{ go: void }>(),
@@ -98,7 +98,7 @@ describe('the queue', () => {
 		expect(doc.current).toEqual({ state: 'c', data: undefined })
 	})
 
-	test('[26] a listener that throws propagates out of send; later listeners and the queue are abandoned, but the transition stays committed', () => {
+	test('a listener that throws propagates out of send; later listeners and the queue are abandoned, but the transition stays committed', () => {
 		const doc = toggle.start()
 		const log: string[] = []
 		let queued = false
@@ -131,7 +131,7 @@ describe('the queue', () => {
 		expect(doc.current).toEqual({ state: 'off', data: undefined })
 	})
 
-	test('[rationale] the drain flag resets after a throw, so a send from inside a listener still queues and drains afterwards', () => {
+	test('the drain flag resets after a throw, so a send from inside a listener still queues and drains afterwards', () => {
 		const doc = toggle.start()
 		const offThrow = doc.on('* -> *', () => {
 			throw new Error('boom')
@@ -154,7 +154,7 @@ describe('the queue', () => {
 		expect(log).toEqual(['first', 'second', 'first', 'second'])
 	})
 
-	test('[rationale] a listener is never re-entered while an earlier call for it is still running', () => {
+	test('a listener is never re-entered while an earlier call for it is still running', () => {
 		const doc = toggle.start()
 		let active = 0
 		let reentered = false
@@ -175,7 +175,7 @@ describe('the queue', () => {
 		expect(queued).toBe(true)
 	})
 
-	test('[rationale] every submitted input is considered exactly once', () => {
+	test('every submitted input is considered exactly once', () => {
 		const doc = toggle.start()
 		const log: string[] = []
 		let queued = false
