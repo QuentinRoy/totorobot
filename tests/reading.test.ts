@@ -18,7 +18,7 @@ function cloneDeep<T>(value: T): T {
 }
 
 describe('reading', () => {
-	test('[4] current is { state, data }, with data undefined for a void state', () => {
+	test('current is { state, data }, with data undefined for a void state', () => {
 		const host = editor.start()
 		expect(host.current).toEqual({ state: 'idle', data: undefined })
 
@@ -29,7 +29,7 @@ describe('reading', () => {
 		})
 	})
 
-	test('[5] a value read from current before a transition is unchanged after it', () => {
+	test('a value read from current before a transition is unchanged after it', () => {
 		const host = editor.start()
 		host.send('open', { text: 'hello' })
 
@@ -47,7 +47,7 @@ describe('reading', () => {
 		expect(host.current.data).not.toBe(beforeDataRef)
 	})
 
-	test('[6] available lists the current state inputs in table declaration order', () => {
+	test('available lists the current state inputs in table declaration order', () => {
 		const host = editor.start()
 		host.send('open', { text: 'hello' })
 
@@ -60,14 +60,14 @@ describe('reading', () => {
 		])
 	})
 
-	test('[6] available lists an input carried by two rows only once', () => {
+	test('available lists an input carried by two rows only once', () => {
 		const host = editor.start()
 		host.send('open', { text: 'hello' })
 
 		expect(host.available.filter((name) => name === 'submit')).toHaveLength(1)
 	})
 
-	test('[6] available lists an input whose every candidate row would decline', () => {
+	test('available lists an input whose every candidate row would decline', () => {
 		const host = editor.start()
 		host.send('open', { text: 'hello' })
 
@@ -76,7 +76,7 @@ describe('reading', () => {
 		expect(host.available).toContain('poke')
 	})
 
-	test('[7] available is empty for a state with no outgoing rows', () => {
+	test('available is empty for a state with no outgoing rows', () => {
 		const host = editor.start()
 		host.send('open', { text: 'hello' })
 		host.send('lock')

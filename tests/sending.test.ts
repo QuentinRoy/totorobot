@@ -4,7 +4,7 @@ import { machine, types } from '../src/totorobot.ts'
 import { editor, toggle } from './fixtures.ts'
 
 describe('sending', () => {
-	test('[8] a handled input commits, and every listener whose pattern matches fires', () => {
+	test('a handled input commits, and every listener whose pattern matches fires', () => {
 		const host = editor.start()
 		const broad: string[] = []
 		const narrow: string[] = []
@@ -21,7 +21,7 @@ describe('sending', () => {
 		expect(narrow).toEqual(['narrow'])
 	})
 
-	test('[9] an input no row matches changes nothing and fires no listener', () => {
+	test('an input no row matches changes nothing and fires no listener', () => {
 		const host = editor.start()
 		const before = host.current
 		const log: string[] = []
@@ -34,9 +34,9 @@ describe('sending', () => {
 		expect(log).toEqual([])
 	})
 
-	// Deliberately mirrors [9]: the all-decline case must be externally
-	// indistinguishable from the no-match case.
-	test('[10] an input whose every candidate row declines changes nothing and fires no listener', () => {
+	// Deliberately mirrors the no-match test above: the all-decline case must be
+	// externally indistinguishable from it.
+	test('an input whose every candidate row declines changes nothing and fires no listener', () => {
 		const host = editor.start()
 		host.send('open', { text: 'hello' })
 		const before = host.current
@@ -50,7 +50,7 @@ describe('sending', () => {
 		expect(log).toEqual([])
 	})
 
-	test('[11] with several rows for one source/input pair, the first that does not decline wins', () => {
+	test('with several rows for one source/input pair, the first that does not decline wins', () => {
 		const priority = machine({
 			initial: 'start',
 			inputs: types<{ go: void }>(),
@@ -69,7 +69,7 @@ describe('sending', () => {
 		expect(host.current).toEqual({ state: 'first', data: undefined })
 	})
 
-	test('[11] a guarded row that declines falls through to the next row for the same input', () => {
+	test('a guarded row that declines falls through to the next row for the same input', () => {
 		const host = editor.start()
 		host.send('open', { text: 'hello' })
 
@@ -83,7 +83,7 @@ describe('sending', () => {
 		})
 	})
 
-	test('[12] a self-transition commits and notifies with the same state on both ends', () => {
+	test('a self-transition commits and notifies with the same state on both ends', () => {
 		const host = editor.start()
 		host.send('open', { text: 'hello' })
 
@@ -106,7 +106,7 @@ describe('sending', () => {
 		})
 	})
 
-	test("[13] a handler receives the source state's data and the input payload; a void input's payload is undefined", () => {
+	test("a handler receives the source state's data and the input payload; a void input's payload is undefined", () => {
 		const received: unknown[] = []
 		const probe = machine({
 			initial: 'ready',
@@ -134,7 +134,7 @@ describe('sending', () => {
 		])
 	})
 
-	test('[14] a handler whose target is void returns nothing', () => {
+	test('a handler whose target is void returns nothing', () => {
 		const host = editor.start()
 		host.send('open', { text: 'hello' })
 
@@ -143,7 +143,7 @@ describe('sending', () => {
 		expect(host.current).toEqual({ state: 'locked', data: undefined })
 	})
 
-	test('[15] send returns undefined, always', () => {
+	test('send returns undefined, always', () => {
 		const host = editor.start()
 
 		expect(host.send('open', { text: 'hello' })).toBeUndefined() // handled
@@ -152,7 +152,7 @@ describe('sending', () => {
 		expect(host.send('open', { text: 'again' })).toBeUndefined() // no row matches
 	})
 
-	test('[16] an input name outside the declared vocabulary, reached from typed code via an explicit cast, changes nothing', () => {
+	test('an input name outside the declared vocabulary, reached from typed code via an explicit cast, changes nothing', () => {
 		const host = toggle.start()
 		const before = host.current
 

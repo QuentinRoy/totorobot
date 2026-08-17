@@ -43,45 +43,45 @@ All assertions go through the public entry point. No test imports an internal mo
 
 **Status:** done
 
-- [x] Tests exist for observable behaviours 4–16, each titled with its number —
-      `tests/reading.test.ts` (items 4–7) and `tests/sending.test.ts` (items 8–16), 16
-      tests total, some numbers covered by more than one test where the checklist below
-      called for separate assertions
+- [x] Tests exist for observable behaviours 4–16 — `tests/reading.test.ts` (4–7) and
+      `tests/sending.test.ts` (8–16), 16 tests total, some behaviours covered by more
+      than one test where the checklist below called for separate assertions. Titled by
+      what each test asserts rather than with its spec number, on request: a bracketed
+      number is meaningless once read outside this ticket, and a failure report should
+      not need the spec open to be legible
 - [x] `available` ordering, deduplication, emptiness and skip-only inclusion are each
-      asserted separately — four `[6]`/`[7]` tests in `tests/reading.test.ts`, against a
-      new `editor` fixture (`tests/fixtures.ts`) whose `draft` state has five rows
-      (`revise`, `touch`, `submit` ×2, `poke`, `lock`) so ordering, the `submit`
-      duplicate and the always-declining `poke` row are all exercised on one topology,
-      and whose `locked` state has none
+      asserted separately — four tests in `tests/reading.test.ts` ("available lists the
+      current state inputs in table declaration order", "…an input carried by two rows
+      only once", "…an input whose every candidate row would decline", "available is
+      empty for a state with no outgoing rows"), against a new `editor` fixture
+      (`tests/fixtures.ts`) whose `draft` state has five rows (`revise`, `touch`,
+      `submit` ×2, `poke`, `lock`) so ordering, the `submit` duplicate and the
+      always-declining `poke` row are all exercised on one topology, and whose `locked`
+      state has none
 - [x] The all-decline case asserts the same observable outcome as the no-match case —
-      `[9]` and `[10]` in `tests/sending.test.ts` are written with the same shape
-      (unchanged `current`, no listener fired) on purpose, `[10]` sends `editor`'s
-      always-declining `poke`
+      "an input no row matches…" and "an input whose every candidate row declines…" in
+      `tests/sending.test.ts` are written with the same shape (unchanged `current`, no
+      listener fired) on purpose, the latter sending `editor`'s always-declining `poke`
 - [x] Declaration-order priority is asserted with at least two rows sharing one
-      source/input pair and different targets — two `[11]` tests: a one-off `priority`
-      machine with two unconditional rows for `start -go>` (`first` reachable, `second`
+      source/input pair and different targets — two tests: a one-off `priority` machine
+      with two unconditional rows for `start -go>` (`first` reachable, `second`
       shadowed) proves order alone decides, and `editor`'s guarded `draft -submit>`
       pair (`review` declared before `published`) shows the same rule under realistic
       guards
 - [x] `current` stability is asserted by both deep equality against a prior clone and
-      object identity — `[5]` in `tests/reading.test.ts` captures `current.data` and a
-      clone before a `revise`, then checks the retained value both deep-equals the
-      clone and stays `toBe` the same reference, so mutation-in-place fails even where
-      the mutated value would coincidentally still match the clone
-- [x] Every test fails only because the v1 entry point does not exist — both new files
-      import only `editor`/`toggle` from `tests/fixtures.ts` and `machine`/`types` from
-      `../src/totorobot.ts` (plus one inline `machine`/`types` use each in the `[11]`
-      and `[13]` tests); at runtime, `tests/fixtures.ts` already throws on import
-      (ticket 03's `TypeError: types is not a function`), so both new files fail to
-      load with that one error, same as `construction.test.ts`. `pnpm typecheck` and
-      `pnpm format:check` are both clean
+      object identity — "a value read from current before a transition is unchanged
+      after it" in `tests/reading.test.ts` captures `current.data` and a clone before a
+      `revise`, then checks the retained value both deep-equals the clone and stays
+      `toBe` the same reference, so mutation-in-place fails even where the mutated
+      value would coincidentally still match the clone
+- [x] Every test fails only because the v1 entry point does not exist — both new files import only `editor`/`toggle` from `tests/fixtures.ts` and `machine`/`types` from `../src/totorobot.ts` (plus one inline `machine`/`types` use each in the declaration-order-priority and handler-arguments tests); at runtime, `tests/fixtures.ts` already throws on import, the same `TypeError` ticket 03 hit, so both new files fail to load with that one error, same as `construction.test.ts`. `pnpm typecheck` and `pnpm format:check` are both clean
 
 Sanity-checked against a throwaway local v1 implementation (not committed): all 16 new
-tests pass against a correct implementation, `[5]` fails when a transition mutates the
-source data in place instead of replacing it, and both `[11]` tests fail when rows are
-tried in reverse declaration order — the pure `priority` machine catches it, the guarded
-`editor` scenario does not (only one candidate ever matches there regardless of order),
-which is why both are kept.
+tests pass against a correct implementation, the `current`-stability test fails when a
+transition mutates the source data in place instead of replacing it, and both
+declaration-order-priority tests fail when rows are tried in reverse declaration order —
+the pure `priority` machine catches it, the guarded `editor` scenario does not (only one
+candidate ever matches there regardless of order), which is why both are kept.
 
 **Found while rebasing onto 05 and 06, not caused by this ticket:** `pnpm test` (the
 full run, typecheck included) is red across the whole suite as of ticket 06 —
