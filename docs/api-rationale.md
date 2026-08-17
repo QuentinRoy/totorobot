@@ -584,20 +584,43 @@ _completely_ an edge's coordinates are filled in is a different axis, one the ru
 never spoke to. If it did, `*` would already be a violation, since `*` is legal in a
 pattern and meaningless in a declaration.
 
-**One sub-question is left open, and it is nearly unobservable:** whether `*` in the
-input position matches the _absence_ of an input. If it does, `'a -> b'` and
-`'*: a -> b'` are the same pattern. If it does not — `*` reading as "some input, any
-input" — then `'a -> b'` is strictly broader, and neither form can select the
-immediate edge alone.
+### `*` requires an input; an omitted position does not
 
-The reason it barely matters is structural: **an immediate transition makes its
-source transient**, so there is usually nobody in that state to send it an input, and
-the two patterns have the same edges to choose between. The exception is the case
-§10 already records — if every immediate candidate calls `skip()`, you stay, and
+`*` means **any input, and there is one**. It does not match the absence of an
+input. So the two spellings are not the same pattern, and the omitted form is
+strictly broader:
+
+| pattern       | matches                                                   |
+| ------------- | --------------------------------------------------------- |
+| `'a -> b'`    | every transition `a → b` — input-driven **and** immediate |
+| `'*: a -> b'` | the input-driven ones only                                |
+| `'x: a -> b'` | that one edge                                             |
+
+**This changes how entry and exit should be written.** They were spelled
+`'*: * -> loading'` and `'*: draft -> *'`, which now say "by some input" — so they
+would miss an arrival or a departure taken immediately, which is exactly the kind of
+silent gap the pattern language exists to avoid. Dropping the input position instead
+gives the intended meaning:
+
+```ts
+'* -> loading' // entry: every arrival, by any route
+'draft -> *' //   exit:  every departure, by any route
+```
+
+That is a better shape than the sugar reading it replaces. Omitting a coordinate now
+does real work rather than being a shorter way to write `*`, and the two forms are
+each reachable: `'draft -> *'` for "leaving, however", `'*: draft -> *'` for "leaving
+because someone sent something".
+
+**What it costs:** nothing selects _only_ the immediate edge in the general case —
+`'a -> b'` is too broad and `'*: a -> b'` excludes it. In practice the broad form is
+exact whenever no input-driven `a → b` is declared, and nobody has asked for more.
+
+The distinction also stays rare, for a structural reason: **an immediate transition
+makes its source transient**, so there is usually nobody in that state to send it an
+input, and both patterns then have the same edges to choose between. The exception is
+the case §10 records — if every immediate candidate calls `skip()`, you stay, and
 input edges out of that state (`'cancel: loading.ok -> empty'`) become meaningful.
-So the two readings can differ, in the one situation where a state is both
-transient and waitable. Not decided, and not worth deciding before something needs
-it.
 
 ### What it forces open
 
@@ -803,8 +826,8 @@ here", and fakes it by pairing an entry edge with every exit edge — the drift 
 table exists to eliminate.
 
 **Kind 4 turns out not to be its own kind.** Entry and exit are transition actions
-with one end pinned — `'*: * -> loading'` and `'*: draft -> *'` — and the pattern
-grammar already parses both. Axis 3's original question answers itself. It
+with one end pinned — `'* -> loading'` and `'draft -> *'` — and the pattern grammar
+already parses both. Axis 3's original question answers itself. It
 collapses a second time from the other direction: **a residency action with no
 teardown _is_ an entry action, and one that only tears down _is_ an exit action**
 — `loading: fn` and `draft: () => fn`. The two spellings agree because the default
@@ -937,7 +960,7 @@ point of the shape is that adding it later costs nothing. Same for `once` or
 - **It puts the wrapper on the rarer thing.** A fetch should restart when you
   re-enter `loading`; a long-lived socket is the exception.
 
-It is also consistent with the pattern grammar: `'*: draft -> *'` matches
+It is also consistent with the pattern grammar: `'draft -> *'` matches
 `draft -> draft`, so an exit action fires on a self-transition — exactly what
 re-entry means under this default. The two rules agree rather than needing
 reconciliation. (The opposite default — residency is the state's name being
@@ -1040,7 +1063,7 @@ So `.within()` need not exist — one method, two key forms already in the gramm
 ```ts
 const doc = run(publication)
 
-doc.on('*: * -> published', (e) => notify(e.to.data)) // an edge — notification
+doc.on('* -> published', (e) => notify(e.to.data)) // an edge — notification
 doc.on('draft', ({ data }) => {
 	// a bare state — residency
 	const t = setTimeout(() => autosave(data), 2_000)
@@ -1150,7 +1173,7 @@ const menu = runAll({
 	highlight: highlighter,
 })
 
-menu.marking.on('*: * -> recognized', (e) => menu.highlight.send('clear'))
+menu.marking.on('* -> recognized', (e) => menu.highlight.send('clear'))
 ```
 
 ```ts

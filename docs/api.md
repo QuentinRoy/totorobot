@@ -51,7 +51,7 @@ export const publication = machine({
 })
 
 const doc = run(publication)
-doc.on('*: * -> published', (e) => notify(e.to.data))
+doc.on('* -> published', (e) => notify(e.to.data))
 ```
 
 | block         | answers                               |
@@ -221,7 +221,7 @@ One method, two key forms. An **edge** pattern observes committed transitions; a
 teardown:
 
 ```ts
-doc.on('*: * -> published', (e) => notify(e.to.data))
+doc.on('* -> published', (e) => notify(e.to.data))
 doc.on('cancel: draft -> *', () => track('cancelled'))
 
 doc.on('draft', ({ data }) => {
@@ -236,18 +236,24 @@ any position, which is how entry and exit are expressed without being their own
 concept:
 
 ```ts
-'*: * -> loading' // entry: every arrival, including re-entry
-'*: draft -> *' //   exit: every departure
-'draft -> *' //      the same thing — an omitted input position is unconstrained
+'* -> loading' //    entry: every arrival, including re-entry
+'draft -> *' //      exit:  every departure
+'*: draft -> *' //   narrower: every departure *caused by an input*
 ```
 
 **Declaring and matching are the same language**, used two ways. A transition key
 _names_ an edge, so every coordinate is concrete. A pattern _selects_ edges, so a
-coordinate may be left unconstrained — which is what `*`, and an omitted input
-position, both do. The consequence worth knowing: `.on('a -> b')` fires for
-**every** transition from `a` to `b`, including an immediate one, since an immediate
-transition is an edge whose input position is empty. See
-[rationale §7](api-rationale.md#7-immediate-transitions).
+coordinate may be left unconstrained. The two ways of leaving a coordinate open are
+not the same, and the difference is worth knowing:
+
+- **`*` means "any input, and there is one."** It does not match the absence of one.
+- **An omitted input position is unconstrained** — it matches input-driven edges
+  _and_ transitions that have no input at all.
+
+So `'draft -> *'` is the right spelling for an exit and `'*: draft -> *'` is a
+narrower thing that would miss a departure taken without an input. Nothing turns on
+this until [immediate transitions](api-rationale.md#7-immediate-transitions) exist,
+and it is why they are worth settling early.
 
 For residency, **setup and teardown are lexically paired**, so the correlation no
 library could check becomes one no author can break: the cleanup closes over what
@@ -255,8 +261,7 @@ the setup created because it was written beside it. The teardown runs when the
 state stops being current, **by any route, including a self-transition** — the
 default is to restart. Reach for an edge pattern instead when the trigger needs
 narrower scoping than "arriving" or "leaving": by the input
-(`'submit: draft -> *'`), or by the other end of the edge
-(`'*: idle -> loading'`).
+(`'submit: draft -> *'`), or by the other end of the edge (`'idle -> loading'`).
 
 **Edge handlers have no teardown.** An edge fires at a moment rather than
 occupying a span, so there is nothing for a returned function to be scoped to and

@@ -98,7 +98,7 @@ const publication = machine({
 })
 
 const doc = run(publication)
-doc.on('*: * -> published', (e) => notify(e.to.data))
+doc.on('* -> published', (e) => notify(e.to.data))
 doc.on('draft', ({ data }) => {
 	const t = setTimeout(() => autosave(data), 2_000)
 	return () => clearTimeout(t)
