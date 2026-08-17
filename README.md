@@ -97,7 +97,7 @@ const publication = machine({
 	},
 })
 
-const doc = run(publication)
+const doc = publication.start()
 doc.on('* -> published', (e) => notify(e.to.data))
 ```
 

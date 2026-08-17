@@ -32,7 +32,7 @@
 
 ## 1. The ledger
 
-Nineteen axes. Seventeen are closed.
+Twenty axes. Nineteen are closed.
 
 | #   | Axis                       | Answer                                                       | §   |
 | --- | -------------------------- | ------------------------------------------------------------ | --- |
@@ -53,8 +53,9 @@ Nineteen axes. Seventeen are closed.
 | 15  | Immediate transitions      | `'from -> to'`, no input — designed; **deferred to v1.2**    | 7   |
 | 16  | Observation                | `.on(pattern, fn)` on the host; no residency key             | 12  |
 | 17  | Commit ordering            | one transition per input; commit, notify in order, queue     | 12  |
-| 18  | Definition and instance    | **split kept** — one definition, many hosts                  | 12  |
+| 18  | Definition and instance    | **split kept** — `publication.start(data)`                   | 12  |
 | 19  | Disposal and errors        | no `stop()` — the host owns nothing; a throw propagates      | 12  |
+| 20  | What `send` returns        | **nothing** — additive to add later, breaking to remove      | 12  |
 
 The axes are not independent. Declaring the vocabulary (§5) settles 2, 5 and 6 in
 one move. Removing entry/exit settles 3, which makes 4 and 5 unobservable and
@@ -1617,7 +1618,7 @@ silently acting on a state that has moved.
 
 **`doc.send(name, payload)` is the whole sending API.** Broad, mutating, familiar;
 every declared input accepted from every state; anything the current state does not
-handle answers `unavailable` and changes nothing.
+handle changes nothing. It returns nothing either — see §12.
 
 The typed send site is **dropped**, because it stopped buying much once finding 11
 was measured:
@@ -1627,8 +1628,8 @@ was measured:
 - Every sound spelling makes the caller **re-state a fact the machine already
   knows**. That is ceremony in exchange for catching a class of mistake the runtime
   already handles safely.
-- Nothing is at risk. A wrong send returns `unavailable`; it does not corrupt
-  state, throw, or half-apply.
+- Nothing is at risk. A wrong send changes nothing; it does not corrupt state,
+  throw, or half-apply.
 
 **What this costs, plainly.** Research note 07 F20 called per-state capabilities at
 the send site the one gap nobody has filled, and it was named as the
@@ -1808,9 +1809,11 @@ conditional's premise is about the eventual shape rather than the first release,
 this is forward-compatibility taken deliberately. The cost is the one D1 always had:
 one extra line in the smallest case, and two names people will conflate.
 
-**D3 is worth taking on top now that the split stays** — `publication.start(data)`
-reads better than `run(publication, data)` and removes an import, at the cost of a
-method on the thing we want to be inert data. That is the one v1 question left.
+**D3 is taken on top now that the split stays**: the host is
+`publication.start(data)`. It reads better than `run(publication, data)`, removes an
+import, and dot-completion makes it discoverable — against one method on a value that
+is otherwise inert data. Also settled: the initial data is an argument to `start`,
+not a field beside `initial:`, so the definition stays free of instance state.
 
 **And observation belongs to the host** regardless of how this resolves. The
 prototype attaches `.on()` to the definition, which contradicts the ownership split
@@ -1944,8 +1947,7 @@ That leaves the rules, all five of them:
 3. **Listeners fire in registration order.**
 4. **A send from a listener is queued**, and the queue drains before the outermost
    `send` returns — not on a microtask, and not nested.
-5. **`send` answers `moved`, `none`, or `queued`**, the last only from inside a
-   dispatch.
+5. **`send` returns nothing.**
 
 #### Queue, not stack
 
@@ -2005,6 +2007,32 @@ Two things this deletes rather than defers:
   vacuous, so every submitted input is considered exactly once. Stronger compliance,
   from less API.
 - **The outcome union stays at three.** `moved | none | queued`, with no `stopped`.
+
+#### `send` returns nothing
+
+Earlier drafts had it answer `moved | declined | unavailable | queued`, inherited
+from P0.6's requirement that the model distinguish "no transition" from "an update
+in the same state" from "a move". That is a requirement on the **model**, and the
+transition function does distinguish them; whether the host hands the tag back to the
+caller is a separate question, and the answer is no.
+
+- **Two of the four are recoverable without it.** `moved` is `doc.current`, and
+  `unavailable` is `doc.available` consulted _before_ sending rather than after.
+- **`queued` is not information the caller can use.** It is inside a listener, it
+  queued something, it will happen.
+- **Only a `skip()` refusal is genuinely unobservable** — nothing commits, so no
+  listener fires and nothing changed. But that is the intended meaning of a refusal.
+  A machine that needs the refusal to be _visible_ should model it as a transition,
+  which is a state change and therefore observable through the normal channel.
+- **The asymmetry points this way.** Adding a return later is purely additive;
+  removing one is breaking. Same rule that settled axis 7 and axis 12.
+
+A note on the shape, if it ever comes back: return a **string literal**, not
+`{ kind, reason }`. Case 1's pointer workload is 350 000 sends, and a bare `'moved'`
+allocates nothing where an object allocates once per send — which is what P0.11's
+"small, synchronous, predictable overhead" is about. The object shape belongs to the
+pure transition function, where it has to carry the next state; the host has already
+committed it.
 
 **A listener that throws propagates.** The exception unwinds out of `send`, which is
 where the caller is, and the core being synchronous means it surfaces at the exact
@@ -2134,9 +2162,6 @@ pinned) · a class or `new` for instantiation.
   4 000-member key union (§4); latency is fine but the server never narrows, so the
   editor filters client-side. A threshold has not been set, and this is the axis on
   which the split layouts are genuinely better.
-- **Host construction** — the name (`run` / `interpret` / `start`) and whether the
-  initial data is an argument or lives in the definition beside `initial:`. The only
-  v1 question left, and it is a spelling.
 - **Composition is designed and deferred** (§10), with the fork between the dotted
   form and the callback unresolved, and **immediate transitions** (§7) deferred with
   it — which is where the rest of run-to-completion has to be paid.

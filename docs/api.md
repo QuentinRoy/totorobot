@@ -50,7 +50,7 @@ export const publication = machine({
 	},
 })
 
-const doc = run(publication)
+const doc = publication.start()
 doc.on('* -> published', (e) => notify(e.to.data))
 ```
 
@@ -138,8 +138,8 @@ That is how one input reaches two states —
 ```
 
 — and **declaration order is priority order**. If every candidate skips, the
-machine refuses and reports `{ kind: 'none', reason: 'declined' }`, which is
-deliberate: refusing is often part of the protocol. There is no `else` keyword; the
+machine refuses and nothing changes, which is deliberate: refusing is often part of
+the protocol. There is no `else` keyword; the
 ambiguous case (all branches skipped by accident) gets a dev-mode warning instead —
 _"`submit` in `draft` declined, all 2 branches skipped"_.
 
@@ -169,7 +169,7 @@ A machine is driven through a **host** — the stateful thing that owns the curr
 state and notifies subscribers.
 
 ```ts
-const doc = run(publication) // one host per independent use
+const doc = publication.start() // one host per independent use
 
 doc.send('open', { text: 'hello' })
 doc.send('submit', { route: 'review' })
@@ -186,14 +186,13 @@ makes a `void` input just `doc.send('cancel')`.
   serialise, or hold in component state.
 - `doc.available` — the inputs this state handles, as a runtime array. What UI code
   needs to render buttons.
-- `send` reports its outcome: `moved`, or `none` with `declined` (a row matched and
-  every candidate called `skip()`) versus `unavailable` (no row matched).
+- `send` returns **nothing**. What happened is `doc.current`, and every committed
+  transition reaches the listeners; there is no third channel.
 
 ### Sending is broad, and that is deliberate
 
 **Every declared input is accepted from every state.** An input the current state
-does not handle answers `unavailable` and changes nothing — it does not throw,
-corrupt, or half-apply. That is also how a stale async result lands harmlessly.
+does not handle changes nothing — it does not throw, corrupt, or half-apply. That is also how a stale async result lands harmlessly.
 
 There is **no typed send site**: `doc.send('decide', …)` compiles in `draft` and is
 a no-op at runtime. This is a deliberate drop, not an omission — see
@@ -306,8 +305,7 @@ Five rules, and they are the whole execution model:
    `send` returns — never on a microtask, and never nested. So a listener is never
    re-entered while an earlier call is still running, and the listeners after it are
    not told about a transition the machine has already left.
-5. **`send` answers `moved`, `none`, or `queued`.** `queued` only ever appears when
-   sending from inside a dispatch; ordinary callers see the first two.
+5. **`send` returns nothing**, including when it was queued.
 
 **There is no `stop()`.** The host owns no resources — a current state, a listener
 array, and a queue that always finishes — so everything a disposal method would do,
@@ -354,16 +352,16 @@ are in [the rationale](api-rationale.md#11-sending-inputs).
 ## Semantics
 
 - **A transition is pure.** Given a state and an input it yields either the next
-  state or a refusal (`declined` / `unavailable`), and it neither performs nor
-  schedules anything.
+  state or a refusal, and it neither performs nor schedules anything.
 - **State values are immutable snapshots**, and plain data — safe to clone,
   compare, serialise, or hold in component state.
 - **Sending is broad.** Every declared input is accepted from every state; the ones
-  the current state does not handle answer `unavailable`.
+  the current state does not handle change nothing. `doc.available` says in advance
+  which those are.
 - **Big steps terminate.** One input, at most one transition — no chaining, so no
   step budget, no cycle detection, no unbounded settle.
 - **Stale results are free.** A `loaded` arriving after we left `loading` matches no
-  row and returns `unavailable`. That is _ignoring a result_, not _cancelling work_;
+  row and does nothing. That is _ignoring a result_, not _cancelling work_;
   cancelling is the caller's, until `actions` arrives.
 - Flat. No hierarchy, no parallel regions.
 - EFSM, not FSM: reachability and "this guard can never fire" are out of reach and
@@ -462,16 +460,13 @@ state name.
 Full argument, the rival designs, and what is still unresolved:
 [rationale §10](api-rationale.md#10-composition).
 
-## What still gates v1
+## v1 is specified
 
-One question, and it is not a large one.
+Nothing is open that blocks building it. The host is `publication.start(data)` — a
+method on the definition, so there is no second import and dot-completion makes it
+discoverable, at the cost of one method on a value that is otherwise inert data.
 
-**Host construction.** `run(publication, data)` or `publication.start(data)`, and
-whether the initial data is an argument or lives in the definition beside `initial:`.
-The definition/instance split is [settled](api-rationale.md#12-the-host) — one
-definition, many hosts — so what is left is the spelling.
-
-Known and shippable without answering: the layout remains revisitable
+Known and accepted: the layout remains revisitable
 ([three-way, still live](api-rationale.md#4-layout)); and the completion payload grows as
 |states|² — measured at 1.7 MB per request for a 4 000-member key union, with
 latency fine at 26 ms warm.
