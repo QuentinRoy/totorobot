@@ -34,28 +34,28 @@
 
 Twenty axes. Nineteen are closed.
 
-| #   | Axis                       | Answer                                                        | §   |
-| --- | -------------------------- | ------------------------------------------------------------- | --- |
-| 1   | Overall layout             | string keys, input as arrow label — `'draft -submit> review'` | 4   |
-| 2   | Data-free states           | `void` in the declared vocabulary                             | 5   |
-| 3   | Entry / exit actions       | edge patterns with one end pinned; no keyword                 | 9   |
-| 4   | Re-entry vs stay           | dissolved — it is an action's restart policy                  | 9   |
-| 5   | Self-transition spelling   | `'draft -revise> draft'`, an ordinary row                     | 5   |
-| 6   | Input vocabulary           | declared: `types<{ inputs, states }>()`                       | 5   |
-| 7   | Returned commands (`emit`) | out — a listener recovers it from the transition              | 6   |
-| 8   | Fall-through refusal       | no `else`; dev-mode warning                                   | 4   |
-| 9   | Async / work-in-flight     | subsumed by axis 10                                           | 8   |
-| 10  | Actions in the machine     | `actions:`, keyed by trigger, wrappers for policy             | 9   |
-| 11  | The word for what you send | `inputs`, not `events` — the core is not a mailbox            | 5   |
-| 12  | Typed send site            | **dropped** — broad `send` only; reversible later             | 11  |
-| 13  | Composition                | **deferred from v1** — designed; outcome as state, not input  | 10  |
-| 14  | Actions in v1              | **deferred** — v1 has no effect mechanism at all              | 9   |
-| 15  | Immediate transitions      | `'from -> to'`, no input — designed; **deferred to v1.2**     | 7   |
-| 16  | Observation                | `.on(pattern, fn)` on the host; no residency key              | 12  |
-| 17  | Commit ordering            | one transition per input; commit, notify in order, queue      | 12  |
-| 18  | Definition and instance    | **split kept** — `publication.start(data)`                    | 12  |
-| 19  | Disposal and errors        | no `stop()` — the host owns nothing; a throw propagates       | 12  |
-| 20  | What `send` returns        | **nothing** — additive to add later, breaking to remove       | 12  |
+| #   | Axis                       | Answer                                                          | §   |
+| --- | -------------------------- | --------------------------------------------------------------- | --- |
+| 1   | Overall layout             | string keys, input as arrow label — `'draft -submit> review'`   | 4   |
+| 2   | Data-free states           | `void` in the declared vocabulary                               | 5   |
+| 3   | Entry / exit actions       | edge patterns with one end pinned; no keyword                   | 9   |
+| 4   | Re-entry vs stay           | dissolved — it is an action's restart policy                    | 9   |
+| 5   | Self-transition spelling   | `'draft -revise> draft'`, an ordinary row                       | 5   |
+| 6   | Input vocabulary           | declared: `types<{ inputs, states }>()`                         | 5   |
+| 7   | Returned commands (`emit`) | out — a listener recovers it from the transition                | 6   |
+| 8   | Fall-through refusal       | no `else` and no warning — a decline is silent                  | 4   |
+| 9   | Async / work-in-flight     | subsumed by axis 10                                             | 8   |
+| 10  | Actions in the machine     | `actions:`, keyed by trigger, wrappers for policy               | 9   |
+| 11  | The word for what you send | `inputs`, not `events` — the core is not a mailbox              | 5   |
+| 12  | Typed send site            | **dropped** — broad `send` only; reversible later               | 11  |
+| 13  | Composition                | **deferred from v1** — shape unsettled; a design to return to   | 10  |
+| 14  | Actions in v1              | **deferred** — v1 has no effect mechanism at all                | 9   |
+| 15  | Immediate transitions      | `'from -> to'`, no input — designed; **deferred, may not land** | 7   |
+| 16  | Observation                | `.on(pattern, fn)` on the host; no residency key                | 12  |
+| 17  | Commit ordering            | one transition per input; commit, notify in order, queue        | 12  |
+| 18  | Definition and instance    | **split kept** — `publication.start(data)`                      | 12  |
+| 19  | Disposal and errors        | no `stop()` — the host owns nothing; a throw propagates         | 12  |
+| 20  | What `send` returns        | **nothing** — additive to add later, breaking to remove         | 12  |
 
 The axes are not independent. Declaring the vocabulary (§5) settles 2, 5 and 6 in
 one move. Removing entry/exit settles 3, which makes 4 and 5 unobservable and
@@ -393,11 +393,25 @@ worse than the leading-input one.
 
 ### Two decisions that fell out of the comparison
 
-**No `else` keyword** (axis 8). An explicit `else: 'decline' | 'unreachable'` key
-would make fall-through visible, but `else: 'unreachable'` throws at _runtime_,
-so it costs a line on every multi-branch edge and buys no static guarantee. It
-relocates the symptom. A dev-mode warning fires at exactly the same moment for no
-API surface.
+**No `else` keyword** (axis 8), **and nothing in its place.** An explicit
+`else: 'decline' | 'unreachable'` key would make fall-through visible, but
+`else: 'unreachable'` throws at _runtime_, so it costs a line on every multi-branch
+edge and buys no static guarantee. It relocates the symptom.
+
+A dev-mode warning was the recorded consolation and **it is gone too**, on two
+counts. It cannot judge: an all-skip is exactly what a deliberate refusal looks like
+— `'draft -revise> draft'` declining an unchanged text is the design's own headline
+example — so it would fire on correct code, and the machine has no way to tell the
+protocol working from a mistake. And it is not free. "Dev mode" in a no-build
+browser library (P0.11) means either a build-condition split with two artifacts or
+API surface for the caller to opt in, and _no API surface_ was the whole selling
+point. So a decline is **silent**, which is the intended meaning of a refusal
+anyway; `available` answers the question that can be answered, in advance.
+
+What that loses is the author's per-edge assertion that fall-through is impossible —
+the one thing `else` genuinely buys. Still not worth a line on every multi-branch
+edge for a runtime check, but the honest accounting is a lost distinction rather than
+nothing lost.
 
 **`TS2820`'s did-you-mean suggestion is conditional on identifier length.**
 `to: 'armd'` gets the suggestion; `to: 'onn'` gets a plain `TS2322`. Short state
@@ -658,8 +672,8 @@ reason — the answer moved to the action.
 
 ## 7. Immediate transitions
 
-> **Designed; deferred to v1.2, with composition.** No objection to the shape. The
-> reason to wait is that chaining is the one feature that forfeits guaranteed
+> **Designed; deferred, and not certain to land at all.** No objection to the shape.
+> The reason to wait is that chaining is the one feature that forfeits guaranteed
 > termination — see the end of this section.
 
 A transition that fires on **entering** a state rather than on an input. The

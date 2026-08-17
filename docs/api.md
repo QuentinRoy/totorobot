@@ -6,8 +6,8 @@
 > and does not implement this.
 >
 > **v1 is topology and data**: a declared vocabulary, a transition table, a host, and
-> listeners on the host. One transition per input. `actions`, composition and immediate
-> transitions are designed and deferred — see
+> listeners on the host. One transition per input. `actions`, immediate transitions and
+> composition are argued but deferred, and none of them promised — see
 > [Designed, not in v1](#designed-not-in-v1).
 
 ## The whole thing at a glance
@@ -130,7 +130,7 @@ The input is the arrow's **label**. Two rules:
 - **A key with no `->` names a state. An edge always contains an arrow.** So the two
   halves of the grammar are decidable from the string alone. In v1 every key is an edge
   — a bare key is invalid in `transitions` and in `.on()`. The bare form is reserved
-  for residency, which arrives with [`actions`](#designed-not-in-v1).
+  for residency, which is what [`actions`](#designed-not-in-v1) would use.
 
 _Why this notation, and the spellings it rejects:_
 [rationale §4](api-rationale.md#adopted-the-label-on-the-arrow).
@@ -153,9 +153,10 @@ That is how one input reaches two states —
 ```
 
 — and **declaration order is priority order**. If every candidate skips, the machine
-refuses: nothing changes, and no listener fires. The ambiguous case — every branch
-skipped by accident — gets a dev-mode warning, _"`submit` in `draft` declined, all 2
-branches skipped"_.
+declines the input: nothing changes, and no listener fires. That is a normal outcome
+rather than a fault — the `revise` row above declines an unchanged text on purpose — and
+nothing reports it. `available` is how you know in advance which inputs a state answers
+to at all.
 
 ### Self-transitions are ordinary transitions
 
@@ -260,9 +261,9 @@ and an unlabelled arrow means any input, or none:
 
 There is no `-*>`: `*` appears only in state positions, so the input coordinate is
 either a name or absent. The unlabelled form is the broad one — it matches input-driven
-edges and, once [immediate transitions](#designed-not-in-v1) exist, edges with no input
-at all. A bare key is not legal: `doc.on('draft', fn)` names a state, and states mean
-residency.
+edges, and would match edges with no input at all if
+[immediate transitions](#designed-not-in-v1) ever land. A bare key is not legal:
+`doc.on('draft', fn)` names a state, and states mean residency.
 
 _Why patterns and a record rather than a snapshot:_
 [rationale §12](api-rationale.md#observation-on-on-the-host-with-patterns).
@@ -418,7 +419,7 @@ runtime (`available`) rather than enforced by the compiler.
 - **Big steps terminate**, because one input causes at most one transition.
 - **Stale results are free.** A `loaded` arriving after we left `loading` matches no row
   and does nothing. That is _ignoring a result_, not _cancelling work_; cancelling is
-  the caller's until `actions` arrives.
+  the caller's.
 - **States have no runtime existence.** The definition carries transition keys, not a
   list of states, so there is no source for a visualiser or a "valid states are …"
   message, and a state with no transitions is invisible at runtime.
@@ -430,25 +431,26 @@ runtime (`available`) rather than enforced by the compiler.
 
 Not oversights. What to reach for instead, and where the argument is:
 
-| absent                      | instead                                                                                                           |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `enter` / `exit`            | patterns with one end pinned ([§9](api-rationale.md#9-actions))                                                   |
-| residency in the host       | the recipe above, then `actions` ([§12](api-rationale.md#residency-is-derivable-not-a-host-feature))              |
-| `keep` / `repeat` / `stay`  | an ordinary self-transition row, and later an action's restart policy ([§6](api-rationale.md#6-self-transitions)) |
-| `emit`                      | the transition record `{ on, input, from, to }` ([§6](api-rationale.md#6-self-transitions))                       |
-| `else`                      | a dev-mode warning when every branch skips ([§4](api-rationale.md#two-decisions-that-fell-out-of-the-comparison)) |
-| a `send` return value       | `current` and `available` ([§12](api-rationale.md#send-returns-nothing))                                          |
-| `stop()`                    | unsubscribe, and stop sending ([§12](api-rationale.md#no-disposal-and-a-listener-that-throws))                    |
-| typed `send`                | `available` at runtime; recorded but unbuilt ([§11](api-rationale.md#if-it-comes-back-it-comes-back-as-s12))      |
-| immediate transitions       | an explicit input, until v1.2 ([§7](api-rationale.md#7-immediate-transitions))                                    |
-| hierarchy, parallel regions | out of scope ([§10](api-rationale.md#what-the-rest-of-the-record-forbids))                                        |
+| absent                      | instead                                                                                                          |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `enter` / `exit`            | patterns with one end pinned ([§9](api-rationale.md#9-actions))                                                  |
+| residency in the host       | the recipe above ([§12](api-rationale.md#residency-is-derivable-not-a-host-feature))                             |
+| `keep` / `repeat` / `stay`  | an ordinary self-transition row; restart is an action's question ([§6](api-rationale.md#6-self-transitions))     |
+| `emit`                      | the transition record `{ on, input, from, to }` ([§6](api-rationale.md#6-self-transitions))                      |
+| `else`                      | declining is a normal outcome, and silent ([§4](api-rationale.md#two-decisions-that-fell-out-of-the-comparison)) |
+| a `send` return value       | `current` and `available` ([§12](api-rationale.md#send-returns-nothing))                                         |
+| `stop()`                    | unsubscribe, and stop sending ([§12](api-rationale.md#no-disposal-and-a-listener-that-throws))                   |
+| typed `send`                | `available` at runtime; recorded but unbuilt ([§11](api-rationale.md#if-it-comes-back-it-comes-back-as-s12))     |
+| immediate transitions       | an explicit input on the edge ([§7](api-rationale.md#7-immediate-transitions))                                   |
+| hierarchy, parallel regions | out of scope ([§10](api-rationale.md#what-the-rest-of-the-record-forbids))                                       |
 
 ---
 
 ## Designed, not in v1
 
-Three settled shapes, each deferred for its own reason. Sketches, so the direction is
-visible; the arguments are in the rationale.
+Three directions v1 leaves room for, argued in the rationale and none of them built.
+Sketches rather than commitments: whether each ships, in what order, and — for
+composition — in what shape are all open.
 
 ### `actions` — effects owned by the definition
 
@@ -475,15 +477,15 @@ _Full argument: [rationale §9](api-rationale.md#9-actions)._
 ### Immediate transitions — `'from -> to'`, no input
 
 A transition that fires on entering a state, with `skip()` fall-through giving a guarded
-choice for free. Deferred because chaining is the one feature that forfeits guaranteed
-termination.
+choice for free. The least certain of the three: chaining is the one feature that
+forfeits guaranteed termination, so this may end up not landing at all.
 
 _Full argument: [rationale §7](api-rationale.md#7-immediate-transitions)._
 
 ### Composition — invoked children
 
-A child machine mounted at a state, with its outcome as a derived state rather than an
-input, reached by an immediate transition:
+A child machine mounted at a state. The leading sketch has the child's outcome as a
+derived state rather than an input, reached by an immediate transition:
 
 ```ts
 invokes: { loading: Child<UserFetch, 'ok' | 'err'> }
@@ -495,9 +497,9 @@ transitions: {
 }
 ```
 
-Every edge stays in the table. `loading.ok` is a state name that happens to contain a
-dot, so this needs no grammar of its own beyond immediate transitions. At most one child
-per state.
+Every edge stays in the table, and `loading.ok` is a state name that happens to contain
+a dot, so this spelling needs no grammar of its own beyond immediate transitions. Rival
+designs need none of that, which is part of what is unresolved.
 
 _Full argument, the rival designs, and what is unresolved:
 [rationale §10](api-rationale.md#10-composition)._
@@ -511,8 +513,7 @@ beyond appeal — rival layouts still compile — and the completion payload gro
 |states|², measured, with latency fine
 ([rationale §15](api-rationale.md#15-still-open), `pnpm measure:completions`).
 
-**v1.1 — `actions`.** Commit ordering extended to effects: teardown, setup and
-notification order within one commit, and an error channel for a throwing action.
-
-**v1.2 — composition and immediate transitions.** A termination rule now that chaining
-exists, cancellation semantics, and what data `loading.ok` carries.
+**After v1**, likeliest first and none of it promised: `actions`, which is what extends
+commit ordering to effects — teardown, setup and notification within one commit, plus an
+error channel for a throwing action — then immediate transitions, then composition.
+[Rationale §15](api-rationale.md#15-still-open) has what is still open.
