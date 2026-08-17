@@ -456,6 +456,65 @@ bites, are in [rationale §15](api-rationale.md#15-sending-inputs).
 
 ---
 
+## Scope by release
+
+**v1 — no `actions`, no composition.** The definition is topology and data;
+effects are attached by whoever runs the machine, via `.on()` on the host.
+That makes the core effect-free without needing §11's description vocabulary.
+
+### What still gates v1
+
+|     | question                                           | why it blocks                                                                                                                                                                                                                                                                                                                        |
+| --- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | **Does a residency handler get `send`?**           | Yes → commit ordering must define reentrancy. No → v1 cannot express fetch-then-transition **at all**, and the async story waits for v1.1. This is the biggest scoping call left.                                                                                                                                                    |
+| 2   | **Commit ordering**                                | When listeners fire relative to the state change, what `send` returns, and what happens when a listener sends during a send. Smaller without actions, but not empty.                                                                                                                                                                 |
+| 3   | **`.on()` moves to the host**                      | [§16](api-rationale.md#16-definition-and-instance--open): the current code attaches to the definition, so two hosts would share listeners. Now load-bearing, because `.on()` _is_ the effect mechanism.                                                                                                                              |
+| 4   | **`.on()` accepts a bare state key**               | Residency plus teardown, which [§12](api-rationale.md#12-actions--the-concern-argument) says the key rule already makes free. Unbuilt.                                                                                                                                                                                               |
+| 5   | **Does the definition/instance split survive v1?** | [§16](api-rationale.md#16-definition-and-instance--open) made it conditional: _"ship composition → keep the split; do not → a factory is simpler."_ Composition is now deferred, so that conditional currently points the other way. Keeping it is defensible as forward-compatibility, but it should be **decided**, not inherited. |
+| 6   | Host construction                                  | `run(publication, data)` or `publication.start(data)`; initial data as an argument or beside `initial:`.                                                                                                                                                                                                                             |
+| 7   | Are immediate transitions in v1?                   | `'from -> to'`, no input. Independently wanted, and currently only motivated by composition ([§17](api-rationale.md#17-effects-round-4--composition-reopened)). Cheap now, a breaking grammar change later.                                                                                                                          |
+
+Known and shippable without answering: the layout remains revisitable; whitespace
+tolerance costs the grep story until a lint rule exists; editor completion at
+~4 000 union members is unmeasured; the losing-candidate bug below is harmless
+while handlers only project.
+
+### v1.1 — `actions`
+
+The design is settled ([§12](api-rationale.md#12-actions--the-concern-argument)):
+trigger-keyed, restart-by-default, wrappers for policy. What is not:
+
+- **Commit ordering with actions in the loop** — the full eight decisions of
+  P0.7. When actions fire relative to listeners and to teardown.
+- **`actions` and `.on()` residency coexist** — same shape, different owners
+  (§12). If both attach to `draft`, what is the run and teardown order?
+- **An error channel** — what happens when an action throws.
+- **Restart-by-default is unvalidated.** The case that decides it is a
+  self-transition that changes resident data, and it has never been built.
+- The losing-candidate bug becomes worth fixing.
+- `keyed` / `once` / `debounced` — designed as later-and-free; still not needed.
+
+### v1.2 — composition
+
+Designed in [§17](api-rationale.md#17-effects-round-4--composition-reopened) and
+deferred. Open:
+
+- **Which spelling** — invoked children with the outcome as a derived _state_,
+  or the callback form. The accumulating-cost table in §17 is the case for the
+  callback; the typed protocol is the case against it.
+- **Vertical or horizontal?** §17 recommends invoked children (vertical), while
+  the strongest external evidence — SwingStates, ConstraintJS — is for peer
+  machines (horizontal). Both were designed; only one was recommended.
+- **What data `loading.ok` carries** — the child's outcome, the parent's data, or
+  both under separate bindings.
+- **Cancellation** — does leaving cancel the child's work, or only stop us
+  caring? Open since §9 and still unanswered.
+- Immediate transitions, if they did not land in v1.
+- The `invokes:` vocabulary map and the child-value block — a fourth map and a
+  fifth block.
+- `all` / `race` primitives, needed because only one child may mount per state.
+- Reading a running child's progress, which should be host-level and read-only.
+
 ## Not settled
 
 - **The layout is a three-way choice that went to string keys, not a closed

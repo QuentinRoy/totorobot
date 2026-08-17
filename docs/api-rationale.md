@@ -30,27 +30,30 @@
 14. [The graveyard](#14-the-graveyard)
 15. [Sending inputs](#15-sending-inputs)
 16. [Definition and instance — open](#16-definition-and-instance--open)
+17. [Effects, round 4 — composition, reopened](#17-effects-round-4--composition-reopened)
 
 ---
 
 ## 1. The decision ledger
 
-Twelve axes were tracked. Eleven are closed.
+Fourteen axes were tracked. Eleven are closed.
 
-| #   | Axis                       | Answer                                                      | §   |
-| --- | -------------------------- | ----------------------------------------------------------- | --- |
-| 1   | Overall layout             | string keys — `'submit: draft -> review'`; two rivals alive | 6   |
-| 2   | Data-free states           | `void` in the declared vocabulary                           | 7   |
-| 3   | Entry / exit actions       | edge patterns with one end pinned; no keyword               | 12  |
-| 4   | Re-entry vs stay           | dissolved — it is an action's restart policy                | 12  |
-| 5   | Self-transition spelling   | `'revise: draft -> draft'`, an ordinary row                 | 7   |
-| 6   | Input vocabulary           | declared: `types<{ inputs, states }>()`                     | 7   |
-| 7   | Returned commands (`emit`) | out — a listener recovers it from the transition            | 9   |
-| 8   | Fall-through refusal       | no `else`; dev-mode warning                                 | 4   |
-| 9   | Async / work-in-flight     | subsumed by axis 10                                         | 11  |
-| 10  | Actions in the machine     | `actions:`, keyed by trigger, wrappers for policy           | 12  |
-| 11  | The word for what you send | `inputs`, not `events` — the core is not a mailbox          | 7   |
-| 12  | Typed send site            | **dropped** — broad `send` only; reversible later           | 15  |
+| #   | Axis                       | Answer                                                       | §   |
+| --- | -------------------------- | ------------------------------------------------------------ | --- |
+| 1   | Overall layout             | string keys — `'submit: draft -> review'`; two rivals alive  | 6   |
+| 2   | Data-free states           | `void` in the declared vocabulary                            | 7   |
+| 3   | Entry / exit actions       | edge patterns with one end pinned; no keyword                | 12  |
+| 4   | Re-entry vs stay           | dissolved — it is an action's restart policy                 | 12  |
+| 5   | Self-transition spelling   | `'revise: draft -> draft'`, an ordinary row                  | 7   |
+| 6   | Input vocabulary           | declared: `types<{ inputs, states }>()`                      | 7   |
+| 7   | Returned commands (`emit`) | out — a listener recovers it from the transition             | 9   |
+| 8   | Fall-through refusal       | no `else`; dev-mode warning                                  | 4   |
+| 9   | Async / work-in-flight     | subsumed by axis 10                                          | 11  |
+| 10  | Actions in the machine     | `actions:`, keyed by trigger, wrappers for policy            | 12  |
+| 11  | The word for what you send | `inputs`, not `events` — the core is not a mailbox           | 7   |
+| 12  | Typed send site            | **dropped** — broad `send` only; reversible later            | 15  |
+| 13  | Composition                | **deferred from v1** — designed; outcome as state, not input | 17  |
+| 14  | Actions in v1              | **deferred** — residency via `.on()` on the host instead     | 17  |
 
 Two things about this table are worth knowing before reading further.
 
@@ -1838,6 +1841,596 @@ whether D5's pure path is documented alongside D1 or left as `step`.
 
 ---
 
+## 17. Effects, round 4 — composition, reopened
+
+> **Open.** Propositions, not a decision.
+
+### First: does composition justify actions?
+
+The prompt for this round was that without composition, `actions` may not earn
+its place. Testing that honestly, in both directions:
+
+**Actions do buy something on their own.** Residency-scoped lifetime with
+automatic teardown; written **once per state** rather than once per incoming edge
+(§12's kind-2 finding, which is what ruled out the edge-based propositions); a
+restart policy. Two shipping libraries — Zag (2.3 KB) and `useStateMachine`
+(1.1 KB) — offer exactly this and nothing more.
+
+**But the complaint lands anyway**, and §12 already conceded the half that
+matters: _"the block is **opaque**: nothing in the table says `loading` fetches…
+That was the fatal complaint against `within` in §9, and attaching to residency
+does not answer it — it only gives the closure a defensible lifetime."_
+
+So actions fixed `within`'s **lifetime** problem and inherited its **visibility**
+problem. Concretely, what stays unmodelled:
+
+```ts
+actions: {
+	loading: ({ data, send }) => {
+		fetchUser(data.id)
+			.then((u) => send('loaded', u)) // nothing says loading can only produce
+			.catch((e) => send('failed', e)) // `loaded` or `failed`
+	},
+}
+```
+
+Any action may send any declared input. Retry, timeout and sequencing are
+hand-rolled inside the closure. And §9's finding still stands: aborting stops the
+machine caring, not the server working. **The premise is right in its sharp
+form** — actions without composition are a lifetime rule bolted to an opaque
+closure, which is `useEffect` with better scoping.
+
+### The reframe: there are two compositions, and the evidence points at the one this project has not been discussing
+
+§10 asked only how to **mount a child inside a state** — the async question.
+The strongest external evidence in the repo is about something else entirely:
+
+> The SwingStates authors report that state explosion is **not** an issue within
+> a single interaction technique and appears only when _combining_ techniques.
+> Their fix, and ConstraintJS's independently, is **parallel small machines with
+> light communication — never hierarchy**. — [requirements.md](requirements.md),
+> P2.9 amendment, from [note 04](research/04-hci-critiques-and-alternatives.md)
+> F7/F8
+
+SwingStates names three patterns, and only one of them is a mount:
+
+| pattern                | mechanism                                                        | replaces               |
+| ---------------------- | ---------------------------------------------------------------- | ---------------------- |
+| **Parallel machines**  | several machines on one component, communicating by events       | AND/orthogonal states  |
+| **Stacking**           | machine per abstraction level; each emits what the next consumes | ad-hoc event synthesis |
+| **Shared transitions** | a common transition factored into a shared state class           | Harel super-states     |
+
+Their published Marking Menu — **this project's own acceptance case** — is
+**three parallel machines** (linear menu, marking menu, item highlighting), while
+[acceptance-cases.md](acceptance-cases.md) Case 1 folds all three into one. Two
+independent labs six years apart converged on this; the amendment calls it "as
+close to consensus as this literature gets".
+
+So:
+
+- **Vertical composition** — a child runs _while_ we are in a state. Solves
+  async. This is robot3's `invoke`, XState's actors, §10's F/G/H.
+- **Horizontal composition** — peers run _alongside_ each other. Solves
+  modularity and state explosion. This is P2.1, and it is what the field
+  actually converged on.
+
+They are different problems and probably want different mechanisms. Conflating
+them is what made §10 feel unsolvable.
+
+### What the record already forbids
+
+1. **Hierarchy is out** (§10, F). Keys become paths, `Handled`/`Sources` become
+   recursive, the arrow test dies. "A different project."
+2. **A mount grows the input vocabulary** (§11) — `loading.ok`, `loading.rejected`
+   — and §7 declares the vocabulary up front.
+3. **Actions work _because_ the type never grows** (§12): _"this works because it
+   is less powerful than a mount."_
+4. **Siblings in one object literal cannot see each other's inferred types**
+   (§6, option-e). A `run:` block beside `transitions:` inherits that.
+5. **P2.1**: parts keep their own typestate and effect ownership, and
+   "composition must not require hierarchical or parallel states in the core API".
+6. **P2.3**: "a general actor or observable model is unnecessary."
+7. **Size**: XState is the only surveyed library with real composition, at
+   **12.7 KB**. Everything else is 1–2.3 KB with `invoke`-for-promises or nothing
+   ([note 07](research/07-js-fsm-library-landscape.md)).
+
+Constraint 4 has a crack in it. §11 concluded a mount "cannot be a block… and
+must be a fluent chain". That holds only if the children are **inferred**. If
+they are **declared** — in `types<>`, beside `inputs` and `states` — the derived
+inputs are computable at the same moment as everything else, by a mapped type,
+which is §13 finding 10's safe mechanism. §7's own answer applies to its own
+objection.
+
+### Three designs
+
+Each answers **both** halves — async and modularity — because a design that
+answers only one is not a design, it is half of someone else's. They differ on a
+single question: **where does a child machine live?**
+
+|                                  | Peers                  | Children                     | Inlining           |
+| -------------------------------- | ---------------------- | ---------------------------- | ------------------ |
+| a machine inside a machine       | never                  | at runtime                   | at definition time |
+| machines at runtime              | many, flat             | a tree                       | **one**            |
+| new runtime concepts             | none                   | child lifetime, cancellation | **none**           |
+| new type machinery               | little                 | moderate                     | **heavy**          |
+| async is                         | an action wrapper      | a mounted child              | inlined rows       |
+| the work is visible in the table | ✗                      | ✓                            | ✓                  |
+| wiring lives                     | outside the definition | inside                       | inside             |
+
+---
+
+#### Design 1 — Peers: a machine is never inside a machine
+
+Composition is several machines running **side by side**, wired by
+subscriptions. Async is not composition at all; it is an action whose outcomes
+are declared.
+
+```ts
+// modularity — SwingStates' Marking Menu, as its authors actually built it
+const menu = runAll({
+	linear: linearMenu,
+	marking: markingMenu,
+	highlight: highlighter,
+})
+
+menu.marking.on('*: * -> recognized', (e) => menu.highlight.send('clear'))
+```
+
+```ts
+// async — an action wrapper, not a child
+actions: {
+	loading: invoke(({ data }) => getUser(data.id), { ok: 'loaded', err: 'failed' }),
+}
+```
+
+`invoke`'s outcome map is what makes this typed rather than a bare closure: its
+values are checked against `Handled<T, 'loading'>`, so `loading` provably
+produces `loaded` or `failed` and nothing else.
+
+**Why it is credible.** `runAll` returns a **host of hosts**, not a machine — if
+it were a machine its state would be the product of its children's, which is
+parallel states, which P2.1 forbids in the core. So the core is untouched: no
+child lifetime, no cancellation semantics, no vocabulary growth. It is also
+exactly what two independent labs converged on.
+
+**Its real weakness**, and it is not the obvious one. The peer wiring lives
+_outside_ the definition, as imperative `.on()` calls a caller must remember to
+make. That is precisely the shape §12 rejected for actions: _"the exported thing
+is not the machine — it is half a machine plus a convention that every caller
+remembers to configure it."_ This design accepts that argument for actions and
+then violates it one level up.
+
+---
+
+#### Design 2 — Children: the child is declared in `inputs`
+
+Two cheaper spellings were tried first and both failed on the same principle.
+
+**Rejected — a `children:` map in `types<>`.** A fourth vocabulary block plus a
+`final` field, so the child could contribute an input name. It works, but it
+buys with structure what turns out to be available without it.
+
+**Rejected — an outcome map inside `actions`:**
+
+```ts
+actions: {
+	loading: invoke(userFetch, { ok: 'loaded', err: 'failed' })
+} // ✗
+```
+
+This types well — it checks the names _and_ the payload compatibility — and it is
+the cheapest thing in the round. **It is still wrong**, because `ok -> loaded` is
+an **edge that is not in the table**. The thesis is four coordinates on one line;
+a routing map in another block is a hidden arrow, and a reader now needs two hops
+to answer "what happens when the fetch succeeds". Cheapness does not buy that.
+
+**The child belongs in `inputs`, because inputs is exactly what it contributes:**
+
+```ts
+// an ordinary spec — nothing about it was written to be a child
+type UserFetch = {
+	inputs: { resolve: { user: User }; reject: { error: Error } }
+	states: { pending: { id: string }; ok: { user: User }; err: { error: Error } }
+}
+
+type Publication = {
+	inputs: {
+		open: { id: string }
+		fetch: Child<UserFetch, 'ok' | 'err'> // ← the parent picks the outcomes
+	}
+	states: {
+		empty: void
+		loading: { id: string }
+		ready: { user: User }
+		broken: { error: Error }
+	}
+}
+
+machine({
+	types: types<Publication>(),
+	actions: { loading: invoke('fetch', userFetch) },
+	transitions: {
+		'open: empty -> loading': ({ input }) => ({ id: input.id }),
+		'fetch.ok:  loading -> ready': ({ input }) => ({ user: input.user }),
+		'fetch.err: loading -> broken': ({ input }) => ({ error: input.error }),
+	},
+})
+```
+
+**Every edge is back in the table**, four coordinates on one line, and the
+`fetch.` prefix marks the inputs that arrive on their own — which is precisely
+what §10 counted as option G's advantage before the round stalled on where to
+declare the child. It stalled because the only candidates were a new block or a
+sibling inference. **`inputs` was the answer**: no fourth map, and the derivation
+runs off a declared type, so §6's sibling problem never arises.
+
+**Measured** (`scratchpad/probe/child-in-inputs2.ts`), including the part that
+took two attempts — each outcome carries **its own** payload, not a union over
+all of them:
+
+```
+'fetch.ok: loading -> ready'          ✓
+'fetch.err: loading -> broken'        ✓
+'fetch.pending: loading -> ready'     ✗ TS2820 … Did you mean 'fetch.err: loading -> ready'?
+'fetch: loading -> ready'             ✗ a bare child name is not an input
+input.user   on fetch.ok              ✓
+input.error  on fetch.ok              ✗ TS2339: does not exist on type '{ user: User }'
+```
+
+**Four things still come free** from `actions`, unchanged: residency lifetime
+(start on entry, teardown on exit, restart on re-entry), restart policy via
+`persistent(…)`, ordinary transition rows with no snapshot wrapper and no
+`skip()` needed to branch, and robot3's proven `invoke` as the runtime.
+
+**The outcomes are declared by the parent, not the child.** An earlier draft put
+a `final` field on the child spec, which meant only machines _written to be
+invoked_ could be invoked. `Child<UserFetch, 'ok' | 'err'>` moves that choice to
+the use site: any machine can be a child, two parents can treat different states
+as outcomes, and `'bogus'` is still rejected against the child's real states.
+
+**Costs.** One new type, `Child<C, Outcomes>`. And the input vocabulary grows —
+computably, from a declared type, so constraint 2 is satisfied by construction
+rather than by avoidance.
+
+#### The correction: a child's outcome is a state, not an input
+
+`'fetch.ok: loading -> ready'` is a **lie**, and a small one that matters.
+Nothing sends `fetch.ok`. No caller can send it, `doc.send('fetch.ok')` is
+meaningless, and it would appear in `available` as though a user could pick it.
+The child reaching `ok` is **a condition that became true**, which is what a
+state is.
+
+Spelling it as a state requires a way to leave a state with no input — an
+**immediate transition** — which this repo already lists as a known missing
+feature, so one mechanism pays twice:
+
+```ts
+type Publication = {
+	inputs: { open: { id: string }; cancel: void }
+	states: { empty: void; loading: { id: string }; ready: { user: User }; broken: { error: Error } }
+	invokes: { loading: Child<UserFetch, 'ok' | 'err'> } // keyed by the state it runs in
+}
+
+transitions: {
+	'open: empty -> loading': ({ input }) => ({ id: input.id }),
+	'loading.ok -> ready':    ({ outcome }) => ({ user: outcome.user }),
+	'loading.err -> broken':  ({ outcome }) => ({ error: outcome.error }),
+}
+```
+
+**The key rule extends to three forms and stays decidable from the string
+alone**, which is the property that mattered:
+
+| key                 | meaning             |
+| ------------------- | ------------------- |
+| no arrow            | a state (residency) |
+| **arrow, no colon** | **immediate**       |
+| arrow, with colon   | an input edge       |
+
+**Measured** (`scratchpad/probe/immediate.ts`): all three coexist,
+`Sources<'ready'>` is still the text search `-> ready`, `loading.ok` carries the
+child's outcome data, and `'loading.pending -> ready'` is rejected because the
+parent did not declare `pending` an outcome.
+
+Three things fall out that were not designed for:
+
+- **`skip()` needs no change.** If every immediate candidate skips, you stay in
+  `loading.ok` — which is meaningful: the child finished and we have not decided
+  yet.
+- **`'cancel: loading.ok -> empty'` is legal** — an ordinary input edge out of a
+  derived state. Waiting in a settled-child state for a user decision is
+  expressible with nothing added.
+- **The arrow test improves.** There is no fictional input on the line, so
+  source, target and handler are all that is left.
+
+**Four costs, and the fourth is the serious one.**
+
+- **It is one level of hierarchy.** §10 disqualified hierarchy because keys
+  become paths and `Sources`/`Handled` go recursive. Here the nesting is bounded
+  — derived only from `invokes`, never nested further — and both derivations
+  stayed flat text searches. That is the good half without the bad half, but it
+  is visibly the nose of the camel, and `a.b.c` will be asked for.
+- **A fourth vocabulary map**, `invokes:`. Keyed by the state the child runs in,
+  which is more natural than a child name and is what justifies the `loading.ok`
+  spelling.
+- **`loading.ok`'s data is undecided.** The probe gave it the child's outcome.
+  But we are arguably still in `loading` and may still need `{ id }` — so it is
+  the child's outcome, the parent's data, or both under separate bindings. This
+  has to be settled and it is not obvious.
+- **Run-to-completion becomes urgent.** A single `send` can now cause a _chain_
+  of transitions. When do actions fire, when do listeners fire, what does `send`
+  return, and what stops `'a -> b'` / `'b -> a'` from spinning? Requirements P0.7
+  was already amended to say run-to-completion is **eight decisions, not one**;
+  immediate transitions are what make paying that bill unavoidable.
+
+#### One child per state, and why that is not a limitation
+
+Two mounts in **different** states are free — `invokes: { loading: …, syncing: … }`
+are separate keys with separate derived states, and nothing interacts.
+
+Two mounts in the **same** state is the real question, and counting the states
+answers it:
+
+| mounts in one state | derived state space                         |
+| ------------------- | ------------------------------------------- |
+| one child           | `loading.ok`, `loading.err` — **+2, a sum** |
+| two children        | 3 × 3 = **9, a product**                    |
+
+With one child, `loading.ok` says everything: the child settled, this is how.
+With two, `loading.user.ok` says nothing about `prefs` — so either the name
+encodes both children's progress, or it is incomplete. Encoding both **is
+AND-states**, which P2.1 puts outside the core and which is exactly ConstraintJS's
+2 × 2 × 4 complaint (§17, the reframe).
+
+**So: at most one child per state, enforced structurally for free** — `invokes`
+is keyed by state name and object keys are unique. No rule to write, no error
+message to design.
+
+The cases this appears to block all have better answers:
+
+| want                                | answer                                                     |
+| ----------------------------------- | ---------------------------------------------------------- |
+| fetch two things, continue on both  | `all(a, b)` — a library primitive, like `Promise.all`      |
+| fetch with a timeout                | `race(fetch, timer)` — same                                |
+| two genuinely independent lifetimes | **peer machines**, not children — the horizontal mechanism |
+
+`all` and `race` are ordinary machine specs the library provides, implemented
+natively rather than built out of `invokes`, so they flatten the product into a
+single declared outcome set before it reaches anyone's vocabulary. Same move as
+`Promise.all`, and the same reason.
+
+**The general statement, which is the §17 reframe applied to itself:
+multiplicity in the vertical direction is a product, and products belong to the
+horizontal mechanism.** Vertical composition is one child at a time; concurrency
+is peers.
+
+#### An accumulating cost worth naming
+
+This round has grown the shape twice without ever proposing to. Counting:
+
+|                              | before §17                                   | after                     |
+| ---------------------------- | -------------------------------------------- | ------------------------- |
+| vocabulary maps in `types<>` | `inputs`, `states`                           | **+ `invokes`**           |
+| blocks in `machine({…})`     | `initial`, `types`, `transitions`, `actions` | **+ a child-value block** |
+| key forms                    | 2                                            | **3**                     |
+
+Each step was individually justified and the total is still a real cost, paid
+against a feature — composition — that no shipping library under 12.7 KB
+provides at all. **The alternative that keeps all three columns unchanged is the
+callback spelling below**, which is the honest reason to keep it on the table
+rather than dismissing it as an escape hatch.
+
+#### The fork: is a child's outcome topology, or is it an input source?
+
+#### The fork: is a child's outcome topology, or is it an input source?
+
+#### The fork: is a child's outcome topology, or is it an input source?
+
+There is a second, complete spelling of this design that shares none of the
+machinery above. It is not a complement to the dotted form — **it is the
+alternative**, and holding both would mean two ways to do one thing.
+
+```ts
+type Publication = {
+	inputs: {
+		open: { id: string }
+		userLoaded: { user: User } // ordinary declared inputs
+		userFailed: { error: Error }
+	}
+	states: { … }
+}
+
+actions: {
+	loading: invoke(userFetch, ({ child, send }) => {
+		child.on('ok', (s) => send('userLoaded', s.data))
+		child.on('err', (s) => send('userFailed', s.data))
+	}),
+}
+```
+
+**Its case is stronger than "escape hatch" allows**, and rests on one
+observation: **the table has never said where an input comes from.** `open`
+arrives from a click, `submit` from a form, `userLoaded` from a child machine —
+the model does not distinguish them, and `grep '-> ready'` finds the row either
+way. On that reading the dotted form invents a category the design does not
+otherwise have, and the callback is not a hidden edge at all — it is an action
+sending a declared input, which is exactly what actions already do.
+
+It also answers what the dotted form cannot: `child.send(…)` downward, which
+P2.1 asks for, plus `child.current` and conditional or partial wiring. And it
+needs **no new types whatsoever**.
+
+What it gives up is that the parent/child protocol is unchecked. Nothing
+verifies that `err` was handled, nothing ties `userLoaded`'s payload to the
+child's `ok` data, and a renamed child state fails silently at runtime rather
+than at compile time.
+
+|                               | dotted (`fetch.ok`)        | callback (`child.on`) |
+| ----------------------------- | -------------------------- | --------------------- |
+| new types                     | `Child<C, Out>`            | **none**              |
+| child must be written for it  | no (parent picks outcomes) | no                    |
+| outcome payloads checked      | **✓ exact**                | ✗ hand-declared       |
+| unhandled outcome detectable  | **✓ possible**             | ✗                     |
+| send downward / read progress | ✗                          | **✓**                 |
+| where the wiring lives        | the table                  | a closure             |
+
+**The dotted form wins, on a narrower argument than it first appears.** Its two
+concessions both have answers elsewhere: reading a running child's progress is a
+**view** concern and belongs on the host (`doc.children.fetch.current`, read-only,
+no definition change); and sending downward is, in almost every real case,
+_restart with different data_ — which residency plus `keyed()` already expresses
+without a handle. Once those are subtracted, the callback's remaining advantage
+is generality nobody has a use for yet, and its cost is a protocol the compiler
+cannot see.
+
+That is the same trade this project has made every time: prefer the less powerful
+thing that the type system can check.
+
+**Still open**: whether leaving cancels the child's work or merely stops us
+caring (§9); and that `actions` is trigger-keyed, so two children in one state
+need `loading: all(invoke(…), invoke(…))`.
+
+#### Design 3 — Inlining: composition happens before the machine runs
+
+There is only ever **one** machine. A child is a source of rows and vocabulary,
+merged in at definition time under a prefix.
+
+```ts
+type Base = {
+	inputs: { open: { id: string } }
+	states: { empty: void; ready: { user: User } }
+}
+type Publication = Compose<Base, { fetch: UserFetch }>
+// Publication['states'] now also has 'fetch.pending' | 'fetch.done' | 'fetch.failed'
+// Publication['inputs'] now also has 'fetch.resolve' | 'fetch.reject'
+
+machine({
+	types: types<Publication>(),
+	transitions: {
+		...inline('fetch', userFetch), // the child's own rows, prefixed
+		'open: empty -> fetch.pending': ({ input }) => ({ id: input.id }),
+		'fetch.resolve: fetch.pending -> ready': ({ input }) => ({ user: input }),
+	},
+})
+```
+
+**Why this is the most native of the three.** The table is already data, so
+composition is data-merging, and everything downstream is unchanged: `step` is
+the same function, `actions` are the same block, there is no child to own, no
+lifetime to define, no cancellation question — leaving `fetch.pending` is an
+ordinary transition and its action's teardown fires exactly as it already does.
+The arrow test passes on generated rows because they are real rows.
+
+Modularity is the same mechanism: inline each part under its own prefix. And
+reuse is free — `userFetch` can be inlined twice under different prefixes.
+
+**Costs, and they are real.** The type machinery is the heaviest of the three: a
+`Compose` that merges two Specs under a key prefix, and the rename must reach
+into every transition key of the child. State names get long and the flat table
+gets big. There is **no dynamic spawning** — the set of children is fixed when
+the machine is written. And a generated row is not in the source, so grep finds
+it only in the composed value, which weakens the property the design was chosen
+to protect.
+
+**One thing it cannot do**, which decides how far it goes: inlining composes a
+_sum_ of states, not a _product_. ConstraintJS's radio button — focus × checked ×
+mouse-phase — is a product, and inlining it produces the 2 × 2 × 4 = 16 states
+their paper exists to complain about. **Concurrency is out of reach here.**
+
+---
+
+### Where this points
+
+**Design 2.** It is the only one that answers both halves while keeping the
+definition complete **and keeping every edge in the table** — which is the test
+that eliminated its own two cheaper spellings, and the one this project exists
+to pass.
+
+Against Design 1: peers has better external support, but its composition is a
+convention living outside the exported value — the exact defect §12 rejected for
+actions. A library whose thesis is "the definition is the documentation" should
+not require an assembly step it cannot express. Design 2 subsumes the useful part
+anyway: peers in one state are `all(invoke(a, …), invoke(b, …))`.
+
+Against Design 3: inlining is the most native and the most elegant, and it is
+structurally unable to express concurrency, which the strongest external evidence
+in the repo says is the case that matters. It solves async beautifully and
+modularity not at all.
+
+What makes it affordable is that everything hard was decided for other reasons:
+residency defines the child's lifetime (§12), wrappers carry the restart policy
+(§12), and declaring the child in `inputs` means the vocabulary grows from a
+declared type rather than an inferred sibling — which is the mechanism §7 built
+for a different problem entirely.
+
+### Not in v1 — and neither are actions
+
+**Composition is deferred**, and with it the whole of §17. The record above is
+the design to return to, not the plan.
+
+**`actions` is deferred with it**, replaced by residency-scoped subscriptions.
+That is §12's proposition X, which lost at the time. Re-testing the arguments
+that beat it, now that composition is out:
+
+| §12's argument for a block               | still distinguishes?                                    |
+| ---------------------------------------- | ------------------------------------------------------- |
+| expresses a socket (the kind-3 test)     | **no** — residency-keyed `.on()` is equally node-scoped |
+| a command on an edge duplicates (kind 2) | **no** — same reason                                    |
+| symmetry: everything else is a block     | weak alone                                              |
+| **the definition is complete**           | **yes** — the only one that survives                    |
+
+Exactly one argument distinguishes them, and it is a reason to add `actions`
+**later**, not a reason to have it now.
+
+**Three positive reasons to defer:**
+
+1. **Actions cannot be specified until commit ordering is.** api.md already flags
+   it — _"actions do not run without it"_ — and §17's immediate transitions make
+   it worse: one `send` can now cause a chain, and P0.7 was already amended to say
+   run-to-completion is **eight decisions, not one**. Shipping actions first means
+   guessing at all eight.
+2. **Two steps to the intended end state, not a migration.** §12 already assigns
+   both a job: _"`actions` is the machine's own behaviour and ships with the
+   definition; `.on()` is a subscription attached by whoever instantiates it."_
+   v1 ships the subscriber half; v2 adds the owner half beside it. Nothing is
+   taken away and nothing has to move.
+3. **v1 becomes the effect-free core for free.** §11 wanted exactly this and
+   rejected it because making it _complete_ needed a description vocabulary, a
+   reconciling driver and an identity rule. None of that is needed if the caller
+   attaches effects imperatively: the definition stays pure, serialisable and
+   replayable, and only ergonomics pay.
+
+**And `.within()` may not need to exist.** §12's closing note already covers it:
+
+> under one shared key language, `.on()` could also accept a bare state key and
+> mean residency, with the same setup-and-teardown shape. That would make `.on`
+> and `actions` structurally identical, differing only in who owns them. Not
+> needed now; the rule makes it free later.
+
+Later is now — one method, two key forms already in the grammar:
+
+```ts
+const doc = run(publication)
+
+doc.on('*: * -> published', (e) => notify(e.to.data)) // an edge — notification
+doc.on('draft', ({ data }) => {
+	// a bare state — residency
+	const t = setTimeout(() => autosave(data), 2_000)
+	return () => clearTimeout(t) // teardown on leaving
+})
+```
+
+On the **host**, not the definition — which §16 established independently, and
+which dissolves the definition-completeness objection: nobody expects an imported
+topology to carry behaviour.
+
+**What v1 gives up, plainly.** An imported machine is topology and data only.
+Anything that must `send` from a residency handler — the whole async story —
+reopens commit ordering, so v1 either accepts that or scopes residency to effects
+that do not feed back. That choice is the first thing v2 has to make anyway.
+
+---
+
 ## What is still open
 
 - **Layout is a live three-way choice**, not a closed question. String keys is
@@ -1848,10 +2441,12 @@ whether D5's pure path is documented alongside D1 or left as `step`.
 - **Editor completion responsiveness at ~4 000 union members is unmeasured.**
   TS 7.0.2's `--lsp` did not answer `textDocument/completion` even for a 4-member
   union.
-- **Composition has no home in the current shape.** The mount block (G) is the
-  cheapest answer that keeps every transition in the table; derived mounting (H)
-  is strictly better if anyone finds a defensible rule for leaving a set of
-  states.
+- **Composition is designed and deferred** (§17). Invoked children, with the
+  child's outcome as a derived _state_ reached by an immediate transition. Not in
+  v1.
+- **Run-to-completion is eight decisions, not one** (P0.7, amended), and
+  immediate transitions make paying that bill unavoidable before `actions` or
+  composition can ship.
 - **`step` calls losing candidates' handlers.** Harmless under this design, real
   the moment effects go back in a handler, true of all three layouts.
 
