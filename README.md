@@ -85,7 +85,7 @@ state map.
 
 The code above is the **first generation**. The design has since settled on a
 different shape — a declared vocabulary, a flat string-keyed transition table, and
-one observer supplied by whoever runs the machine:
+listeners attached by whoever runs the machine:
 
 ```ts
 const publication = machine({
@@ -97,9 +97,8 @@ const publication = machine({
 	},
 })
 
-const doc = run(publication, (e) => {
-	if (e.to.state === 'published') notify(e.to.data)
-})
+const doc = run(publication)
+doc.on('* -> published', (e) => notify(e.to.data))
 ```
 
 It is designed, not built. Read [the API](docs/api.md) for what it is, and

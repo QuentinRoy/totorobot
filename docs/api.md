@@ -6,9 +6,9 @@
 > working prototype is
 > [`explorations/candidates/n2-declared-types/`](../explorations/candidates/n2-declared-types/).
 >
-> **v1 is topology and data.** One observer, no effect mechanism, one transition
-> per input. `actions`, composition and immediate transitions are designed and
-> deferred — see [Designed, not in v1](#designed-not-in-v1).
+> **v1 is topology and data.** Transitions, a host, listeners on the host, one
+> transition per input. `actions`, composition and immediate transitions are
+> designed and deferred — see [Designed, not in v1](#designed-not-in-v1).
 
 ## The whole thing at a glance
 
@@ -50,20 +50,18 @@ export const publication = machine({
 	},
 })
 
-const doc = run(publication, (e) => {
-	if (e.to.state === 'published') notify(e.to.data)
-})
+const doc = run(publication)
+doc.on('* -> published', (e) => notify(e.to.data))
 ```
 
 | block         | answers                               |
 | ------------- | ------------------------------------- |
 | `types`       | what can happen, and what we can be   |
 | `transitions` | how we move, and what the new data is |
-| the observer  | what the outside world does about it  |
+| `.on()`       | what the outside world does about it  |
 
-Two blocks and one callback. No `enter`, no `exit`, no `keep`, no `repeat`, no
-`else`, no `nothing`, no `state()`, no listener registry, no type annotation on any
-handler.
+Two blocks and one subscription. No `enter`, no `exit`, no `keep`, no `repeat`, no
+`else`, no `nothing`, no `state()`, no type annotation on any handler.
 
 ---
 
@@ -168,13 +166,10 @@ are a plain text search, and the reverse index is derivable:
 ## The host
 
 A machine is driven through a **host** — the stateful thing that owns the current
-state and notifies **one** observer, supplied when it is constructed.
+state and notifies subscribers.
 
 ```ts
-const doc = run(publication, (e) => {
-	// e is the transition record: { on, input, from, to }
-	if (e.to.state === 'published') notify(e.to.data)
-})
+const doc = run(publication) // one host per independent use
 
 doc.send('open', { text: 'hello' })
 doc.send('submit', { route: 'review' })
@@ -219,48 +214,116 @@ if (now.state === 'draft') {
 }
 ```
 
-### One observer, supplied at construction
+### `.on()` — observing transitions
 
-Not a `subscribe()` method and not a listener list. A registration API implies a
-list, and you cannot offer one and then declare "only one" — passing the callback to
-the constructor makes singularity structural. It also removes the unsubscribe
-question: the observer's lifetime is the host's lifetime.
+```ts
+const off = doc.on('* -> published', (e) => notify(e.to.data))
+doc.on('cancel: draft -> *', () => track('cancelled'))
+```
 
-**It receives the transition record, not a snapshot** — `{ on, input, from, to }`,
+**On the host, never the definition.** An imported definition is inert — topology
+and data, nothing that runs — so two hosts over one definition share nothing.
+`.on()` returns an unsubscribe function.
+
+**The handler receives the transition record**, `{ on, input, from, to }`,
 discriminated by `on`, so `e.on === 'submit'` narrows `e.input`, and `e.from` /
 `e.to` each carry their end's state and data. That matters more than it looks:
 handing over a snapshot instead would make "which input caused this" unrecoverable
 and would reopen the case for `emit`. Robot3 hands its observer the live service and
 pays exactly that price.
 
-**Effects are the caller's, and v1 gives them no help.** No residency, no teardown,
-no pattern matching — starting a fetch on entering `loading` and cancelling it on
-the way out is a function the caller writes and the observer drives. That is a real
-cost, taken deliberately: it is the baseline `actions` has to beat, and `actions` is
-[designed and deferred](#designed-not-in-v1).
+**Patterns are the transition key language with coordinates left open**, and `*` is
+allowed at any position:
+
+```ts
+'* -> loading' //    entry: every arrival, including re-entry
+'draft -> *' //      exit:  every departure
+'*: draft -> *' //   narrower: every departure *caused by an input*
+'submit: draft -> *' // by a specific input
+```
+
+The two ways of leaving a coordinate open are not the same. **`*` means "any input,
+and there is one"** — it does not match the absence of one. **An omitted input
+position is unconstrained** and matches input-driven edges as well as transitions
+with no input at all. So `'draft -> *'` is the right spelling for an exit.
+
+The parse is already paid for by the transition table, so matching is three
+comparisons against a transition that has been parsed anyway. **Listeners fire in
+registration order**, which is not just determinism for its own sake — see below.
+
+**A bare key is not legal here.** `doc.on('draft', fn)` would be a state, and states
+mean residency, which the host does not implement. The key rule says why, and
+`actions` is what will give the form a meaning.
+
+### Residency is a helper, not a feature
+
+Scoping something to "while we are in `draft`", with a teardown, needs nothing from
+the host that is not already here:
+
+```ts
+function residency(doc, state, setup) {
+	let teardown
+	const off1 = doc.on(`${state} -> *`, () => {
+		teardown?.()
+		teardown = undefined
+	}) // exit registered FIRST
+	const off2 = doc.on(`* -> ${state}`, (e) => {
+		teardown = setup(e.to)
+	})
+	if (doc.current.state === state) teardown = setup(doc.current) // already resident
+	return () => {
+		off1()
+		off2()
+		teardown?.()
+	}
+}
+```
+
+A self-transition matches **both** patterns, so restart-on-re-entry falls out rather
+than being implemented — which is why registration order is load-bearing, and why
+`doc.current` has to be readable at registration for the case no transition will
+announce. The policy wrappers come along too: `persistent` is
+`if (e.to.state !== e.from.state)` in the exit handler, `keyed` compares
+`k(e.from.data)` against `k(e.to.data)`.
+
+So the host owns no lifetime, and this can arrive at any time without any version
+having been wrong. What the host **would** have to own is
+[`actions`](#designed-not-in-v1) — residency declared in the definition, which is
+inert data that something has to interpret. That is the real dividing line:
+caller-owned residency is a helper, definition-owned residency is host machinery.
 
 ### Commit ordering
 
-Four rules, and they are the whole execution model:
+Five rules, and they are the whole execution model:
 
 1. **One input yields at most one transition.** Big steps provably terminate. This
    is what deferring immediate transitions buys, and the reason to want it.
-2. **Commit, then notify.** The observer always sees a fully committed machine, so
-   `e.to` and `doc.current` agree.
-3. **A send from inside the observer is queued**, and the queue drains before the
-   outermost `send` returns — never on a microtask, and never nested. So the
-   observer is never re-entered while an earlier call is still running.
-4. **`send` answers `moved`, `none`, or `queued`.** `queued` only ever appears when
+2. **Commit, then notify.** A listener always sees a fully committed machine, so
+   `e.to` and `doc.current` agree — for every listener, always.
+3. **Listeners fire in registration order.** Deterministic, and the residency helper
+   depends on it.
+4. **A send from a listener is queued**, and the queue drains before the outermost
+   `send` returns — never on a microtask, and never nested. So a listener is never
+   re-entered while an earlier call is still running, and the listeners after it are
+   not told about a transition the machine has already left.
+5. **`send` answers `moved`, `none`, or `queued`.** `queued` only ever appears when
    sending from inside a dispatch; ordinary callers see the first two.
+
+Rules 2–4 together are what make a listener **list** safe rather than merely
+convenient: without the queue, whether your event is stale on arrival would depend
+on what somebody else registered before you.
 
 ## The key rule
 
-> **A key with no `->` names a state. An edge always contains an arrow.**
+> **A key with no `->` names a state. An edge always contains an arrow, even when
+> both ends are `*`.**
 
-Decidable from the string alone, so a reader never has to know where they are. v1
-has only transition keys, so nothing currently exercises the first half — it earns
-its keep when `actions` arrives and a bare key means residency. Recorded now because
-the grammar has to be consistent from the start.
+Decidable from the string alone, so a reader never has to know whether they are
+reading a transition key or a pattern. In v1 nothing exercises the first half — a
+bare key is simply invalid in both positions — and it earns its keep when `actions`
+arrives and a bare key means residency. The rule is stated now because the grammar
+has to be consistent from the start: without it, `.on('review', fn)` would be an
+input in one reading and a state in another, and `review` is plausibly both.
 
 ---
 
@@ -303,11 +366,10 @@ are in [the rationale](api-rationale.md#11-sending-inputs).
 
 | absent                | because                                                                                                                                       |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| a listener registry   | one observer at construction; a registration API implies a list, and the list is what makes dispatch ordering hard                            |
-| listener patterns     | the observer gets every transition and an `if`; matching returns with `actions`, where it also scopes a lifetime                              |
-| `enter` / `exit`      | edge patterns with one end pinned express both — deferred with `actions`                                                                      |
+| residency in the host | derivable from edge patterns in ten lines; the host owning a lifetime is what `actions` is for                                                |
+| `enter` / `exit`      | patterns with one end pinned already express both                                                                                             |
 | `keep` / `repeat`     | unobservable without entry/exit; a restart policy when it matters                                                                             |
-| `emit`                | the observer recovers everything from `{ on, input, from, to }`                                                                               |
+| `emit`                | a listener recovers everything from `{ on, input, from, to }`                                                                                 |
 | `else`                | throws at runtime, buys no static guarantee; a dev warning instead                                                                            |
 | typed `send`          | unsound in TS (narrowing survives mutation); a sound design is [recorded but unbuilt](api-rationale.md#if-it-comes-back-it-comes-back-as-s12) |
 | immediate transitions | chaining forfeits guaranteed termination; deferred to where it is needed                                                                      |
@@ -395,12 +457,12 @@ Full argument, the rival designs, and what is still unresolved:
 
 ## What still gates v1
 
-|     | question                                        | note                                                                                                                                                                                                      |
-| --- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | **Does the definition/instance split survive?** | [§12](api-rationale.md#12-the-host) made it conditional on shipping composition, which is deferred — so the conditional points at a single live object. Decide it, do not inherit it.                     |
-| 2   | **Host construction**                           | `run(publication, observer, data)` or `publication.start(…)`; where the initial data goes; and the observer's arity, since a machine driven purely by polling `doc.current` may not want one at all.      |
-| 3   | **Disposal**                                    | P0.7 refers to an execution being disposed, and with the observer fixed at construction there is no other way to detach. `doc.stop()`, what it does to a queued send, and what `send` answers afterwards. |
-| 4   | Error channel                                   | What happens when the observer throws mid-drain. Smaller than the `actions` version of the question, but not empty.                                                                                       |
+|     | question                                        | note                                                                                                                                                                                  |
+| --- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Does the definition/instance split survive?** | [§12](api-rationale.md#12-the-host) made it conditional on shipping composition, which is deferred — so the conditional points at a single live object. Decide it, do not inherit it. |
+| 2   | **Host construction**                           | `run(publication, data)` or `publication.start(data)`; whether the initial data is an argument or lives beside `initial:`.                                                            |
+| 3   | **Disposal**                                    | P0.7 refers to an execution being disposed. `doc.stop()`, what it does to a queued send and to registered listeners, and what `send` answers afterwards.                              |
+| 4   | Error channel                                   | What happens when a listener throws mid-drain — one bad handler should not strand the listeners after it or the rest of the queue.                                                    |
 
 Known and shippable without answering: the layout remains revisitable
 ([three-way, still live](api-rationale.md#4-layout)); whitespace tolerance costs the

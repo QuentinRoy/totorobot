@@ -51,8 +51,8 @@ Seventeen axes. Fourteen are closed.
 | 13  | Composition                | **deferred from v1** — designed; outcome as state, not input | 10  |
 | 14  | Actions in v1              | **deferred** — v1 has no effect mechanism at all             | 9   |
 | 15  | Immediate transitions      | `'from -> to'`, no input — designed; **deferred to v1.2**    | 7   |
-| 16  | Observation                | one observer, at construction; no listener registry          | 12  |
-| 17  | Commit ordering            | one transition per input; commit, notify, queue, drain       | 12  |
+| 16  | Observation                | `.on(pattern, fn)` on the host; no residency key             | 12  |
+| 17  | Commit ordering            | one transition per input; commit, notify in order, queue     | 12  |
 
 The axes are not independent. Declaring the vocabulary (§5) settles 2, 5 and 6 in
 one move. Removing entry/exit settles 3, which makes 4 and 5 unobservable and
@@ -1745,53 +1745,98 @@ immutable — which is what lets it be exported, imported, diffed and visualised
 Still open: what the host is called (`run` / `interpret` / `start`), and whether
 the initial data is an argument or lives in the definition beside `initial:`.
 
-### One observer, supplied at construction
+### Observation: `.on()`, on the host, with patterns
 
-`.on()` — a listener registry with the pattern language — is **dropped**. The host
-takes exactly one observer callback when it is constructed, robot3's
-`interpret(machine, onChange)` shape.
+`doc.on(pattern, fn)` returns an unsubscribe function. Many listeners, edge patterns
+in the transition key language, and **no bare-state key** — a key with no arrow
+means residency, which the host does not implement.
 
-**Why a registry was the wrong unit.** Multiplicity, not the callback, is what makes
-dispatch hard. With listeners L1, L2, L3 on one transition and L1 sending during its
-own notification, either the later listeners are told about a transition the machine
-has already left, or the send has to be deferred — and which of those you get
-depends on registration order, which nobody controls. With one observer the question
-does not arise. Everything expensive about `.on()` was downstream of the list.
+**On the host, never the definition.** The prototype attaches listeners to the
+definition, which contradicts the ownership split §9 relies on: two hosts running
+one definition would share them, and a value documented as inert is quietly mutated.
+On the host, the definition stays genuinely immutable — which is what lets it be
+exported, imported, diffed and visualised.
 
-**Why a `subscribe()` method is not the answer either.** A registration API implies
-a list; you cannot offer one and then declare "only one". Passing the callback to
-the constructor makes singularity structural rather than documented, and it deletes
-the unsubscribe question — the observer's lifetime is the host's lifetime.
+**Deliver the transition record, not a snapshot.** Robot3 hands its observer the live
+service — no `from`, no `to`, no input — which is why it cannot say what _caused_ a
+change. Axis 7 dropped `emit` on the grounds that "a listener recovers everything
+from `{ on, input, from, to }`". Deliver the record and that argument stands;
+deliver a snapshot and axis 7 reopens.
 
-**What it costs**, stated plainly, because it is not nothing:
+**Two arguments against a listener list were made and do not survive**, recorded
+because both looked strong:
 
-- **No residency, no teardown, no matching.** Scoping an effect to a state is now
-  the caller's bookkeeping. That is proposition AB, which §9 lists as _"not
-  rejected — the baseline this has to beat"_. v1 ships the baseline; `actions`
-  beats it.
-- **The secondary use case loses.** Analytics attached to an imported machine was
-  the pattern language's real customer. It comes back with `actions`, or as an
-  additive `.on()` later — nothing about re-adding it is breaking.
+- _"Multiplicity is what makes dispatch hard — with L1, L2, L3 and L1 sending during
+  its own notification, the later listeners get told about a transition the machine
+  has already left."_ **That is an argument against nesting, not against the list.**
+  Under the queue, L1's send is parked, L2 and L3 are notified with the machine still
+  where their event says it is, and the drain delivers the next transition to all
+  three in order. The invariant holds for any number of listeners. Once the queue is
+  in — and it is, for independent reasons — the list costs nothing here.
+- _"The pattern language is runtime cost."_ **It is not.** The table already has to
+  parse every key into `(on, from, to)` to dispatch at all; a pattern is the same
+  parse with the input position allowed to be absent, and matching is three
+  comparisons against an already-parsed transition. Ten lines over a bare callback
+  list.
 
-**Three things it buys beyond simplicity:**
+**And one argument for patterns that the cost framing hid:** they keep the grep story
+whole. `grep '\-> published'` finds the transition rows and the listeners together,
+where `if (e.to.state === 'published')` severs the link. "Every topology question is
+a text search" is the project's central claim, and this is a place it applies.
 
-- **`actions` stops having a rival.** §9 flags an unresolved v1.1 problem: `actions`
-  residency and `.on()` residency are the same shape with two owners, so "if both
-  attach to `draft`, what is the run and teardown order?" Dropping `.on()` deletes
-  the question before it is asked. Residency exists in exactly one place, ever.
-- **It is `useSyncExternalStore`'s contract.** A callback plus `doc.current` is what
-  the primary consumer — a UI that re-renders on any change — actually wants.
-  Pattern matching does nothing for it.
-- **The key rule's second half stops being load-bearing in v1.** With no listener
-  keys, v1 has only transition keys. The rule still holds and still matters for
-  `actions`; it just has nothing to adjudicate yet.
+**A construction-time callback was also considered** — `run(machine, onChange)`,
+robot3's shape — on the grounds that a registration API implies a list and
+singularity should be structural. It loses on the standard subscription contract:
+`useSyncExternalStore` wants `(cb) => unsubscribe` plus a snapshot getter, and Svelte,
+Solid and Vue stores are the same shape. A construction-time observer supplies
+neither, so every framework consumer writes its own fan-out. P0.11 asks for
+browser-first and framework-neutral, which argues for the standard shape rather than
+against it.
 
-**One thing not to copy from robot3.** Its observer receives the live service — no
-`from`, no `to`, no input — which is why it cannot say what _caused_ a change. Axis
-7 dropped `emit` on the grounds that "a listener recovers everything from
-`{ on, input, from, to }`". Deliver the **transition record** and that argument
-stands; deliver a snapshot and axis 7 reopens. Same data, none of the pattern
-machinery: take robot3's cardinality, not its payload.
+### Residency is derivable, not a host feature
+
+The remaining question was whether `.on()` should also accept a bare state key and
+scope a setup/teardown pair to residency. It should not — and the reason is not cost
+but that **the host does not need to own it**:
+
+```js
+function residency(doc, state, setup) {
+	let teardown
+	const off1 = doc.on(`${state} -> *`, () => {
+		teardown?.()
+		teardown = undefined
+	})
+	const off2 = doc.on(`* -> ${state}`, (e) => {
+		teardown = setup(e.to)
+	})
+	if (doc.current.state === state) teardown = setup(doc.current)
+	return () => {
+		off1()
+		off2()
+		teardown?.()
+	}
+}
+```
+
+A self-transition matches **both** patterns, so restart-on-re-entry falls out rather
+than being implemented. `persistent` is `if (e.to.state !== e.from.state)` in the
+exit handler; `keyed` compares `k(e.from.data)` against `k(e.to.data)`. It needs two
+things from the host, both worth committing to anyway: **listeners fire in
+registration order** (which is what makes exit-before-entry reliable), and
+`doc.current` is readable at registration (for the already-resident case that no
+transition will announce).
+
+**So the dividing line is ownership, not the feature.** Caller-owned residency is a
+helper over public listeners. Definition-owned residency — `actions` — must be host
+machinery, because the definition is inert data and something has to interpret it:
+read the block, run the right entry, hold the teardown, apply the restart policy.
+That is the only place the host is forced into a lifetime.
+
+Two consequences. The v1.1 coexistence worry softens — a helper and `actions` are not
+two implementations of one host lifetime, they are one lifetime and one
+interpretation of a block, needing only "actions before listeners", which the commit
+order needs regardless. And residency **can arrive at any time without any version
+having been wrong**, because nothing about it is breaking to add.
 
 ### Commit ordering
 
@@ -1814,48 +1859,53 @@ F5), and P0.7 was amended to say so. Filtered against v1:
 settles v1's answer: _"the only way to have a big step that provably terminates is
 to forbid chaining — one input, at most one transition."_ v1 keeps the guarantee.
 
-That leaves the four rules:
+That leaves the rules, all five of them:
 
 1. **One input yields at most one transition.**
-2. **Commit, then notify.** The observer always sees a fully committed machine, so
-   `e.to` and `doc.current` agree.
-3. **A send from inside the observer is queued**, and the queue drains before the
-   outermost `send` returns — not on a microtask, and not nested.
-4. **`send` answers `moved`, `none`, or `queued`**, the last only from inside a
+2. **Commit, then notify.** A listener always sees a fully committed machine, so
+   `e.to` and `doc.current` agree — for every listener, always.
+3. **Listeners fire in registration order.**
+4. **A send from a listener is queued**, and the queue drains before the outermost
+   `send` returns — not on a microtask, and not nested.
+5. **`send` answers `moved`, `none`, or `queued`**, the last only from inside a
    dispatch.
 
-#### Queue, not stack — and why it is close
+#### Queue, not stack
 
-With one observer and commit-before-notify, nesting and queueing deliver **the same
-events in the same order**. Three things differ:
+With commit-before-notify, nesting and queueing deliver **the same events in the same
+order**. Four things differ:
 
 |                                                     | nested               | queued                          |
 | --------------------------------------------------- | -------------------- | ------------------------------- |
-| what the observer's own `send` returns              | the real outcome     | nothing yet → `queued`          |
+| what the listener's own `send` returns              | the real outcome     | nothing yet → `queued`          |
 | what the machine is in for the rest of the callback | the new state        | the state it was notified about |
 | stack depth over a chain                            | a frame pair per hop | constant                        |
+| **what the listeners after it are told**            | **a stale event**    | the transition they are in      |
 
 Nesting is free — it is what happens if you write nothing — keeps `send` always
 returning a real outcome, and fails loudly on runaway recursion with a stack trace.
 Queueing costs about ten lines and turns that runaway into a hang, which is a
-**worse** diagnostic. Neither is safer than the other.
+**worse** diagnostic. On safety alone neither wins.
 
-Two arguments decide it, and neither is stack depth (a transient chain is one or two
+Three arguments decide it, and none is stack depth (a transient chain is one or two
 hops, not fifty):
 
-- **The observer is never re-entered.** "This callback may be called while it is
+- **The last row, once there is more than one listener.** Under nesting, whether
+  your event is stale on arrival depends on what somebody else registered before
+  you — an ordering nobody controls. Under the queue the invariant holds for any
+  number of listeners. **This is what makes the list safe**, and without it the case
+  for a single construction-time observer would be strong.
+- **A listener is never re-entered.** "This callback may be called while it is
   already running" is a materially harder contract to write against than one that
-  cannot be — and in v1 the observer is where every effect lives, so it is the most
-  likely place to hold mutable state.
+  cannot be.
 - **It is the terminal state anyway.** `actions`, composition and immediate
   transitions each require the queue. Choosing nesting now means the semantics of
   send-from-a-reaction _changes_ when actions land, which is the asymmetry that
   settled axis 7 and the typed send site.
 
-So the honest framing is not "queue is better" but **the difference is invisible
-today and the queue is where this ends up**; nesting is a saving repaid with a
-semantic change. Robot3 nests — measured, and its reentrant send runs to completion
-inside the outer callback — which also makes it non-compliant with P0.7 as written.
+Robot3 nests — measured, and its reentrant send runs to completion inside the outer
+callback — which also makes it non-compliant with P0.7 as written. It gets away with
+it because it has exactly one observer; with a list it would not.
 
 ## 13. Type-system findings
 
@@ -1934,11 +1984,13 @@ layer · Y actions as data · Z handler acts with multi-target return · AA
 `Symbol.dispose` on the data · AB no feature at all — **not rejected; this is what
 v1 ships**
 
-**Observation.** A listener registry with pattern keys (multiplicity is what makes
-dispatch ordering hard) · a `subscribe()` method (a registration API implies a
-list) · handing the observer a snapshot or the live host instead of the transition
-record (loses the cause, reopens `emit`) · nesting a reaction's send instead of
-queueing it (robot3 does this; P0.7 forbids it)
+**Observation.** A construction-time single observer (loses the standard
+subscribe/unsubscribe contract; every framework consumer writes a fan-out) ·
+listeners on the definition (two hosts would share them) · handing a listener a
+snapshot or the live host instead of the transition record (loses the cause,
+reopens `emit`) · nesting a reaction's send instead of queueing it (robot3 does
+this; P0.7 forbids it) · a bare state key on `.on()` for residency (derivable in
+ten lines; the host owning a lifetime is what `actions` is for)
 
 **Composition.** Peers (wiring lives outside the definition) · inlining (cannot
 express a product) · a `children:` map · an outcome map in `actions` (a hidden
@@ -1965,13 +2017,12 @@ pinned) · a class or `new` for instantiation.
   union.
 - **Whether the definition/instance split survives v1** (§12), now that the
   condition it was made on points the other way. **The largest v1 question left.**
-- **Host construction** — the name, where the initial data goes, and whether the
-  observer is required or optional for a machine driven by polling `doc.current`.
-- **Disposal.** P0.7 refers to an execution being disposed, and with the observer
-  fixed at construction there is no other way to detach. What `stop()` does to a
-  queued send, and what `send` answers afterwards.
-- **What happens when the observer throws** mid-drain. Smaller than the `actions`
-  version of the question, but not empty.
+- **Host construction** — the name (`run` / `interpret` / `start`) and whether the
+  initial data is an argument or lives in the definition beside `initial:`.
+- **Disposal.** P0.7 refers to an execution being disposed. What `stop()` does to a
+  queued send and to registered listeners, and what `send` answers afterwards.
+- **What happens when a listener throws** mid-drain — one bad handler should not
+  strand the listeners after it or the rest of the queue.
 - **Composition is designed and deferred** (§10), with the fork between the dotted
   form and the callback unresolved, and **immediate transitions** (§7) deferred with
   it — which is where the rest of run-to-completion has to be paid.
