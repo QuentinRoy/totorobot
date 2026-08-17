@@ -32,13 +32,26 @@ internal and no test asserts the message text.
 
 **Blocked by:** 03 — Test harness and the construction tracer.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A plain-JavaScript runtime test file exists, with no `@ts-check`, and is executed
-      by the runtime pass but not type-checked
-- [ ] An input name outside the vocabulary is asserted to change nothing
-- [ ] Type tests cover all three untyped-path behaviours (27–29)
-- [ ] The malformed-key rejection is asserted with no vocabulary declared, separately
-      from the vocabulary-declared case in ticket 07
-- [ ] Type assertions fail as unused `@ts-expect-error` or on the missing entry point,
-      and for no other reason
+- [x] A plain-JavaScript runtime test file exists, with no `@ts-check`, and is executed
+      by the runtime pass but not type-checked — `tests/untyped.test.js`, matched by
+      the `.js` runtime glob and absent from `typecheck.include`
+- [x] An input name outside the vocabulary is asserted to change nothing — `[16]` in
+      `tests/untyped.test.js`, plus a second case for a bad state name reaching a
+      listener pattern (registering it does not throw, and it never fires)
+- [x] Type tests cover all three untyped-path behaviours (27–29) —
+      `tests/untyped.test-d.ts`: `[27]` a well-formed table with no vocabulary widens
+      state/input names to `string` and `data`/`input` to `unknown`, and accepts an
+      arbitrary `initial`; `[29]` declaring only `inputs` or only `states` checks that
+      half (`@ts-expect-error` on the wrong name) and widens the other
+- [x] The malformed-key rejection is asserted with no vocabulary declared, separately
+      from the vocabulary-declared case in ticket 07 — `[28]`, two spellings (a missing
+      space before `-` and a bare key naming a state), each on its own row alongside a
+      well-formed one
+- [x] Type assertions fail as unused `@ts-expect-error` or on the missing entry point,
+      and for no other reason — verified with `pnpm test`: every new test fails with
+      `machine is not a function` / `types is not a function` at runtime, or
+      `Unused '@ts-expect-error' directive'` / "has no exported member 'machine'" under
+      typecheck, the same category of failure as the existing construction tests;
+      `pnpm typecheck` stays green
