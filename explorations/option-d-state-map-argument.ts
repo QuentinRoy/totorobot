@@ -10,7 +10,7 @@
  * and the two-step curried call disappears - `S` is inferrable from an ordinary
  * argument, so there is nothing left to curry.
  *
- * See [Design explorations](../docs/api-rationale.md).
+ * See [the design record](../docs/api-rationale.md).
  */
 
 import {

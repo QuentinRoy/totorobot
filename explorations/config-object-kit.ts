@@ -1,6 +1,6 @@
 /**
  * Shared machinery for the config-object family of prototypes (Options D, E
- * and F of [Design explorations](../docs/api-rationale.md)).
+ * and F of [the design record](../docs/api-rationale.md)).
  *
  * None of this is the real library. Every function here is `declare`d: these
  * files exist to record what TypeScript can and cannot infer for a proposed

@@ -83,36 +83,40 @@ state map.
 
 ## The next API
 
-The code above is the **first generation**. A long design round has since settled
-a different shape — a declared vocabulary, a flat string-keyed transition table,
-and residency-scoped actions:
+The code above is the **first generation**. The design has since settled on a
+different shape — a declared vocabulary, a flat string-keyed transition table, and
+effects attached by whoever runs the machine:
 
 ```ts
-machine({
+const publication = machine({
 	initial: 'empty',
 	types: types<Publication>(),
 	transitions: {
 		'open: empty -> draft': ({ input }) => ({ text: input.text, revision: 0 }),
 		'submit: draft -> review': ({ data, input, skip }) => …,
 	},
-	actions: {
-		draft: ({ data }) => autosave(data),
-	},
-}).on('*: * -> published', (e) => notify(e.to.data))
+})
+
+const doc = run(publication)
+doc.on('*: * -> published', (e) => notify(e.to.data))
+doc.on('draft', ({ data }) => {
+	const t = setTimeout(() => autosave(data), 2_000)
+	return () => clearTimeout(t)
+})
 ```
 
 It is designed, not built. Read [the API](docs/api.md) for what it is, and
-[the rationale](docs/api-rationale.md) for how it got there.
+[the design record](docs/api-rationale.md) for why.
 
 ## Documentation
 
 **The next API**
 
-- [The API](docs/api.md) — the settled design: the four blocks, the key
-  language, what is checked, and what is deliberately absent.
-- [How the API got here](docs/api-rationale.md) — the decision ledger, every
-  round of exploration, what was rejected and on what evidence, and the reusable
-  TypeScript findings.
+- [The API](docs/api.md) — the settled design: the blocks, the key language, what
+  is checked, what is deliberately absent, and what is deferred past v1.
+- [Design record](docs/api-rationale.md) — the decision ledger, what was
+  considered and rejected and on what evidence, and the reusable TypeScript
+  findings.
 
 **Inputs that still govern**
 
@@ -140,7 +144,7 @@ It is designed, not built. Read [the API](docs/api.md) for what it is, and
 - `examples/index.ts` — runs both case studies.
 - `tests/totorobot.test.ts` — runtime and compile-time coverage.
 - `docs/api.md` — the design the project is moving to.
-- `docs/api-rationale.md` — how that design was reached.
+- `docs/api-rationale.md` — the evidence behind that design.
 - `docs/design-notes.md` — reference for the current, shipped design.
 - `explorations/` — prototypes of alternative API shapes, kept compiling as
   evidence for that history. Not part of the library.

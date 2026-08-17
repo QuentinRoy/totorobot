@@ -3,7 +3,7 @@
 Totorobot is an experimental finite-state-machine library built around
 per-state context. This document describes the current design and its known
 trade-offs. For the experiments that led here, see
-[Design explorations](api-rationale.md).
+[the design record](api-rationale.md).
 
 ## Contents
 
