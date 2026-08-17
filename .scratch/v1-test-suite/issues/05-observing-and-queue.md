@@ -57,14 +57,39 @@ invoke tests retired by ticket 01.
 
 **Blocked by:** 03 — Test harness and the construction tracer.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Tests exist for observable behaviours 17–26, each titled with its number
-- [ ] Ordering claims are asserted as whole sequences via a shared trace array
-- [ ] The drain-flag test uses a send from **inside a listener** after an earlier throw,
-      not a top-level send
-- [ ] Listener non-re-entrancy, self-transition double-match, and considered-exactly-once
-      each have their own test, marked as rationale-derived rather than spec-numbered
-- [ ] The snapshot-before-dispatch behaviour is asserted in both directions:
-      unsubscribed-during still runs, registered-during does not
-- [ ] Every test fails only because the v1 entry point does not exist
+- [x] Tests exist for observable behaviours 17–26, each titled with its number —
+      `tests/observing.test.ts` (17–21) and `tests/queue.test.ts` (22–26), matching the
+      file split in `plans/v1-tests.md`
+- [x] Ordering claims are asserted as whole sequences via a shared trace array — every
+      ordering test pushes onto a `log: string[]` and asserts one `toEqual` against the
+      whole sequence; `vi.fn()` is not used anywhere in either file
+- [x] The drain-flag test uses a send from **inside a listener** after an earlier throw,
+      not a top-level send — `[rationale] the drain flag resets after a throw…` in
+      `tests/queue.test.ts` unsubscribes the throwing listener, then has a *new* listener
+      call `doc.send('toggle')` from inside itself and asserts the queued transition
+      still drains
+- [x] Listener non-re-entrancy, self-transition double-match, and considered-exactly-once
+      each have their own test, marked as rationale-derived rather than spec-numbered —
+      three tests titled `[rationale] …` (two in `queue.test.ts`, one — the self-transition
+      one, since it is about pattern matching — in `observing.test.ts`)
+- [x] The snapshot-before-dispatch behaviour is asserted in both directions:
+      unsubscribed-during still runs, registered-during does not — `[21]` in
+      `tests/observing.test.ts`, as two independent hosts in one test
+- [x] Every test fails only because the v1 entry point does not exist — `pnpm test`
+      reports the same single `TypeError: types is not a function` at
+      `tests/fixtures.ts:16` for both new files that `tests/construction.test.ts`
+      already reports; `pnpm typecheck` and `pnpm format:check` are both clean
+
+Two additional design notes not called out by the ticket text:
+
+- **FIFO (24) needed a machine with data**, not the `toggle` fixture. Two structurally
+  identical queued `toggle` sends can't distinguish FIFO from LIFO — both drain orders
+  produce the same state sequence, since each is evaluated fresh at drain time (25) with
+  no memory of which call queued it. The test uses a small counter machine that appends a
+  distinct payload per queued send, so the drain order is legible in the resulting array.
+- **Recursive self-send tests all need a one-shot guard.** A listener that unconditionally
+  calls `send` from inside itself queues another call to itself forever. Every test that
+  sends from a listener (22, 23, 24, 25, 26, and two of the three rationale tests) uses a
+  boolean flag so it queues exactly once.
