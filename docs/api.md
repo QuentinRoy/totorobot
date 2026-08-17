@@ -35,18 +35,18 @@ export const publication = machine({
 	types: types<Publication>(),
 
 	transitions: {
-		'open: empty -> draft': ({ input }) => ({ text: input.text, revision: 0 }),
-		'revise: draft -> draft': ({ data, input, skip }) =>
+		'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
+		'draft -revise> draft': ({ data, input, skip }) =>
 			input.text === data.text
 				? skip()
 				: { text: input.text, revision: data.revision + 1 },
-		'submit: draft -> review': ({ data, input, skip }) =>
+		'draft -submit> review': ({ data, input, skip }) =>
 			input.route === 'review'
 				? { ...data, reviewer: input.reviewer! }
 				: skip(),
-		'submit: draft -> published': ({ data, input, skip }) =>
+		'draft -submit> published': ({ data, input, skip }) =>
 			input.route === 'publish' ? { ...data } : skip(),
-		'cancel: draft -> empty': () => {},
+		'draft -cancel> empty': () => {},
 	},
 })
 
@@ -102,7 +102,7 @@ in the [rationale](api-rationale.md#inputs-not-events).
 ## `transitions` — the table
 
 ```ts
-'submit: draft -> review': ({ data, input, skip }) => …
+'draft -submit> review': ({ data, input, skip }) => …
 ```
 
 One row per edge. All four coordinates — input, source, target, and the handler —
@@ -111,14 +111,22 @@ sit on one line at fixed positions that no formatter can move.
 ### The key language
 
 ```
-input: from -> to
+from -input> to
 ```
 
-Whitespace is **not** load-bearing: `load:idle->booting`, `load: idle -> booting`
-and `load : idle ->  booting` all normalise to the canonical form before anything
-looks at them. Completions emit the canonical form, so drift should be rare — but
-**human grep cannot normalise**, so a compact key will not match a spaced search. A
-lint rule enforcing the canonical spelling would close this.
+The input is the arrow's **label**, which is how every drawing tool spells it —
+mermaid `A -->|submit| B`, DOT `A -> B [label="submit"]`. Two consequences worth
+knowing up front:
+
+- **The source is at column 1 on every row**, whatever the input is called. Under a
+  leading-input spelling the source starts after a variable-width name, so the state
+  being scanned for sits at a ragged column — and "what can I do in state X" is the
+  question the research says dominates.
+- **Whitespace is load-bearing**: exactly one space before the `-`, one after the
+  `>`. Not strictness for its own sake — `-` is legal inside a name, so
+  `'waiting-for-input-submit>ready'` has no unambiguous reading. Requiring the spaces
+  makes the separator unambiguous **and** makes grep exact, which whitespace
+  tolerance was costing.
 
 ### The handler decides and projects
 
@@ -126,15 +134,15 @@ It receives the **source** state's data and the input payload, and returns the
 **target** state's data:
 
 ```ts
-'open: empty -> draft': ({ input }) => ({ text: input.text, revision: 0 }),
+'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
 ```
 
 `skip()` declines: the next row declared for the same `(input, from)` is tried.
 That is how one input reaches two states —
 
 ```ts
-'submit: draft -> review':    ({ input, skip }) => input.route === 'review'  ? {…} : skip(),
-'submit: draft -> published': ({ input, skip }) => input.route === 'publish' ? {…} : skip(),
+'draft -submit> review':    ({ input, skip }) => input.route === 'review'  ? {…} : skip(),
+'draft -submit> published': ({ input, skip }) => input.route === 'publish' ? {…} : skip(),
 ```
 
 — and **declaration order is priority order**. If every candidate skips, the
@@ -146,7 +154,7 @@ _"`submit` in `draft` declined, all 2 branches skipped"_.
 ### Self-transitions are ordinary transitions
 
 ```ts
-'revise: draft -> draft': ({ data, input }) => ({ …, revision: data.revision + 1 }),
+'draft -revise> draft': ({ data, input }) => ({ …, revision: data.revision + 1 }),
 ```
 
 No `keep`, no `repeat`, no `&`, no `stay`, no symbol. Whether anything restarts
@@ -157,11 +165,13 @@ because of this is a question for `actions`, when it arrives — not for the tab
 Because the table is one flat block of parsed strings, all three topology questions
 are a plain text search, and the reverse index is derivable:
 
-| question                          | search       | derived type           |
-| --------------------------------- | ------------ | ---------------------- |
-| what can I do in `draft`?         | `: draft ->` | `Handled<T, 'draft'>`  |
-| where can I `submit`?             | `'submit:`   | —                      |
-| how does anything reach `review`? | `-> review`  | `Sources<T, 'review'>` |
+| question                          | search     | derived type           |
+| --------------------------------- | ---------- | ---------------------- |
+| what can I do in `draft`?         | `'draft -` | `Handled<T, 'draft'>`  |
+| where can I `submit`?             | `-submit>` | —                      |
+| how does anything reach `review`? | `> review` | `Sources<T, 'review'>` |
+
+All three are anchored rather than approximate, which is what fixed spacing buys.
 
 ## The host
 
@@ -217,7 +227,7 @@ if (now.state === 'draft') {
 
 ```ts
 const off = doc.on('* -> published', (e) => notify(e.to.data))
-doc.on('cancel: draft -> *', () => track('cancelled'))
+doc.on('draft -cancel> *', () => track('cancelled'))
 ```
 
 **On the host, never the definition.** An imported definition is inert — topology
@@ -231,20 +241,21 @@ handing over a snapshot instead would make "which input caused this" unrecoverab
 and would reopen the case for `emit`. Robot3 hands its observer the live service and
 pays exactly that price.
 
-**Patterns are the transition key language with coordinates left open**, and `*` is
-allowed at any position:
+**Patterns are the transition key language with coordinates left open.** `*` stands
+for any state, and **an unlabelled arrow means any input, or none**:
 
 ```ts
-'* -> loading' //    entry: every arrival, including re-entry
-'draft -> *' //      exit:  every departure
-'*: draft -> *' //   narrower: every departure *caused by an input*
-'submit: draft -> *' // by a specific input
+'* -> loading' //     entry: every arrival, including re-entry
+'draft -> *' //       exit:  every departure, however caused
+'draft -submit> *' // narrower: departures caused by `submit`
+'* -submit> *' //     every `submit` edge, wherever it goes
 ```
 
-The two ways of leaving a coordinate open are not the same. **`*` means "any input,
-and there is one"** — it does not match the absence of one. **An omitted input
-position is unconstrained** and matches input-driven edges as well as transitions
-with no input at all. So `'draft -> *'` is the right spelling for an exit.
+There is deliberately no `-*>`. `*` appears only in state positions, so the input
+coordinate is either a name or absent — one wildcard, one meaning. The unlabelled
+form is the broad one: it matches input-driven edges and, once
+[immediate transitions](api-rationale.md#7-immediate-transitions) exist, edges with
+no input at all.
 
 The parse is already paid for by the transition table, so matching is three
 comparisons against a transition that has been parsed anyway. **Listeners fire in
@@ -320,15 +331,18 @@ on what somebody else registered before you.
 
 ## The key rule
 
-> **A key with no `->` names a state. An edge always contains an arrow, even when
-> both ends are `*`.**
+> **A key with no `->` names a state. An edge always contains an arrow.**
 
 Decidable from the string alone, so a reader never has to know whether they are
 reading a transition key or a pattern. In v1 nothing exercises the first half — a
-bare key is simply invalid in both positions — and it earns its keep when `actions`
-arrives and a bare key means residency. The rule is stated now because the grammar
-has to be consistent from the start: without it, `.on('review', fn)` would be an
-input in one reading and a state in another, and `review` is plausibly both.
+bare key is invalid in both positions — and it earns its keep when `actions` arrives
+and a bare key means residency. The rule is stated now because the grammar has to be
+consistent from the start: without it, `.on('review', fn)` would be an input in one
+reading and a state in another, and `review` is plausibly both.
+
+The rule costs one thing: `.on('submit', fn)` is not legal and becomes
+`.on('* -submit> *', fn)`, which is arguably better anyway — it makes "across all
+edges" explicit rather than implied.
 
 ---
 
@@ -398,7 +412,7 @@ has to remember.
 actions: {
 	loading:              ({ data, send }) => fetchUser(data.id, send),   // residency
 	connected: persistent(({ data, send }) => subscribe(data.url, send)), // survives re-entry
-	'cancel: draft -> *': () => track('cancelled'),                       // an edge
+	'draft -cancel> *': () => track('cancelled'),                       // an edge
 }
 ```
 
@@ -420,7 +434,7 @@ compose into one function that starts both and returns a combined teardown. Arra
 values stay available later as a pure widening if that ever reads badly.
 
 This is where the key rule's bare form and the pattern language earn their keep: a
-key with no arrow scopes to residency, and `'*: draft -> *'` scopes to an edge. It
+key with no arrow scopes to residency, and `'draft -> *'` scopes to an edge. It
 is also where commit ordering grows — more than one thing happens per commit, so
 teardown, setup and notification need an order.
 
@@ -446,7 +460,7 @@ than an input, reached by an immediate transition:
 invokes: { loading: Child<UserFetch, 'ok' | 'err'> }
 
 transitions: {
-	'open: empty -> loading': ({ input })   => ({ id: input.id }),
+	'empty -open> loading': ({ input })   => ({ id: input.id }),
 	'loading.ok -> ready':    ({ outcome }) => ({ user: outcome.user }),
 	'loading.err -> broken':  ({ outcome }) => ({ error: outcome.error }),
 }

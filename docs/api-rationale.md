@@ -34,28 +34,28 @@
 
 Twenty axes. Nineteen are closed.
 
-| #   | Axis                       | Answer                                                       | §   |
-| --- | -------------------------- | ------------------------------------------------------------ | --- |
-| 1   | Overall layout             | string keys — `'submit: draft -> review'`; two rivals alive  | 4   |
-| 2   | Data-free states           | `void` in the declared vocabulary                            | 5   |
-| 3   | Entry / exit actions       | edge patterns with one end pinned; no keyword                | 9   |
-| 4   | Re-entry vs stay           | dissolved — it is an action's restart policy                 | 9   |
-| 5   | Self-transition spelling   | `'revise: draft -> draft'`, an ordinary row                  | 5   |
-| 6   | Input vocabulary           | declared: `types<{ inputs, states }>()`                      | 5   |
-| 7   | Returned commands (`emit`) | out — a listener recovers it from the transition             | 6   |
-| 8   | Fall-through refusal       | no `else`; dev-mode warning                                  | 4   |
-| 9   | Async / work-in-flight     | subsumed by axis 10                                          | 8   |
-| 10  | Actions in the machine     | `actions:`, keyed by trigger, wrappers for policy            | 9   |
-| 11  | The word for what you send | `inputs`, not `events` — the core is not a mailbox           | 5   |
-| 12  | Typed send site            | **dropped** — broad `send` only; reversible later            | 11  |
-| 13  | Composition                | **deferred from v1** — designed; outcome as state, not input | 10  |
-| 14  | Actions in v1              | **deferred** — v1 has no effect mechanism at all             | 9   |
-| 15  | Immediate transitions      | `'from -> to'`, no input — designed; **deferred to v1.2**    | 7   |
-| 16  | Observation                | `.on(pattern, fn)` on the host; no residency key             | 12  |
-| 17  | Commit ordering            | one transition per input; commit, notify in order, queue     | 12  |
-| 18  | Definition and instance    | **split kept** — `publication.start(data)`                   | 12  |
-| 19  | Disposal and errors        | no `stop()` — the host owns nothing; a throw propagates      | 12  |
-| 20  | What `send` returns        | **nothing** — additive to add later, breaking to remove      | 12  |
+| #   | Axis                       | Answer                                                        | §   |
+| --- | -------------------------- | ------------------------------------------------------------- | --- |
+| 1   | Overall layout             | string keys, input as arrow label — `'draft -submit> review'` | 4   |
+| 2   | Data-free states           | `void` in the declared vocabulary                             | 5   |
+| 3   | Entry / exit actions       | edge patterns with one end pinned; no keyword                 | 9   |
+| 4   | Re-entry vs stay           | dissolved — it is an action's restart policy                  | 9   |
+| 5   | Self-transition spelling   | `'draft -revise> draft'`, an ordinary row                     | 5   |
+| 6   | Input vocabulary           | declared: `types<{ inputs, states }>()`                       | 5   |
+| 7   | Returned commands (`emit`) | out — a listener recovers it from the transition              | 6   |
+| 8   | Fall-through refusal       | no `else`; dev-mode warning                                   | 4   |
+| 9   | Async / work-in-flight     | subsumed by axis 10                                           | 8   |
+| 10  | Actions in the machine     | `actions:`, keyed by trigger, wrappers for policy             | 9   |
+| 11  | The word for what you send | `inputs`, not `events` — the core is not a mailbox            | 5   |
+| 12  | Typed send site            | **dropped** — broad `send` only; reversible later             | 11  |
+| 13  | Composition                | **deferred from v1** — designed; outcome as state, not input  | 10  |
+| 14  | Actions in v1              | **deferred** — v1 has no effect mechanism at all              | 9   |
+| 15  | Immediate transitions      | `'from -> to'`, no input — designed; **deferred to v1.2**     | 7   |
+| 16  | Observation                | `.on(pattern, fn)` on the host; no residency key              | 12  |
+| 17  | Commit ordering            | one transition per input; commit, notify in order, queue      | 12  |
+| 18  | Definition and instance    | **split kept** — `publication.start(data)`                    | 12  |
+| 19  | Disposal and errors        | no `stop()` — the host owns nothing; a throw propagates       | 12  |
+| 20  | What `send` returns        | **nothing** — additive to add later, breaking to remove       | 12  |
 
 The axes are not independent. Declaring the vocabulary (§5) settles 2, 5 and 6 in
 one move. Removing entry/exit settles 3, which makes 4 and 5 unobservable and
@@ -187,17 +187,17 @@ at all (TS9010).
 than they look: every candidate either failed them outright or paid for them
 somewhere else.
 
-| Candidate                                       | Verdict                                                                 |
-| ----------------------------------------------- | ----------------------------------------------------------------------- |
-| **A** edge records — `{ to, with }`             | ✗ two independent compiler blockers; cannot express the neutral machine |
-| **B** annotated outcome — `): To<'review'> =>`  | ✓ works; lost because the target lives in a type annotation             |
-| **C** declared target set as a value            | ✗ does not compile; kept as negative evidence                           |
-| **D** target keys — `review: { submit: fn }`    | ✓ works; still alive as the co-location choice                          |
-| **E** by destination                            | ✗ dissolves multi-target by transposing it; question B scatters         |
-| **F** transition table — `state(on(…))`         | ✗ unverified crux; superseded by string keys                            |
-| **M** combinator edges — `goTo('review', fn)`   | ✗ one verb, no antonym; per-edge tax                                    |
-| **N** string keys — `'submit: draft -> review'` | ✓ **chosen**                                                            |
-| **O** classic records — `{ event, from, to }`   | ✓ works; still alive as the extensibility choice                        |
+| Candidate                                      | Verdict                                                                 |
+| ---------------------------------------------- | ----------------------------------------------------------------------- |
+| **A** edge records — `{ to, with }`            | ✗ two independent compiler blockers; cannot express the neutral machine |
+| **B** annotated outcome — `): To<'review'> =>` | ✓ works; lost because the target lives in a type annotation             |
+| **C** declared target set as a value           | ✗ does not compile; kept as negative evidence                           |
+| **D** target keys — `review: { submit: fn }`   | ✓ works; still alive as the co-location choice                          |
+| **E** by destination                           | ✗ dissolves multi-target by transposing it; question B scatters         |
+| **F** transition table — `state(on(…))`        | ✗ unverified crux; superseded by string keys                            |
+| **M** combinator edges — `goTo('review', fn)`  | ✗ one verb, no antonym; per-edge tax                                    |
+| **N** string keys — `'draft -submit> review'`  | ✓ **chosen**                                                            |
+| **O** classic records — `{ event, from, to }`  | ✓ works; still alive as the extensibility choice                        |
 
 **A — edge records.** Two separately measured blockers. A guarded-clause list
 makes the edge type `Outcome | readonly Outcome[]`, and **a union of an object
@@ -273,7 +273,7 @@ back.**
 
 **String keys won.** It is the shortest, the only notation where all four
 coordinates sit on one line at fixed positions, and the only one where all three
-topology questions are a plain text search. `'submit: draft -> review'` is not
+topology questions are a plain text search. `'draft -submit> review'` is not
 four coordinates recovered from four positions in a nested structure — it is a
 sentence with an actual arrow in it, and no formatter can reflow the inside of a
 string literal. Several problems also simply stop arising: self-transitions need
@@ -314,13 +314,16 @@ and the arrow test. One non-stylistic piece of evidence for records turned up in
 9: a `do:` slot on an edge is absorbed by a record as one more field, while
 string keys and target keys grow a second value shape to hold it.
 
-### A late candidate: the label on the arrow
+### Adopted: the label on the arrow
 
-`'draft -submit> review'` instead of `'submit: draft -> review'` — the input as an
+`'draft -submit> review'` rather than `'draft -submit> review'` — the input as an
 arrow label, which is how every drawing tool spells it (mermaid `A -->|submit| B`,
-DOT `A -> B [label="submit"]`, PlantUML `A --> B : submit`).
+DOT `A -> B [label="submit"]`, PlantUML `A --> B : submit`). **This is axis 1's
+answer.** It arrived after the three-way comparison above, so the prototypes below
+implement the leading-input spelling; the cardinality of the key type is identical
+(|inputs| × |states|²), so every measurement in this section transfers unchanged.
 
-**Three things genuinely favour it:**
+**Three things decided it:**
 
 - **The source sits at column 1 on every row.** Under the current form the source
   starts after a variable-width input name, so `submit: draft` and `open: draft`
@@ -365,12 +368,28 @@ impossible. If it is ever wanted, leading-only padding (`-+label>`) is the versi
 take: same alignment, and `label>` stays contiguous so question C is still a plain
 text search.
 
-**Against the labelled arrow itself:** `->` intact is the most recognisable token in
-the notation, and an arrow split around a word is something no reader has seen
-before. `'draft -*> *'`
-for "any input" is noisy where `'*: draft -> *'` is merely long. Not decided — it
-deserves the neutral machine and the four search questions like every other
-notation, rather than a preference.
+**What it costs.** `->` intact is the most recognisable token in the notation, and an
+arrow split around a word is something no reader has met before — a genuine
+first-contact tax, paid once. And **whitespace becomes load-bearing**: exactly one
+space before the `-` and one after the `>`, because `-` is legal inside a name and
+`'waiting-for-input-submit>ready'` has no unambiguous reading.
+
+That second cost turns out to be a benefit. Whitespace tolerance is what broke the
+grep story — `->published` never matched `-> published`, and the recorded remedy was
+"a lint rule enforcing the canonical spelling". Fixed spacing **is** that rule,
+enforced by the compiler, so all three topology searches become exact rather than
+approximate:
+
+| question                | search     |
+| ----------------------- | ---------- |
+| what can I do in draft? | `'draft -` |
+| where can I submit?     | `-submit>` |
+| how do I reach review?  | `> review` |
+
+**`-*>` is not in the language.** With no way to spell "some input, any input", `*`
+appears only in state positions and the input coordinate is either a name or absent.
+One wildcard, one meaning — and it removes the only place the labelled form read
+worse than the leading-input one.
 
 ### Two decisions that fell out of the comparison
 
@@ -501,7 +520,7 @@ vocabulary _mixes_ kinds: `submit` and `cancel` are commands, `loaded` and
 and "input" names the _slot in the transition function_, not the provenance of
 what fills it.
 
-This is a naming decision only. The keys are `'submit: draft -> review'` either
+This is a naming decision only. The keys are `'draft -submit> review'` either
 way, and the context member is `input` rather than `event`.
 
 ## 6. Self-transitions
@@ -581,7 +600,7 @@ spelling is the transition key with the input part removed:
 
 ```ts
 transitions: {
-	'submit: draft -> checking': ({ data }) => data,
+	'draft -submit> checking': ({ data }) => data,
 	'checking -> allowed':       ({ data, skip }) => (data.quota > 0 ? data : skip()),
 	'checking -> denied':        ({ data }) => ({ reason: 'over quota' }),
 }
@@ -655,7 +674,7 @@ as the consistent one.
 **An objection that does not hold**, recorded because it looks plausible and cost a
 round: that this breaks the key rule, since the same string would mean "no input"
 when declared and "any input" when matched. It does not. The key rule discriminates
-**state from edge** — `'review'` against `'submit: * -> *'` — and `'a -> b'` has an
+**state from edge** — `'review'` against `'* -submit> *'` — and `'a -> b'` has an
 arrow, so it is an edge in both uses and the rule answers identically. How
 _completely_ an edge's coordinates are filled in is a different axis, one the rule
 never spoke to. If it did, `*` would already be a violation, since `*` is legal in a
@@ -667,14 +686,14 @@ pattern and meaningless in a declaration.
 input. So the two spellings are not the same pattern, and the omitted form is
 strictly broader:
 
-| pattern       | matches                                                   |
-| ------------- | --------------------------------------------------------- |
-| `'a -> b'`    | every transition `a → b` — input-driven **and** immediate |
-| `'*: a -> b'` | the input-driven ones only                                |
-| `'x: a -> b'` | that one edge                                             |
+| pattern     | matches                                                   |
+| ----------- | --------------------------------------------------------- |
+| `'a -> b'`  | every transition `a → b` — input-driven **and** immediate |
+| `'a -> b'`  | the input-driven ones only                                |
+| `'a -x> b'` | that one edge                                             |
 
 **This changes how entry and exit should be written.** They were spelled
-`'*: * -> loading'` and `'*: draft -> *'`, which now say "by some input" — so they
+`'* -> loading'` and `'draft -> *'`, which now say "by some input" — so they
 would miss an arrival or a departure taken immediately, which is exactly the kind of
 silent gap the pattern language exists to avoid. Dropping the input position instead
 gives the intended meaning:
@@ -686,18 +705,18 @@ gives the intended meaning:
 
 That is a better shape than the sugar reading it replaces. Omitting a coordinate now
 does real work rather than being a shorter way to write `*`, and the two forms are
-each reachable: `'draft -> *'` for "leaving, however", `'*: draft -> *'` for "leaving
+each reachable: `'draft -> *'` for "leaving, however", `'draft -> *'` for "leaving
 because someone sent something".
 
 **What it costs:** nothing selects _only_ the immediate edge in the general case —
-`'a -> b'` is too broad and `'*: a -> b'` excludes it. In practice the broad form is
+`'a -> b'` is too broad and `'a -> b'` excludes it. In practice the broad form is
 exact whenever no input-driven `a → b` is declared, and nobody has asked for more.
 
 The distinction also stays rare, for a structural reason: **an immediate transition
 makes its source transient**, so there is usually nobody in that state to send it an
 input, and both patterns then have the same edges to choose between. The exception is
 the case §10 records — if every immediate candidate calls `skip()`, you stay, and
-input edges out of that state (`'cancel: loading.ok -> empty'`) become meaningful.
+input edges out of that state (`'loading.ok -cancel> empty'`) become meaningful.
 
 ### What it forces open
 
@@ -757,7 +776,7 @@ cancellation.
   becomes one no author can break. A genuine dual to `.on()`: `on` is keyed by
   edges, `within` by nodes. Escape-hatch complete. Its cost is opacity — nothing
   outside that closure knows `loading` has a 5 s timeout.
-- **B, `'timeout: loading -> failed': after('5s')`** — best visibility by a
+- **B, `'loading -timeout> failed': after('5s')`** — best visibility by a
   distance, and **re-entry answers itself**: the trigger belongs to the source
   state's residency, so entering starts the clock and leaving stops it. But it
   only expresses self-triggering edges. A fetch must be _started_ and _carries a
@@ -961,10 +980,10 @@ by state name, which is what made trigger-keying possible.
 
 Three shapes were considered: **records** (`[{ within: 'loading', run: fn }]` — a
 list, so two activities in one state stay separable; extensible in `o1`'s sense),
-**constructors** (`[within('loading', fn), on('cancel: draft -> *', fn)]` — reads
+**constructors** (`[within('loading', fn), on('draft -cancel> *', fn)]` — reads
 best of the three; this is proposition M, which died for _transitions_ on per-edge
 tax, but actions are sparse so the tax is near nothing here), and **trigger-keyed**
-(`{ 'loading': fn, 'cancel: draft -> *': fn }` — no new syntax at all, since both
+(`{ 'loading': fn, 'draft -cancel> *': fn }` — no new syntax at all, since both
 key languages already exist).
 
 **Trigger-keyed won**, because it pairs with string keys: they are the same idea
@@ -985,7 +1004,7 @@ self-transition, or restart only when something relevant changed.
 
 Four spellings, and the reasons three lost:
 
-- **Omit the arrow** — `'revise: draft'` stays, `'restart: draft -> draft'`
+- **Omit the target** — `'draft -revise>'` stays, `'draft -restart> draft'`
   re-enters. Greppable, and it strengthens the arrow test. Kept as the fallback if
   per-action policy turns out to be over-engineering.
 - **`-> *` means stay** — technically free, since a transition target must be
@@ -1318,7 +1337,7 @@ type Publication = {
 }
 
 transitions: {
-	'open: empty -> loading': ({ input })   => ({ id: input.id }),
+	'empty -open> loading': ({ input })   => ({ id: input.id }),
 	'loading.ok -> ready':    ({ outcome }) => ({ user: outcome.user }),
 	'loading.err -> broken':  ({ outcome }) => ({ error: outcome.error }),
 }
@@ -1345,7 +1364,7 @@ Three things fall out that were not designed for:
 - **`skip()` needs no change.** If every immediate candidate skips, you stay in
   `loading.ok` — which is meaningful: the child finished and we have not decided
   yet.
-- **`'cancel: loading.ok -> empty'` is legal** — an ordinary input edge out of a
+- **`'loading.ok -cancel> empty'` is legal** — an ordinary input edge out of a
   derived state. Waiting in a settled-child state for a user decision is
   expressible with nothing added.
 - **The arrow test improves.** There is no fictional input on the line, so source,
@@ -1465,7 +1484,7 @@ type Publication = Compose<Base, { fetch: UserFetch }>
 
 transitions: {
 	...inline('fetch', userFetch),        // the child's own rows, prefixed
-	'open: empty -> fetch.pending':          ({ input }) => ({ id: input.id }),
+	'empty -open> fetch.pending':          ({ input }) => ({ id: input.id }),
 	'fetch.resolve: fetch.pending -> ready': ({ input }) => ({ user: input }),
 }
 ```
@@ -1597,7 +1616,7 @@ mutation.
 | **S7**  | a scoped handle — `when` / `visit`               | 2        | sound and revocable; reads as a subscription next to `.on()`, and inverts control                                                                                                                               |
 | **S8**  | `doc.available`                                  | n/a      | **not a rival** — a runtime array for rendering buttons; kept                                                                                                                                                   |
 | **S9**  | `doc.from('draft').submit(…)`                    | 3        | the assumption is written down and greps; a handle that can still be stored                                                                                                                                     |
-| **S10** | `doc.send('submit: draft', …)`                   | 3        | most consistent with the notation, least obvious to a newcomer; reads as half a key                                                                                                                             |
+| **S10** | `doc.send('draft -submit>', …)`                  | 3        | most consistent with the notation, least obvious to a newcomer; reads as half a key                                                                                                                             |
 | **S11** | `doc.sendIf('draft', 'submit', …)`               | 3        | cheapest of category 3 — one method, no handle at all; a three-argument call, a second verb                                                                                                                     |
 | **S12** | a scoped handle carrying `send` — `doc.match(…)` | 2        | **recorded, not built** — the way back in                                                                                                                                                                       |
 
@@ -2150,14 +2169,14 @@ pinned) · a class or `new` for instantiation.
 
 ## 15. Still open
 
-- **A fourth layout candidate arrived late** (§4): the input as an arrow label,
-  `'draft -submit> review'`. Measured as feasible if whitespace becomes load-bearing.
-  Unscored against the neutral machine.
-- **Layout is a live three-way choice**, not a closed question. String keys is the
-  recommendation; target keys wins co-location and classic records wins
-  extensibility, and both are complete compiling prototypes.
-- **Whitespace tolerance costs the grep story** — `->published` will not match
-  `-> published`. A lint rule enforcing the canonical form would close it.
+- **No prototype implements the adopted notation.** Axis 1 settled on the labelled
+  arrow (§4) after the comparison was run, so `n1`/`n2` are one spelling behind. The
+  key type's cardinality is identical, so the measurements transfer — but the parser
+  and the whitespace rule are unbuilt.
+- **The two rival layouts stay alive on one axis**: target keys wins co-location,
+  classic records wins extensibility, and both are complete compiling prototypes.
+  Against the labelled arrow they also win the completion payload, since each
+  coordinate completes against |states| or |inputs| rather than their product.
 - **Completion payload grows as |states|².** Measured at 1.7 MB per request for a
   4 000-member key union (§4); latency is fine but the server never narrows, so the
   editor filters client-side. A threshold has not been set, and this is the axis on
@@ -2172,9 +2191,12 @@ pinned) · a class or `new` for instantiation.
 
 ## Where the code is
 
+Note that all of these predate axis 1's final answer and use `'submit: draft ->
+review'` rather than `'draft -submit> review'`.
+
 | Directory              | Proposition                  | State                                        |
 | ---------------------- | ---------------------------- | -------------------------------------------- |
-| `n2-declared-types`    | **string keys + `types<>`**  | ✅ whitespace-tolerant, listeners narrow     |
+| `n2-declared-types`    | **string keys + `types<>`**  | ✅ closest to v1; leading-input spelling     |
 | `o1-classic-table`     | **classic records + `with`** | ✅ narrowing verified, traces pass           |
 | `n1-transition-table`  | string keys, inferred vocab  | ✅ has the `playground.ts` completions demo  |
 | `d1-target-keys`       | target keys                  | ✅ complete                                  |

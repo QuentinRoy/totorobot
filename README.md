@@ -84,7 +84,7 @@ state map.
 ## The next API
 
 The code above is the **first generation**. The design has since settled on a
-different shape — a declared vocabulary, a flat string-keyed transition table, and
+different shape — a declared vocabulary, a flat string-keyed transition table with the input as an arrow label, and
 listeners attached by whoever runs the machine:
 
 ```ts
@@ -92,8 +92,8 @@ const publication = machine({
 	initial: 'empty',
 	types: types<Publication>(),
 	transitions: {
-		'open: empty -> draft': ({ input }) => ({ text: input.text, revision: 0 }),
-		'submit: draft -> review': ({ data, input, skip }) => …,
+		'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
+		'draft -submit> review': ({ data, input, skip }) => …,
 	},
 })
 
