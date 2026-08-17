@@ -46,14 +46,14 @@ shape for a limitation discovered here rather than a deferral decided in the des
 Both, because these traces compose what those tickets specify individually; writing them
 first would mean guessing at behaviour those tickets pin down.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The two-state case and live-runtime trace 1 are asserted
-- [ ] The asynchronous race is asserted as its five-step trace, with no timers and no
+- [x] The two-state case and live-runtime trace 1 are asserted
+- [x] The asynchronous race is asserted as its five-step trace, with no timers and no
       wall-clock dependence
-- [ ] The Marking Menu case is asserted across all five required traces, including the
+- [x] The Marking Menu case is asserted across all five required traces, including the
       stale dwell timer producing no transition
-- [ ] The Marking Menu file notes that effects are re-expressed as caller-side listeners
+- [x] The Marking Menu file notes that effects are re-expressed as caller-side listeners
       because `actions` is deferred
-- [ ] Live-runtime trace 2 is not implemented, and its absence is noted with the reason
-- [ ] Every test fails only because the v1 entry point does not exist
+- [x] Live-runtime trace 2 is not implemented, and its absence is noted with the reason
+- [x] Every test fails only because the v1 entry point does not exist
