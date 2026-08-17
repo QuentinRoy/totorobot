@@ -8,7 +8,7 @@ import { describe, expect, test } from 'vitest'
 import { machine } from '../src/totorobot.ts'
 
 describe('the untyped path', () => {
-	test('[16] an input name outside the vocabulary changes nothing', () => {
+	test('an input name outside the vocabulary changes nothing', () => {
 		const untyped = machine({
 			initial: 'off',
 			transitions: {
@@ -27,7 +27,7 @@ describe('the untyped path', () => {
 		expect(log).toEqual([])
 	})
 
-	test('[16] a bad state name in a listener pattern does not throw and never fires', () => {
+	test('a bad state name in a listener pattern does not throw and never fires', () => {
 		const untyped = machine({
 			initial: 'off',
 			transitions: {

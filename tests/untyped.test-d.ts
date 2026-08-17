@@ -2,7 +2,7 @@ import { expectTypeOf, test } from 'vitest'
 
 import { machine, types } from '../src/totorobot.ts'
 
-test('[27] a well-formed table compiles with no vocabulary declared', () => {
+test('a well-formed table compiles with no vocabulary declared', () => {
 	const untyped = machine({
 		initial: 'anything',
 		transitions: {
@@ -19,7 +19,7 @@ test('[27] a well-formed table compiles with no vocabulary declared', () => {
 	expectTypeOf(host.send).parameter(0).toEqualTypeOf<string>()
 })
 
-test('[28] a malformed key is rejected with no vocabulary declared', () => {
+test('a malformed key is rejected with no vocabulary declared', () => {
 	machine({
 		initial: 'off',
 		transitions: {
@@ -30,7 +30,7 @@ test('[28] a malformed key is rejected with no vocabulary declared', () => {
 	})
 })
 
-test('[28] a bare key naming a state is rejected with no vocabulary declared', () => {
+test('a bare key naming a state is rejected with no vocabulary declared', () => {
 	machine({
 		initial: 'off',
 		transitions: {
@@ -41,7 +41,7 @@ test('[28] a bare key naming a state is rejected with no vocabulary declared', (
 	})
 })
 
-test('[29] declaring inputs and omitting states checks inputs and widens states', () => {
+test('declaring inputs and omitting states checks inputs and widens states', () => {
 	type Inputs = { toggle: void }
 
 	const half = machine({
@@ -59,7 +59,7 @@ test('[29] declaring inputs and omitting states checks inputs and widens states'
 	expectTypeOf(host.send).parameter(0).toEqualTypeOf<'toggle'>()
 })
 
-test('[29] declaring states and omitting inputs checks states and widens inputs', () => {
+test('declaring states and omitting inputs checks states and widens inputs', () => {
 	type States = { off: void; on: void }
 
 	const half = machine({
