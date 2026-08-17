@@ -197,10 +197,10 @@ corrupt, or half-apply. That is also how a stale async result lands harmlessly.
 
 There is **no typed send site**: `doc.send('decide', …)` compiles in `draft` and is
 a no-op at runtime. This is a deliberate drop, not an omission — see
-[the rationale](api-rationale.md#10-sending-inputs). The short version: the
+[the rationale](api-rationale.md#11-sending-inputs). The short version: the
 narrow-then-send shape everyone reaches for is **unsound in TypeScript and
 uncorrectable** (narrowing survives mutation,
-[finding 11](api-rationale.md#12-type-system-findings)), and every sound spelling
+[finding 11](api-rationale.md#13-type-system-findings)), and every sound spelling
 makes the caller re-state a fact the machine already knows. Adding one later is
 additive; shipping the wrong one now is breaking.
 
@@ -238,8 +238,12 @@ concept:
 ```ts
 '*: * -> loading' // entry: every arrival, including re-entry
 '*: draft -> *' //   exit: every departure
-'draft -> *' //      the same thing — the input half is optional
 ```
+
+> **Do not add the `'draft -> *'` shorthand** — dropping the input half to mean
+> "any input". It collides head-on with immediate transitions, where the same shape
+> means _no_ input. If it ships, it has to be taken away later; if it never ships,
+> nothing is lost. See [rationale §7](api-rationale.md#7-immediate-transitions).
 
 For residency, **setup and teardown are lexically paired**, so the correlation no
 library could check becomes one no author can break: the cleanup closes over what
@@ -293,7 +297,7 @@ Errors land on the bad line, from a single declaration site.
 **What is _not_ checked: the send site.** Per-state capabilities are advertised at
 runtime (`doc.available`) and not enforced by the compiler — the same place
 `@cassiozen/useStateMachine` landed. The reasoning, and the way back in if it bites,
-are in [the rationale](api-rationale.md#10-sending-inputs).
+are in [the rationale](api-rationale.md#11-sending-inputs).
 
 ## Semantics
 
@@ -366,7 +370,7 @@ compose into one function that starts both and returns a combined teardown. Arra
 values stay available later as a pure widening if that ever reads badly. `.on()`
 has no such limit, since a subscription list is additive by nature.
 
-Full argument: [rationale §8](api-rationale.md#8-actions).
+Full argument: [rationale §9](api-rationale.md#9-actions).
 
 ### Composition — invoked children
 
@@ -383,24 +387,24 @@ transitions: {
 }
 ```
 
-Every edge stays in the table, and the key rule extends to three forms while
-staying decidable from the string alone: no arrow → a state; arrow without a colon
-→ immediate; arrow with a colon → an input edge. At most one child per state,
-enforced for free by keying on the state name.
+Every edge stays in the table. `loading.ok` is a state name that happens to contain
+a dot, so this needs no grammar of its own beyond immediate transitions — which are
+wanted anyway. At most one child per state, enforced for free by keying on the
+state name.
 
 Full argument, the rival designs, and what is still unresolved:
-[rationale §9](api-rationale.md#9-composition).
+[rationale §10](api-rationale.md#10-composition).
 
 ## What still gates v1
 
-|     | question                                        | why it blocks                                                                                                                                                                                            |
-| --- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | **May a residency handler `send`?**             | Yes → commit ordering must define reentrancy. No → v1 cannot express fetch-then-transition at all, and the async story waits. The biggest scoping call left.                                             |
-| 2   | **Commit ordering**                             | When listeners fire relative to the state change, what `send` returns, and what happens when a listener sends during a send.                                                                             |
-| 3   | **`.on()` with a bare state key**               | v1's whole effect mechanism. The key rule makes it free; it is unbuilt.                                                                                                                                  |
-| 4   | **Does the definition/instance split survive?** | [§11](api-rationale.md#11-definition-and-instance) made it conditional on shipping composition, which is now deferred — so the conditional points at a single live object. Decide it, do not inherit it. |
-| 5   | Host construction                               | `run(publication, data)` or `publication.start(data)`; initial data as an argument or beside `initial:`.                                                                                                 |
-| 6   | Immediate transitions in v1?                    | `'from -> to'`, no input. Independently wanted, currently motivated only by composition. Cheap now, a breaking grammar change later.                                                                     |
+|     | question                                        | why it blocks                                                                                                                                                                                                                                                          |
+| --- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **May a residency handler `send`?**             | Yes → commit ordering must define reentrancy. No → v1 cannot express fetch-then-transition at all, and the async story waits. The biggest scoping call left.                                                                                                           |
+| 2   | **Commit ordering**                             | When listeners fire relative to the state change, what `send` returns, and what happens when a listener sends during a send.                                                                                                                                           |
+| 3   | **`.on()` with a bare state key**               | v1's whole effect mechanism. The key rule makes it free; it is unbuilt.                                                                                                                                                                                                |
+| 4   | **Does the definition/instance split survive?** | [§12](api-rationale.md#12-definition-and-instance) made it conditional on shipping composition, which is now deferred — so the conditional points at a single live object. Decide it, do not inherit it.                                                               |
+| 5   | Host construction                               | `run(publication, data)` or `publication.start(data)`; initial data as an argument or beside `initial:`.                                                                                                                                                               |
+| 6   | **Immediate transitions in v1?**                | `'from -> to'`, no input ([§7](api-rationale.md#7-immediate-transitions)). Designed, wanted on its own account, and it claims a key form the pattern language would otherwise take as sugar — so shipping without it costs a shorthand that has to be withdrawn later. |
 
 Known and shippable without answering: the layout remains revisitable
 ([three-way, still live](api-rationale.md#4-layout)); whitespace tolerance costs the

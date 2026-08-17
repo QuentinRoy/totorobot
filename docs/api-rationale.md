@@ -18,41 +18,43 @@
 4. [Layout](#4-layout)
 5. [The declared vocabulary](#5-the-declared-vocabulary)
 6. [Self-transitions](#6-self-transitions)
-7. [Effects](#7-effects)
-8. [Actions](#8-actions)
-9. [Composition](#9-composition)
-10. [Sending inputs](#10-sending-inputs)
-11. [Definition and instance](#11-definition-and-instance)
-12. [Type-system findings](#12-type-system-findings)
-13. [The graveyard](#13-the-graveyard)
-14. [Still open](#14-still-open)
+7. [Immediate transitions](#7-immediate-transitions)
+8. [Effects](#8-effects)
+9. [Actions](#9-actions)
+10. [Composition](#10-composition)
+11. [Sending inputs](#11-sending-inputs)
+12. [Definition and instance](#12-definition-and-instance)
+13. [Type-system findings](#13-type-system-findings)
+14. [The graveyard](#14-the-graveyard)
+15. [Still open](#15-still-open)
 
 ---
 
 ## 1. The ledger
 
-Fourteen axes. Eleven are closed.
+Fifteen axes. Eleven are closed.
 
 | #   | Axis                       | Answer                                                       | §   |
 | --- | -------------------------- | ------------------------------------------------------------ | --- |
 | 1   | Overall layout             | string keys — `'submit: draft -> review'`; two rivals alive  | 4   |
 | 2   | Data-free states           | `void` in the declared vocabulary                            | 5   |
-| 3   | Entry / exit actions       | edge patterns with one end pinned; no keyword                | 8   |
-| 4   | Re-entry vs stay           | dissolved — it is an action's restart policy                 | 8   |
+| 3   | Entry / exit actions       | edge patterns with one end pinned; no keyword                | 9   |
+| 4   | Re-entry vs stay           | dissolved — it is an action's restart policy                 | 9   |
 | 5   | Self-transition spelling   | `'revise: draft -> draft'`, an ordinary row                  | 5   |
 | 6   | Input vocabulary           | declared: `types<{ inputs, states }>()`                      | 5   |
 | 7   | Returned commands (`emit`) | out — a listener recovers it from the transition             | 6   |
 | 8   | Fall-through refusal       | no `else`; dev-mode warning                                  | 4   |
-| 9   | Async / work-in-flight     | subsumed by axis 10                                          | 7   |
-| 10  | Actions in the machine     | `actions:`, keyed by trigger, wrappers for policy            | 8   |
+| 9   | Async / work-in-flight     | subsumed by axis 10                                          | 8   |
+| 10  | Actions in the machine     | `actions:`, keyed by trigger, wrappers for policy            | 9   |
 | 11  | The word for what you send | `inputs`, not `events` — the core is not a mailbox           | 5   |
-| 12  | Typed send site            | **dropped** — broad `send` only; reversible later            | 10  |
-| 13  | Composition                | **deferred from v1** — designed; outcome as state, not input | 9   |
-| 14  | Actions in v1              | **deferred** — residency via `.on()` on the host instead     | 8   |
+| 12  | Typed send site            | **dropped** — broad `send` only; reversible later            | 11  |
+| 13  | Composition                | **deferred from v1** — designed; outcome as state, not input | 10  |
+| 14  | Actions in v1              | **deferred** — residency via `.on()` on the host instead     | 9   |
+| 15  | Immediate transitions      | `'from -> to'`, no input — designed; **release undecided**   | 7   |
 
 The axes are not independent. Declaring the vocabulary (§5) settles 2, 5 and 6 in
 one move. Removing entry/exit settles 3, which makes 4 and 5 unobservable and
-therefore moot — and allowing effects back in (§8) makes them observable again, so
+therefore moot — and allowing effects back in (§9) makes them observable again, so
 4 and 5 have answers that only hold given the answer to 10.
 
 ## 2. How anything was judged
@@ -112,7 +114,7 @@ not produce an API, and its useful output was a set of mechanisms rather than a
 design — chiefly: **effects often belong to state residency**; transition results
 need an explicit algebra (no transition / same-state update / state change);
 staleness is an authority problem; definition and consumption can use different
-views. The first of those is where §8 landed independently.
+views. The first of those is where 9 landed independently.
 
 ## 3. What generation 1 cost
 
@@ -289,7 +291,7 @@ edges are one block. Classic records remains the choice if the table must be
 extensible: priority, labels and metadata are just more fields, and nothing needs
 explaining to anyone who has ever seen an FSM. It costs 6.6× the instantiations
 and the arrow test. One non-stylistic piece of evidence for records turned up in
-§8: a `do:` slot on an edge is absorbed by a record as one more field, while
+9: a `do:` slot on an edge is absorbed by a record as one more field, while
 string keys and target keys grow a second value shape to hold it.
 
 ### Two decisions that fell out of the comparison
@@ -486,15 +488,122 @@ explanation; **strictly redundant**, since a listener receives
 could compute is already in `to.data`; and **the direction is asymmetric** —
 adding `emit` later is additive, removing it later is breaking.
 
-§8 reverses the premise of all of this and none of the conclusions: the ten
+9 reverses the premise of all of this and none of the conclusions: the ten
 spellings stayed dead, and axes 4 and 5 stayed dissolved, for a _different_
 reason — the answer moved to the action.
 
-## 7. Effects
+## 7. Immediate transitions
+
+> **Designed, not built, and not yet scoped to a release.** A shape with no
+> outstanding objection — but see the grammar collision below, which is the reason
+> it cannot simply be added later for free.
+
+A transition that fires on **entering** a state rather than on an input. The
+spelling is the transition key with the input part removed:
+
+```ts
+transitions: {
+	'submit: draft -> checking': ({ data }) => data,
+	'checking -> allowed':       ({ data, skip }) => (data.quota > 0 ? data : skip()),
+	'checking -> denied':        ({ data }) => ({ reason: 'over quota' }),
+}
+```
+
+On arriving in `checking`, its immediate rows are tried in declaration order.
+Everything else is the machinery that already exists: `skip()` falls through to the
+next candidate, declaration order is priority order, and the handler receives the
+source data and returns the target's. **A guarded choice therefore needs no new
+concept** — no `cond`, no junction pseudostate, no `always` block. It is the
+multi-target mechanism with the input coordinate deleted.
+
+### Why it is wanted independently of composition
+
+- **Transient states** — a state that exists to make a decision, not to be waited
+  in. The classic statechart junction, expressible today only by inventing an input
+  nobody sends.
+- **A child's outcome is a state, not an input** (§10). `'loading.ok -> ready'` is
+  the same grammar, and this is what makes the outcome spellable without lying
+  about who sends it.
+- It is already on the README's list of missing features, and requirements
+  [Probe 2](requirements.md#probe-2--automatic-or-eventless-transitions) reserves
+  the question — a finalist "may be tested by sketching their cascading and
+  observability semantics", which is what the rest of this section does.
+
+### Prior art, and what it says
+
+| source          | spelling                       | note                                                                  |
+| --------------- | ------------------------------ | --------------------------------------------------------------------- |
+| SCXML           | `<transition>` with no `event` | taken when its condition holds, in **document order** — the same rule |
+| XState v5       | `always: [{ guard, target }]`  | a separate block on the state; guards ordered                         |
+| UML statecharts | junction / choice pseudostates | a whole extra node kind for what is here a row                        |
+| robot3          | `immediate(target, guard)`     | already wrapped in `explorations/robot3-wrapper.ts`                   |
+
+Two findings are already recorded in that wrapper and carry over:
+
+- **An immediate contributes nothing to what a state _handles_.** It is typed
+  `handles: never`, because it is not sendable — so it must not appear in
+  `Handled<T, S>` or in `doc.available`.
+- **robot3 reuses whatever event caused entry** as the immediate's event, which the
+  wrapper calls "untyped rather than mistyped". This design avoids the question
+  entirely: there is no input, so the handler has **no `input` binding**. Reading
+  one is a compile error, which is the honest answer.
+
+### The grammar collision, which is the real reason to decide it early
+
+The key rule extends to three forms and stays decidable from the string alone:
+
+| key                 | meaning             |
+| ------------------- | ------------------- |
+| no arrow            | a state (residency) |
+| **arrow, no colon** | **immediate**       |
+| arrow, with colon   | an input edge       |
+
+**But the pattern language already uses the colon-less form for something else.**
+`.on('draft -> *')` is currently documented as sugar for `'*: draft -> *'` — "the
+input half is optional", meaning _any_ input. Under the three-form rule the same
+shape means _no_ input. Two readings of one string, decided by which block you are
+in, is exactly what the key rule exists to forbid.
+
+Two ways out, and they are not equal:
+
+- **(a) Patterns always write the input position.** `'*: draft -> ready'`, and the
+  shorthand is dropped. Restores decidability; costs a small convenience.
+- **(b) The colon-less form means "no input" in both languages** — so
+  `.on('checking -> allowed')` listens for **that immediate transition
+  specifically**, and "any input" is spelled `'*: draft -> ready'`. **Preferred**:
+  one form, one meaning, in both languages, and it gives immediate transitions an
+  observation syntax for free rather than as a special case.
+
+Either way, **the shorthand cannot ship and then be taken away.** That is what makes
+this cheap now and breaking later, and it is the concrete reason the release
+question is worth answering before v1 rather than after.
+
+### What it forces open
+
+- **Run-to-completion becomes unavoidable.** One `send` can now cause a chain of
+  transitions. When listeners fire, what `send` returns, and whether a caller sees
+  the intermediate states are P0.7's eight decisions, and this is what makes paying
+  that bill compulsory rather than optional.
+- **Termination.** `'a -> b'` with `'b -> a'` spins. Two answers on the table: a
+  step budget with a dev-mode error, or **each state entered at most once per
+  settlement**, which is the statechart microstep rule and detects the cycle
+  precisely rather than by threshold.
+- **Does the initial state settle?** If `initial: 'checking'` and `checking` has
+  immediate rows, the machine is never observably in `checking`. Consistent with
+  "on entering", and it means `run()` can return a host already somewhere else.
+  Defensible, and it should be stated rather than discovered.
+- **The listener event has no input.** The `.on()` event is a union discriminated
+  by `on`; an immediate transition has nothing to put there. Either a `null`
+  discriminant or a separate arm — undecided, and small.
+
+**One thing it improves**: the arrow test. There is no fictional input on the line,
+so source, target and handler are all that remain.
+
+## 8. Effects
 
 Three questions, asked separately and answered together: how work-in-flight is
 expressed, whether the core may perform effects at all, and where the effects go
-(§8) once it may.
+(§9) once it may.
 
 ### Five ways to express work-in-flight
 
@@ -556,7 +665,7 @@ A promise is `pending -> fulfilled | rejected`. A socket is
 `connecting -> open -> closed`. A timer is `waiting -> fired`. If in-flight work
 is _already a machine_, the library does not need an async vocabulary — it needs
 **one way to embed a machine in a state**, and async comes free. That is axis 9
-folding into axis 10, and the design is §9.
+folding into axis 10, and the design is §10.
 
 **robot3 already does this literally**, in about 40 lines: `invoke(fn, …)`
 dispatches on whether the call returns a promise, a machine, or a function
@@ -626,7 +735,7 @@ mount. And the mount fails for a specific, structural reason: it **grows the
 input vocabulary** — mounting a child adds `loading.ok` and `loading.rejected` —
 which means it cannot be a block (the vocabulary is declared up front) and must
 be a fluent chain, whose accumulated type is incomplete until the chain ends.
-That reopens §5. (§9 finds the crack in this argument: it holds only if children
+That reopens §5. (10 finds the crack in this argument: it holds only if children
 are _inferred_.)
 
 Verdict: **the constraint costs more than it pays.** The machine may perform
@@ -639,7 +748,7 @@ decision was about _outgoing notifications_, which a listener can recover from
 `{ on, input, from, to }`. _Starting work_ is not recoverable that way, so the
 redundancy argument does not transfer.
 
-## 8. Actions
+## 9. Actions
 
 With effects allowed back in, the question is where they go — and it is settled by
 concern structure, not taste.
@@ -693,7 +802,7 @@ taste.
 | U   | the handler performs                                | takes the handler to three jobs; no node to hang a socket on                                                                                                                                                          |
 | V   | a `do:` slot on the edge, beside `with:`            | duplicates across every edge into the state; a second value shape; fails the socket test — but it is **the first non-stylistic evidence for records over string keys**, since a record absorbs `do` as one more field |
 | X   | `.on()` / `.within()` as the action layer           | moves the whole action layer outside the definition — **and this is what v1 ships anyway**, see below                                                                                                                 |
-| Y   | actions as data, interpreter supplied by the caller | this is §7's effect-free core                                                                                                                                                                                         |
+| Y   | actions as data, interpreter supplied by the caller | this is §8's effect-free core                                                                                                                                                                                         |
 | Z   | handler acts, multi-target returns its own target   | dissolves axis 8 and the `skip`-ordering semantics — but takes the handler to **four** jobs, the diagnosis in its most concentrated form                                                                              |
 | AA  | cleanup via `Symbol.dispose` on the state's data    | elegant, and a TC39 standard rather than a concept of ours — but the disposer must be constructed inside the handler, so same overload                                                                                |
 | AB  | no feature at all; a named async function drives it | not rejected — **the baseline this has to beat**, and the visibility complaint largely evaporates once the function has a name                                                                                        |
@@ -814,7 +923,7 @@ counts above.)
 
 **Axis 3 reopens by definition**, and the block is **opaque**: nothing in the table
 says `loading` fetches, so grep `-> loading` finds the edges but not the work. That
-was the fatal complaint against `within` in §7, and attaching to residency does not
+was the fatal complaint against `within` in §8, and attaching to residency does not
 answer it — it only gives the closure a defensible lifetime.
 
 Three properties come free, and they are what the rejected options paid for: **the
@@ -887,7 +996,7 @@ that composition is also deferred:
 Exactly one argument distinguishes them, and it is a reason to add `actions`
 **later**, not a reason to have it now. Three positive reasons to defer:
 
-1. **Actions cannot be specified until commit ordering is.** §9's immediate
+1. **Actions cannot be specified until commit ordering is.** §10's immediate
    transitions make it worse — one `send` can cause a chain — and P0.7 was already
    amended to say run-to-completion is **eight decisions, not one**. Shipping
    actions first means guessing at all eight.
@@ -895,7 +1004,7 @@ Exactly one argument distinguishes them, and it is a reason to add `actions`
    separate jobs: `actions` is the machine's own behaviour, `.on()` is a
    subscription attached by whoever instantiates it. v1 ships the subscriber half;
    v1.1 adds the owner half beside it. Nothing is taken away and nothing moves.
-3. **v1 becomes the effect-free core for free.** §7 wanted exactly this and
+3. **v1 becomes the effect-free core for free.** 8 wanted exactly this and
    rejected it because making it _complete_ needed a description vocabulary, a
    reconciling driver and an identity rule. None of that is needed if the caller
    attaches effects imperatively: the definition stays pure, serialisable and
@@ -914,7 +1023,7 @@ doc.on('draft', ({ data }) => {
 })
 ```
 
-On the **host**, not the definition — which §11 requires independently, and which
+On the **host**, not the definition — which 12 requires independently, and which
 dissolves the definition-completeness objection: nobody expects an imported
 topology to carry behaviour.
 
@@ -923,7 +1032,7 @@ Anything that must `send` from a residency handler — the whole async story —
 reopens commit ordering, so v1 either accepts that or scopes residency to effects
 that do not feed back. That choice is the first thing v1.1 has to make anyway.
 
-## 9. Composition
+## 10. Composition
 
 > **Designed, deferred.** This is the design to return to, not the plan.
 
@@ -968,9 +1077,9 @@ them is what made the earlier attempt feel unsolvable.
 1. **Hierarchy is out.** Keys become paths, `Handled`/`Sources` become recursive,
    the arrow test dies, grep stops being one hop, and every layout decision is
    re-litigated. "A different project."
-2. **A mount grows the input vocabulary** (§7) — `loading.ok`, `loading.rejected`
+2. **A mount grows the input vocabulary** (§8) — `loading.ok`, `loading.rejected`
    — and §5 declares the vocabulary up front.
-3. **Actions work _because_ the type never grows** (§8): _"this works because it
+3. **Actions work _because_ the type never grows** (§9): _"this works because it
    is less powerful than a mount."_
 4. **Siblings in one object literal cannot see each other's inferred types**
    (§4, option-e). A `run:` block beside `transitions:` inherits that.
@@ -984,7 +1093,7 @@ them is what made the earlier attempt feel unsolvable.
 Constraint 4 has a crack in it. A mount "cannot be a block… and must be a fluent
 chain" holds only if the children are **inferred**. If they are **declared** — in
 `types<>`, beside `inputs` and `states` — the derived inputs are computable at the
-same moment as everything else, by a mapped type, which is §12 finding 10's safe
+same moment as everything else, by a mapped type, which is §13 finding 10's safe
 mechanism. §5's own answer applies to its own objection.
 
 ### Three designs
@@ -1038,7 +1147,7 @@ two independent labs converged on.
 
 **Its real weakness** is not the obvious one. The peer wiring lives _outside_ the
 definition, as imperative `.on()` calls a caller must remember to make. That is
-precisely the shape §8 rejected for actions: _"the exported thing is not the
+precisely the shape §9 rejected for actions: _"the exported thing is not the
 machine — it is half a machine plus a convention."_ This design accepts that
 argument for actions and then violates it one level up.
 
@@ -1071,8 +1180,8 @@ can, and it would appear in `available` as though a user could pick it. The chil
 reaching `ok` is **a condition that became true**, which is what a state is.
 
 Spelling it as a state requires a way to leave a state with no input — an
-**immediate transition** — which this repo already lists as a known missing
-feature, so one mechanism pays twice:
+**immediate transition** (§7), which is wanted on its own account anyway, so one
+mechanism pays twice:
 
 ```ts
 // an ordinary spec — nothing about it was written to be a child
@@ -1099,14 +1208,9 @@ transitions: {
 }
 ```
 
-**The key rule extends to three forms and stays decidable from the string alone**,
-which is the property that mattered:
-
-| key                 | meaning             |
-| ------------------- | ------------------- |
-| no arrow            | a state (residency) |
-| **arrow, no colon** | **immediate**       |
-| arrow, with colon   | an input edge       |
+`loading.ok` is a state name that happens to contain a dot, so the three key forms
+of §7 carry this with nothing added, and the property that mattered — decidable
+from the string alone — survives.
 
 **Measured** (`scratchpad/probe/`): all three key forms coexist, `Sources<'ready'>`
 is still the text search `-> ready`, `loading.ok` carries the child's outcome data,
@@ -1276,7 +1380,7 @@ definition complete **and keeping every edge in the table** — the test that
 eliminated its own two cheaper spellings.
 
 Against peers: better external support, but its composition is a convention living
-outside the exported value — the exact defect §8 rejected for actions. A library
+outside the exported value — the exact defect §9 rejected for actions. A library
 whose thesis is "the definition is the documentation" should not require an
 assembly step it cannot express. Children subsumes the useful part anyway: peers in
 one state are `all(invoke(a, …), invoke(b, …))`.
@@ -1286,8 +1390,8 @@ express concurrency, which the strongest external evidence says is the case that
 matters. It solves async beautifully and modularity not at all.
 
 What makes it affordable is that everything hard was decided for other reasons:
-residency defines the child's lifetime (§8), wrappers carry the restart policy
-(§8), and declaring the child means the vocabulary grows from a declared type
+residency defines the child's lifetime (§9), wrappers carry the restart policy
+(§9), and declaring the child means the vocabulary grows from a declared type
 rather than an inferred sibling — the mechanism §5 built for a different problem.
 
 **Still open besides the fork**: whether leaving cancels the child's work or merely
@@ -1295,7 +1399,7 @@ stops us caring; what data `loading.ok` carries; and that `actions` is
 trigger-keyed, so two children in one state need `loading: all(invoke(…),
 invoke(…))`.
 
-## 10. Sending inputs
+## 11. Sending inputs
 
 Every other section is about **writing** a machine. This one is about **driving**
 it.
@@ -1316,7 +1420,7 @@ it.
    snapshot remains reachable and needs an answer.
 4. **Actions need a host.** A pure transition function cannot start a socket or
    fire a teardown, so a stateful instance has to exist regardless.
-5. **The definition is not the instance** (§11), so sending targets something the
+5. **The definition is not the instance** (§12), so sending targets something the
    host produced.
 
 ### What a "capability" is
@@ -1509,7 +1613,7 @@ region earns its keep in everyday code.
 **Recorded as cheaper ways back in**: `sendIf` adds one method and no concepts;
 `from` if a handle turns out to be wanted for reading as well as sending.
 
-## 11. Definition and instance
+## 12. Definition and instance
 
 **Are the thing you write and the thing you drive two objects, or one?**
 
@@ -1588,7 +1692,7 @@ better than `run(publication, data)` and removes an import.
 
 **And subscriptions belong on the host** regardless of how this resolves. The
 prototype attaches `.on()` to the definition, which contradicts the ownership split
-§8 relies on: two hosts running one definition would **share** listeners, and a
+9 relies on: two hosts running one definition would **share** listeners, and a
 value documented as inert is quietly mutated. Putting them on the host makes the
 split structural rather than conventional and leaves the definition genuinely
 immutable — which is what lets it be exported, imported, diffed and visualised. The
@@ -1599,7 +1703,7 @@ being cosmetic.
 Still open: what the host is called (`run` / `interpret` / `start`), and whether
 the initial data is an argument or lives in the definition beside `initial:`.
 
-## 12. Type-system findings
+## 13. Type-system findings
 
 Each was discovered by a test asserting that something **illegal** fails. No
 positive test has ever caught one.
@@ -1638,7 +1742,7 @@ positive test has ever caught one.
     `const still: 'draft' = doc.current.state` still compiles. Narrowing an object
     that something else can mutate is unsound in TypeScript and there is no
     workaround — the language has no effect system to invalidate it. **This is the
-    finding that governs §10.** A discriminated union on the live object _does_
+    finding that governs 11.** A discriminated union on the live object _does_
     narrow correctly, so the shape is typeable — it is just wrong the moment the
     machine moves.
 
@@ -1648,7 +1752,7 @@ There is also one non-type finding worth keeping, recorded in
 the `target` argument is read, and `To` collapses onto `K`. Carrying the context as
 its own free type parameter avoids it.
 
-## 13. The graveyard
+## 14. The graveyard
 
 Everything proposed and rejected, one line each, so the ground is not re-covered.
 
@@ -1689,7 +1793,7 @@ prefix · S11 `sendIf` — and S12 `match`, designed but not built.
 no static guarantee) · `enter`/`exit` as their own keys (edge patterns with one end
 pinned) · a class or `new` for instantiation.
 
-## 14. Still open
+## 15. Still open
 
 - **Layout is a live three-way choice**, not a closed question. String keys is the
   recommendation; target keys wins co-location and classic records wins
@@ -1704,9 +1808,13 @@ pinned) · a class or `new` for instantiation.
   ship.
 - **Whether a residency handler may `send`** — the largest v1 scoping call, because
   it decides how much of commit ordering v1 needs at all.
-- **Whether the definition/instance split survives v1** (§11), now that the
+- **Whether the definition/instance split survives v1** (§12), now that the
   condition it was made on points the other way.
-- **Composition is designed and deferred** (§9), with the fork between the dotted
+- **Whether immediate transitions are in v1** (§7). The design has no outstanding
+  objection; what is undecided is the release, and the reason it cannot wait is
+  that it claims a key form the pattern language would otherwise take as sugar.
+  Termination and whether the initial state settles are open inside it.
+- **Composition is designed and deferred** (§10), with the fork between the dotted
   form and the callback unresolved.
 - **If handlers ever gain effects, whether losing candidates run becomes
   observable.** Under this design handlers only project, so the order in which
