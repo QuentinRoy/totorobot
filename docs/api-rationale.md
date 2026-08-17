@@ -335,7 +335,7 @@ implement the leading-input spelling; the cardinality of the key type is identic
   a colon, which is subtler.
 - Marginally shorter, and multi-target rows share a longer aligned prefix.
 
-**Measured cost** (`scratchpad/arrow/`): a `-` is legal in a state or input name, so
+**Measured cost**: a `-` is legal in a state or input name, so
 the separator is only unambiguous if **whitespace becomes load-bearing**. With a
 lazy `${infer F}-${string}>${string}`, an ordinary kebab-case name mis-splits and
 does so silently:
@@ -461,7 +461,9 @@ is unrepresentable.
 _The state-name inference cliff._ When every state was data-free and every
 handler a closure, `keyof S` collapsed to `string` and target names stopped being
 checked — needing a compile-time guard whose error message was the fix. Names are
-now declared, so they cannot be recovered wrongly: `n2/check.ts` runs the exact
+now declared, so they cannot be recovered wrongly:
+[`n2-declared-types/check.ts`](../explorations/candidates/n2-declared-types/check.ts)
+runs the exact
 machine that broke `d1`, and it infers correctly with no guard in the library at
 all.
 
@@ -1428,7 +1430,7 @@ transitions: {
 of §7 carry this with nothing added, and the property that mattered — decidable
 from the string alone — survives.
 
-**Measured** (`scratchpad/probe/`): all three key forms coexist, `Sources<'ready'>`
+**Measured**: all three key forms coexist, `Sources<'ready'>`
 is still the text search `-> ready`, `loading.ok` carries the child's outcome data,
 `'loading.pending -> ready'` is rejected because the parent did not declare
 `pending` an outcome, each outcome carries **its own** payload rather than a union
@@ -1766,8 +1768,8 @@ doc.match('draft', ({ send, data }) => …)  // one branch — sugar for a one-k
 doc.match({ draft: …, review: …, … })      // many branches — exactly one fires
 ```
 
-Everything about it is measured on 7.0.2 and reproducible from
-`scratchpad/probe/`: per-branch narrowing of both `send` and `data`, the dependent
+Everything about it was measured on 7.0.2, in a probe that was not kept:
+per-branch narrowing of both `send` and `data`, the dependent
 payload type, the no-argument `void` case, rejection of unknown states, and a
 return type that tightens from `R | undefined` to `R` exactly when every state is
 covered.
