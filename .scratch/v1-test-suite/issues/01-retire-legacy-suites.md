@@ -21,7 +21,7 @@ rationale documents, still passes, and keeps its signal.
 
 **Blocked by:** None — can start immediately.
 
-**Status:** done — commit `eacbc80` on `v1-test-suite`
+**Status:** done
 
 - [x] `tests/totorobot.test.ts` is deleted
 - [x] `tests/robot3/` is deleted in full (8 `.js` suites, `types/send.test.ts`, and

@@ -69,7 +69,7 @@ Everything the package exports, and everything a host has:
 | name                                                        | is                                                     |
 | ----------------------------------------------------------- | ------------------------------------------------------ |
 | `machine({ initial, inputs?, states?, transitions })`       | a **definition** — inert data, never mutated           |
-| `types<T>()`                                                | a declaration carrying `T`; no runtime value           |
+| `types<T>()`                                                | a declaration carrying `T`; returns `null` at runtime  |
 | `definition.start(data?)`                                   | a **host** — the only mutable object in the design     |
 | `host.current`                                              | `{ state, data }`                                      |
 | `host.available`                                            | the input names the current state handles              |
@@ -87,8 +87,9 @@ inputs: types<{ submit: Submit; cancel: void }>(),
 states: types<{ empty: void; draft: { text: string; revision: number } }>(),
 ```
 
-Both maps are **declared**. `types<T>()` carries no runtime value; it exists only to
-carry `T`.
+Both maps are **declared**. `types<T>()` exists only to carry `T`; it carries no runtime
+value, and **returns `null`** — that is what a caller observes, rather than `undefined`
+or a marker object. Nothing reads it, so the two fields are inert at runtime.
 
 - A data-free state, or an input with no payload, is `void`.
 - Each map is an ordinary type, so it can be named, exported, imported, generated, made
@@ -205,6 +206,11 @@ listeners, and neither mutates the definition.
   declaration order, without duplicates — one `'submit'` even though two rows carry it.
   This is what UI code needs to render buttons, and it is the runtime half of per-state
   capabilities.
+  **It is derived from the table, not from running handlers**, so an input whose every
+  candidate row would `skip()` is still listed. Deciding otherwise would mean evaluating
+  handlers, which needs a payload `available` does not have — and would run them for
+  their answer without committing it. `available` therefore says which inputs the state
+  has rows for, not which will commit.
 
 ### Sending
 
@@ -341,7 +347,9 @@ implementation to be driven from.
 
 4. `current` is `{ state, data }`; `data` is `undefined` for a `void` state.
 5. A value read from `current` before a transition is unchanged after it.
-6. `available` lists the current state's inputs in table order, deduplicated.
+6. `available` lists the current state's inputs in table order, deduplicated. It comes
+   from the table alone: an input whose every candidate row would `skip()` is listed
+   like any other.
 7. `available` is `[]` for a state with no outgoing rows.
 
 **Sending**
@@ -350,7 +358,8 @@ implementation to be driven from.
    every listener whose pattern matches that edge fires.
 9. An input no row matches changes nothing and fires no listener.
 10. An input whose every candidate row calls `skip()` changes nothing and fires no
-    listener. Externally indistinguishable from 9, deliberately.
+    listener. Externally indistinguishable from 9, deliberately — except that it is in
+    `available` and the input of 9 is not (6).
 11. With several rows for one `(from, input)`, candidates are tried in declaration order
     and the first that does not skip wins.
 12. A self-transition commits and notifies like any other, with
@@ -415,7 +424,8 @@ runtime (`available`) rather than enforced by the compiler.
 
 - **A transition is pure.** Given a state and an input it yields either the next state
   or a refusal, and it neither performs nor schedules anything.
-- **Sending is broad**, and `available` says in advance which inputs will be ignored.
+- **Sending is broad**, and `available` says in advance which inputs the current state
+  has no row for at all — not which ones will commit, since a row may still decline.
 - **Big steps terminate**, because one input causes at most one transition.
 - **Stale results are free.** A `loaded` arriving after we left `loading` matches no row
   and does nothing. That is _ignoring a result_, not _cancelling work_; cancelling is
