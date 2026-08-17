@@ -519,10 +519,12 @@ which covers all four combinations of declared maps:
    enough: wrapped inside a conditional (`S extends Vocab ? keyof S & string :
 string`) the reverse inference still happened. The constrained default is what makes
    the conditional unnecessary, and removing it is what lets `NoInfer` bite.
-3. **A bad key poisons its own value type.**
-   `K extends Key<S> ? Handler : \`not a transition: '${K}'\``reports on the
-offending line, where intersecting an extra required property reports at the object
-level — a missing property is an object-level error. This **replaces** the separate`Check<S, T>` helper, so the fix removes machinery rather than adding it.
+3. **A bad key poisons its own value type**, mapping to an error-bearing string
+   literal instead of a handler signature — `K extends Key<S> ? Handler : "not a
+transition: 'K'"`. That reports on the offending line, where intersecting an extra
+   required property reports at the object level, because a missing property is an
+   object-level error. It **replaces** the separate `Check<S, T>` helper, so the fix
+   removes machinery rather than adding it.
 
 **An overload per combination was tried and is worse.** It does fix the inference, but
 every failure becomes `No overload matches this call` at the call site rather than on a
