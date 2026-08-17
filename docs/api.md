@@ -238,12 +238,16 @@ concept:
 ```ts
 '*: * -> loading' // entry: every arrival, including re-entry
 '*: draft -> *' //   exit: every departure
+'draft -> *' //      the same thing — an omitted input position is unconstrained
 ```
 
-> **Do not add the `'draft -> *'` shorthand** — dropping the input half to mean
-> "any input". It collides head-on with immediate transitions, where the same shape
-> means _no_ input. If it ships, it has to be taken away later; if it never ships,
-> nothing is lost. See [rationale §7](api-rationale.md#7-immediate-transitions).
+**Declaring and matching are the same language**, used two ways. A transition key
+_names_ an edge, so every coordinate is concrete. A pattern _selects_ edges, so a
+coordinate may be left unconstrained — which is what `*`, and an omitted input
+position, both do. The consequence worth knowing: `.on('a -> b')` fires for
+**every** transition from `a` to `b`, including an immediate one, since an immediate
+transition is an edge whose input position is empty. See
+[rationale §7](api-rationale.md#7-immediate-transitions).
 
 For residency, **setup and teardown are lexically paired**, so the correlation no
 library could check becomes one no author can break: the cleanup closes over what
@@ -397,14 +401,14 @@ Full argument, the rival designs, and what is still unresolved:
 
 ## What still gates v1
 
-|     | question                                        | why it blocks                                                                                                                                                                                                                                                          |
-| --- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | **May a residency handler `send`?**             | Yes → commit ordering must define reentrancy. No → v1 cannot express fetch-then-transition at all, and the async story waits. The biggest scoping call left.                                                                                                           |
-| 2   | **Commit ordering**                             | When listeners fire relative to the state change, what `send` returns, and what happens when a listener sends during a send.                                                                                                                                           |
-| 3   | **`.on()` with a bare state key**               | v1's whole effect mechanism. The key rule makes it free; it is unbuilt.                                                                                                                                                                                                |
-| 4   | **Does the definition/instance split survive?** | [§12](api-rationale.md#12-definition-and-instance) made it conditional on shipping composition, which is now deferred — so the conditional points at a single live object. Decide it, do not inherit it.                                                               |
-| 5   | Host construction                               | `run(publication, data)` or `publication.start(data)`; initial data as an argument or beside `initial:`.                                                                                                                                                               |
-| 6   | **Immediate transitions in v1?**                | `'from -> to'`, no input ([§7](api-rationale.md#7-immediate-transitions)). Designed, wanted on its own account, and it claims a key form the pattern language would otherwise take as sugar — so shipping without it costs a shorthand that has to be withdrawn later. |
+|     | question                                        | why it blocks                                                                                                                                                                                                                                         |
+| --- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **May a residency handler `send`?**             | Yes → commit ordering must define reentrancy. No → v1 cannot express fetch-then-transition at all, and the async story waits. The biggest scoping call left.                                                                                          |
+| 2   | **Commit ordering**                             | When listeners fire relative to the state change, what `send` returns, and what happens when a listener sends during a send.                                                                                                                          |
+| 3   | **`.on()` with a bare state key**               | v1's whole effect mechanism. The key rule makes it free; it is unbuilt.                                                                                                                                                                               |
+| 4   | **Does the definition/instance split survive?** | [§12](api-rationale.md#12-definition-and-instance) made it conditional on shipping composition, which is now deferred — so the conditional points at a single live object. Decide it, do not inherit it.                                              |
+| 5   | Host construction                               | `run(publication, data)` or `publication.start(data)`; initial data as an argument or beside `initial:`.                                                                                                                                              |
+| 6   | **Immediate transitions in v1?**                | `'from -> to'`, no input ([§7](api-rationale.md#7-immediate-transitions)). Designed, and wanted on its own account. The key form is additive; the **chain of transitions per `send`** is not, so item 2 has to be settled with this either in or out. |
 
 Known and shippable without answering: the layout remains revisitable
 ([three-way, still live](api-rationale.md#4-layout)); whitespace tolerance costs the

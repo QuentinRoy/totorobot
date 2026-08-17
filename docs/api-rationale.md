@@ -494,9 +494,10 @@ reason — the answer moved to the action.
 
 ## 7. Immediate transitions
 
-> **Designed, not built, and not yet scoped to a release.** A shape with no
-> outstanding objection — but see the grammar collision below, which is the reason
-> it cannot simply be added later for free.
+> **Designed, not built, and not yet scoped to a release.** No outstanding
+> objection to the shape. What makes the release question urgent is the execution
+> model rather than the grammar: the grammar is additive, and run-to-completion is
+> not.
 
 A transition that fires on **entering** a state rather than on an input. The
 spelling is the transition key with the input part removed:
@@ -548,7 +549,7 @@ Two findings are already recorded in that wrapper and carry over:
   entirely: there is no input, so the handler has **no `input` binding**. Reading
   one is a compile error, which is the honest answer.
 
-### The grammar collision, which is the real reason to decide it early
+### One language, two uses
 
 The key rule extends to three forms and stays decidable from the string alone:
 
@@ -558,32 +559,56 @@ The key rule extends to three forms and stays decidable from the string alone:
 | **arrow, no colon** | **immediate**       |
 | arrow, with colon   | an input edge       |
 
-**But the pattern language already uses the colon-less form for something else.**
-`.on('draft -> *')` is currently documented as sugar for `'*: draft -> *'` — "the
-input half is optional", meaning _any_ input. Under the three-form rule the same
-shape means _no_ input. Two readings of one string, decided by which block you are
-in, is exactly what the key rule exists to forbid.
+There is **one** key language. What differs is what a key is being used _for_:
 
-Two ways out, and they are not equal:
+- **Declaring**, in `transitions` — the key _names_ an edge that exists. Every
+  coordinate must be concrete; `*` is meaningless, because "some edge with an
+  unspecified input" is not a thing you can declare.
+- **Matching**, in `.on()` — the key _selects_ edges. A coordinate may be left
+  unconstrained.
 
-- **(a) Patterns always write the input position.** `'*: draft -> ready'`, and the
-  shorthand is dropped. Restores decidability; costs a small convenience.
-- **(b) The colon-less form means "no input" in both languages** — so
-  `.on('checking -> allowed')` listens for **that immediate transition
-  specifically**, and "any input" is spelled `'*: draft -> ready'`. **Preferred**:
-  one form, one meaning, in both languages, and it gives immediate transitions an
-  observation syntax for free rather than as a special case.
+An omitted input position reads identically in both: **no input is named.** A
+declaration has to be complete, so that means the edge has none — it is immediate. A
+pattern does not, so it means the input is unconstrained — and an immediate
+transition, having no input, is matched by it. The pattern reading is the superset
+that contains the declaration reading. `.on('a -> b')` therefore fires for every
+transition from `a` to `b`, **immediate or not**, which is the useful answer as well
+as the consistent one.
 
-Either way, **the shorthand cannot ship and then be taken away.** That is what makes
-this cheap now and breaking later, and it is the concrete reason the release
-question is worth answering before v1 rather than after.
+**An objection that does not hold**, recorded because it looks plausible and cost a
+round: that this breaks the key rule, since the same string would mean "no input"
+when declared and "any input" when matched. It does not. The key rule discriminates
+**state from edge** — `'review'` against `'submit: * -> *'` — and `'a -> b'` has an
+arrow, so it is an edge in both uses and the rule answers identically. How
+_completely_ an edge's coordinates are filled in is a different axis, one the rule
+never spoke to. If it did, `*` would already be a violation, since `*` is legal in a
+pattern and meaningless in a declaration.
+
+**One sub-question is left open, and it is nearly unobservable:** whether `*` in the
+input position matches the _absence_ of an input. If it does, `'a -> b'` and
+`'*: a -> b'` are the same pattern. If it does not — `*` reading as "some input, any
+input" — then `'a -> b'` is strictly broader, and neither form can select the
+immediate edge alone.
+
+The reason it barely matters is structural: **an immediate transition makes its
+source transient**, so there is usually nobody in that state to send it an input, and
+the two patterns have the same edges to choose between. The exception is the case
+§10 already records — if every immediate candidate calls `skip()`, you stay, and
+input edges out of that state (`'cancel: loading.ok -> empty'`) become meaningful.
+So the two readings can differ, in the one situation where a state is both
+transient and waitable. Not decided, and not worth deciding before something needs
+it.
 
 ### What it forces open
 
-- **Run-to-completion becomes unavoidable.** One `send` can now cause a chain of
-  transitions. When listeners fire, what `send` returns, and whether a caller sees
-  the intermediate states are P0.7's eight decisions, and this is what makes paying
-  that bill compulsory rather than optional.
+- **Run-to-completion becomes unavoidable — and this is why the release question
+  cannot drift.** One `send` can now cause a chain of transitions. When listeners
+  fire, what `send` returns, and whether a caller ever sees the intermediate states
+  are P0.7's eight decisions, and this is what makes paying that bill compulsory
+  rather than optional. A v1 that settles commit ordering on the assumption that
+  one `send` produces at most one transition has to **change** what `send` returns
+  and when listeners fire in order to admit chains later. Adding the key form is
+  additive; adding the chain is not.
 - **Termination.** `'a -> b'` with `'b -> a'` spins. Two answers on the table: a
   step budget with a dev-mode error, or **each state entered at most once per
   settlement**, which is the statechart microstep rule and detects the cycle
