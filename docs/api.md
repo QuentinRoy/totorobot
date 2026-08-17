@@ -102,9 +102,10 @@ machine; a TypeScript caller who omits them gets state and input names as `strin
 key is a compile error whether or not a vocabulary was declared. Declaring one map
 and not the other is supported and checks that half.
 
-This does not fall out for free — see [observable behaviour](#observable-behaviour)
-items 27–29, and the inference hazard recorded in
-[the rationale](api-rationale.md#5-the-declared-vocabulary).
+This does not fall out for free — the mechanism is constrained defaults plus
+`NoInfer` on `initial`, and it is built and asserted in
+[`explorations/vocabulary-degradation.ts`](../explorations/vocabulary-degradation.ts).
+See [observable behaviour](#observable-behaviour) items 27–29.
 
 **The cost, stated plainly:** states have no runtime existence. The machine object
 carries transition keys, not a list of states, so a visualiser or a dev-mode "valid

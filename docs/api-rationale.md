@@ -500,17 +500,34 @@ caller writes `machine({ initial, transitions })`; a TypeScript caller who omits
 should get `string` names and `unknown` data, with the key _grammar_ still enforced,
 since the grammar does not depend on the vocabulary.
 
-**That does not fall out for free, and this is the finding to carry into the build.**
-With `states` omitted, `S` gets **reverse-inferred from `initial`** — measured as
-`{ whatever: any }` from `initial: 'whatever'` — after which `Key<S>` admits only that
-one bogus state, every real key becomes invalid, and the error lands on the whole
-`transitions` block instead of on a line. So the degraded path fails **both** P1.4
-("should not collapse into an unusable surface") and P1.2 (locality) unless it is
-designed for. `NoInfer` on `initial` did not fix it; the cause is an interaction with
-the table's own inference sites and needs an implementation-time answer rather than a
-one-line patch. It is on the v1 test list as items 27–29 of
-[api.md](api.md#observable-behaviour) precisely because it will not be noticed
-otherwise.
+**It does not fall out for free.** A first attempt had `S` **reverse-inferred from
+`initial`** — `initial: 'whatever'` produced `S = { whatever: any }` — after which the
+only legal state was that bogus one, every real key was rejected, and the error moved
+off the offending line onto the whole `transitions` block. That fails P1.4 ("should
+not collapse into an unusable surface") and P1.2 (locality) at once.
+
+**Three things fix it**, built and asserted in
+[`explorations/vocabulary-degradation.ts`](../explorations/vocabulary-degradation.ts),
+which covers all four combinations of declared maps:
+
+1. **Constrained defaults.** `S extends Vocab = Vocab`, with
+   `Vocab = Record<string, unknown>`. Widening then falls out of the constraint —
+   `keyof Vocab & string` is `string` and `Vocab[K]` is `unknown` — so nothing needs a
+   conditional to express "no vocabulary declared".
+2. **`NoInfer` on `initial`.** `keyof NoInfer<S> & string` leaves `states:` as the only
+   inference site, so the default applies when it is omitted. `NoInfer` alone is not
+   enough: wrapped inside a conditional (`S extends Vocab ? keyof S & string :
+string`) the reverse inference still happened. The constrained default is what makes
+   the conditional unnecessary, and removing it is what lets `NoInfer` bite.
+3. **A bad key poisons its own value type.**
+   `K extends Key<S> ? Handler : \`not a transition: '${K}'\``reports on the
+offending line, where intersecting an extra required property reports at the object
+level — a missing property is an object-level error. This **replaces** the separate`Check<S, T>` helper, so the fix removes machinery rather than adding it.
+
+**An overload per combination was tried and is worse.** It does fix the inference, but
+every failure becomes `No overload matches this call` at the call site rather than on a
+line, and the states-only combination does not resolve at all. Trading P1.2 for P1.4 is
+not a fix.
 
 **The alternative shape** — `machine<Publication>()({ … })` — removes the `types:`
 property but needs the double call, because TypeScript has no partial
@@ -2217,10 +2234,6 @@ pinned) · a class or `new` for instantiation.
 
 ## 15. Still open
 
-- **The untyped path does not widen cleanly yet** (§5). Omitting `states`
-  reverse-infers a bogus vocabulary from `initial`, invalidating every key and moving
-  the error off the offending line. P1.4 and P1.2 both require better; it needs an
-  implementation-time answer.
 - **No prototype implements the adopted notation.** Axis 1 settled on the labelled
   arrow (§4) after the comparison was run, so `n1`/`n2` are one spelling behind. The
   key type's cardinality is identical, so the measurements transfer — but the parser
