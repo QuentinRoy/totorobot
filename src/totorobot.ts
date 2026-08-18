@@ -19,6 +19,23 @@
  * This module is the whole library: one definition builder, one host, and no
  * dependencies.
  *
+ * ## On what is exported
+ *
+ * An exported type is a promise, so the list is the one `docs/api.md` publishes
+ * and nothing more: `machine`, `types`, the derived `InputsOf`, `StatesOf`,
+ * `Handled` and `Sources`, and `Skip`, which is unavoidably public because it
+ * is in every handler's return type.
+ *
+ * Everything else — `Machine`, `Host`, `Snapshot`, `Transition`, `Listener`,
+ * `Pattern` and the machinery under them — is module-local **on purpose**. The
+ * emitted declarations still carry them, so every public signature resolves and
+ * hover text reads normally; they simply cannot be imported, which is what
+ * leaves them free to change. A caller who needs to name one names it through
+ * what it came from — `typeof publication`,
+ * `ReturnType<typeof publication.start>` — rather than through a type whose
+ * parameter list would then be frozen. Adding an `export` here widens the API;
+ * do it deliberately, and say so in `docs/api.md`.
+ *
  * ## On size
  *
  * The shipped file is minified, so short identifiers and terse formatting buy
@@ -155,7 +172,7 @@ type To<K> = K extends `${string} -${string}> ${infer T}` ? T : never
  * state, is not a pattern.
  */
 type Wildcard<S extends Vocab> = Name<S> | '*'
-export type Pattern<I extends Vocab = Vocab, S extends Vocab = Vocab> =
+type Pattern<I extends Vocab = Vocab, S extends Vocab = Vocab> =
 	| `${Wildcard<S>} -${Name<I>}> ${Wildcard<S>}`
 	| `${Wildcard<S>} -> ${Wildcard<S>}`
 
@@ -225,7 +242,7 @@ type At<S extends Vocab, N extends string> = {
  *
  * Never mutated: a value read from `current` stays valid.
  */
-export type Snapshot<S extends Vocab = Vocab> = At<S, Name<S>>
+type Snapshot<S extends Vocab = Vocab> = At<S, Name<S>>
 
 /**
  * What a pattern leaves open, resolved against what the vocabulary declares.
@@ -244,7 +261,7 @@ type Select<Coordinate extends string, All extends string> = [
  * by `on`, over the inputs and the two ends the pattern admits. `'* -> *'`
  * leaves all three open and is therefore the whole record.
  */
-export type Transition<
+type Transition<
 	I extends Vocab = Vocab,
 	S extends Vocab = Vocab,
 	P extends string = '* -> *',
@@ -257,7 +274,7 @@ export type Transition<
 	}
 }[Select<Label<P>, Name<I>>]
 
-export type Listener<
+type Listener<
 	I extends Vocab = Vocab,
 	S extends Vocab = Vocab,
 	P extends string = '* -> *',
@@ -290,7 +307,7 @@ type Start<S extends Vocab, Init extends string> = [S[Init & Name<S>]] extends [
 		: [data: S[Init & Name<S>]]
 
 /** A running machine: the only mutable thing in the design. */
-export interface Host<I extends Vocab = Vocab, S extends Vocab = Vocab> {
+interface Host<I extends Vocab = Vocab, S extends Vocab = Vocab> {
 	readonly current: Snapshot<S>
 	readonly available: readonly Name<I>[]
 	readonly send: (...args: Dispatch<I>) => void
@@ -314,7 +331,7 @@ interface Vocabulary<I extends Vocab, S extends Vocab, K extends string> {
 }
 
 /** A declared machine. Inert, shareable, and never mutated by running one. */
-export interface Machine<
+interface Machine<
 	I extends Vocab = Vocab,
 	S extends Vocab = Vocab,
 	K extends string = string,
