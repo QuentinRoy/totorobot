@@ -65,17 +65,17 @@ doc.send('open', { text: 'hello' })
 
 Everything the package exports, and everything a host has:
 
-| name                                                        | is                                                     |
-| ----------------------------------------------------------- | ------------------------------------------------------ |
-| `machine({ initial, inputs?, states?, transitions })`       | a **definition** — inert data, never mutated           |
-| `types<T>()`                                                | a declaration carrying `T`; returns `null` at runtime  |
-| `definition.start(data?)`                                   | a **host** — the only mutable object in the design     |
-| `host.current`                                              | `{ state, data }`                                      |
-| `host.available`                                            | the input names the current state handles              |
-| `host.send(name, payload?)`                                 | a dispatch; returns nothing                            |
-| `host.on(pattern, listener)`                                | a subscription; returns an unsubscribe function        |
-| a handler's `{ data, input, skip }`                         | source data, the input payload, and the way to decline |
-| `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>` | derived types, over `M = typeof publication`           |
+| name                                                        | is                                                         |
+| ----------------------------------------------------------- | ---------------------------------------------------------- |
+| `machine({ initial, inputs?, states?, transitions })`       | a **definition** — inert data, never mutated               |
+| `types<T>()`                                                | a declaration carrying `T`; returns `undefined` at runtime |
+| `definition.start(data?)`                                   | a **host** — the only mutable object in the design         |
+| `host.current`                                              | `{ state, data }`                                          |
+| `host.available`                                            | the input names the current state handles                  |
+| `host.send(name, payload?)`                                 | a dispatch; returns nothing                                |
+| `host.on(pattern, listener)`                                | a subscription; returns an unsubscribe function            |
+| a handler's `{ data, input, skip }`                         | source data, the input payload, and the way to decline     |
+| `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>` | derived types, over `M = typeof publication`               |
 
 ---
 
@@ -87,8 +87,9 @@ states: types<{ empty: void; draft: { text: string; revision: number } }>(),
 ```
 
 Both maps are **declared**. `types<T>()` exists only to carry `T`; it carries no runtime
-value, and **returns `null`** — that is what a caller observes, rather than `undefined`
-or a marker object. Nothing reads it, so the two fields are inert at runtime.
+value, and **returns `undefined`** — that is what a caller observes, rather than a
+marker object. Nothing reads it, so the two fields are inert at runtime, and passing
+the return value explicitly is the same as omitting the field.
 
 - A data-free state, or an input with no payload, is `void`.
 - Each map is an ordinary type, so it can be named, exported, imported, generated, made

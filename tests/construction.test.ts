@@ -24,11 +24,11 @@ describe('construction', () => {
 		expect(host.current).toEqual({ state: 'off', data: undefined })
 	})
 
-	test('types<T>() carries no runtime value and returns null', () => {
-		// `null` rather than `undefined` or a marker object is what a caller
+	test('types<T>() carries no runtime value and returns undefined', () => {
+		// `undefined` rather than `null` or a marker object is what a caller
 		// observes — docs/api.md is explicit about which of the three it is.
-		expect(types<{ increment: void }>()).toBeNull()
-		expect(types<{ ready: { count: number } }>()).toBeNull()
+		expect(types<{ increment: void }>()).toBeUndefined()
+		expect(types<{ ready: { count: number } }>()).toBeUndefined()
 	})
 
 	test('two hosts from one definition share no current state', () => {

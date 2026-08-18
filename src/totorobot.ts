@@ -115,6 +115,26 @@ const parse = (key: string) =>
  */
 type Vocab = Record<string, unknown>
 
+/**
+ * Resolves one of `machine`'s two raw vocabulary parameters to the default
+ * once it is `undefined` — which a raw parameter is both when its property is
+ * omitted and when it is passed the marker's `undefined` explicitly, since
+ * `Raw extends Vocab | undefined` (rather than `Raw extends Vocab = Default`)
+ * takes `undefined` itself as a legal, non-widening inference target instead
+ * of a constraint violation. Constraining to bare `Vocab` was tried first and
+ * rejected: a candidate of `undefined` against that narrower constraint is
+ * invalid, and TypeScript's fallback for an invalid candidate is the
+ * constraint itself — `Vocab`, not the default — so an explicit
+ * `inputs: undefined` widened every name to `string` where an omitted
+ * property correctly inferred `InputsFromKeys<K>`. Two call sites that were
+ * meant to be indistinguishable were not; this is what makes them the same
+ * again.
+ */
+type Declared<
+	Raw extends Vocab | undefined,
+	Default extends Vocab,
+> = Raw extends undefined ? Default : Raw
+
 /** The names a vocabulary declares — every name mentioned in `transitions` when it declares none. */
 type Name<V> = keyof V & string
 
@@ -447,22 +467,26 @@ type Immediates = Record<string, Row[] | undefined>
 
 /**
  * Carries a vocabulary at the type level and nothing at all at runtime: it
- * **returns `null`**, which is what a caller observes. Nothing reads the
+ * **returns `undefined`**, which is what a caller observes. Nothing reads the
  * fields it fills in.
  *
  * The return type says so. `T` alone would need a cast through `unknown` to
- * hand back a `null`, which is the one place in the library where the types
- * would be describing something other than what runs; `T | null` needs no cast
- * at all, and `machine` subtracts the `null` back out on the way in.
+ * hand back an `undefined`, which is the one place in the library where the
+ * types would be describing something other than what runs; `T | undefined`
+ * needs no cast at all, and `machine` subtracts the `undefined` back out on
+ * the way in.
  *
- * The rationale records `null | T` as proposed and not taken, on two grounds.
- * Neither applies here. Extraction still reads through `InputsOf` and
- * `StatesOf` rather than through the marker's own type, which is the first;
- * and a bare `inputs: null` no longer collapses `keyof S & string` to `never`,
- * because with nothing left to infer the constrained default takes over and
- * that half simply widens — the same surface omitting it gives.
+ * The rationale recorded `null | T` as proposed and not taken; that entry no
+ * longer decides anything, since it argued against legalising a bare
+ * `inputs: null`, which is moot once the codebase carries no `null` at all.
+ * What it protected still holds under `undefined`: extraction still reads
+ * through `InputsOf` and `StatesOf` rather than through the marker's own
+ * type, and a bare `inputs: undefined` no longer collapses `keyof S & string`
+ * to `never`, because with nothing left to infer the constrained default
+ * takes over and that half simply widens — the same surface omitting it
+ * gives.
  */
-export const types = <T>(): T | null => null
+export const types = <T>(): T | undefined => undefined
 
 /**
  * Declare a machine. The result is inert data — it holds the index in a
@@ -479,11 +503,12 @@ export const types = <T>(): T | null => null
  * cannot accidentally prefix-match.
  *
  * `inputs` and `states` are the only inference sites for the vocabulary, and
- * both are optional: omitting one falls back to `InputsFromKeys<K>` /
- * `StatesFromKeys<K>`, so that half's *names* are still exactly what
- * `transitions` mentions rather than widening to `string` — only the data each
- * name carries widens, to `unknown`, since nothing declares it. The fallback
- * reads `K` — a *sibling* parameter, already inferred from
+ * both are optional: omitting one — or passing the marker's `undefined`
+ * explicitly, which `Declared` treats the same — falls back to
+ * `InputsFromKeys<K>` / `StatesFromKeys<K>`, so that half's *names* are still
+ * exactly what `transitions` mentions rather than widening to `string` — only
+ * the data each name carries widens, to `unknown`, since nothing declares it.
+ * The fallback reads `K` — a *sibling* parameter, already inferred from
  * `transitions` — rather than reverse-inferring from a single field, which is
  * what `initial` must not do: a plain `NoInfer` position rather than a
  * conditional, because letting `initial` itself be a state-vocabulary
@@ -492,6 +517,13 @@ export const types = <T>(): T | null => null
  * intersection with `Init` recovers the initial state's *name* without
  * reopening that inference, which is what lets `start` follow that one
  * state's data.
+ *
+ * `RawI`/`RawS` are what `inputs`/`states` actually infer to, and `Declared`
+ * resolves each to the default the moment it is `undefined`. Kept separate
+ * from `I`/`S` — the resolved vocabularies used everywhere else in this
+ * signature — because collapsing the two back into one parameter each,
+ * constrained to bare `Vocab` with a default, is the version that fails: see
+ * `Declared`.
  *
  * `K` is the table's keys, inferred from the mapped type in `transitions`
  * because a mapped type over a bare type parameter infers its own key set.
@@ -504,15 +536,20 @@ export const types = <T>(): T | null => null
 export function machine<
 	Init extends string,
 	K extends string,
-	I extends Vocab = InputsFromKeys<K>,
-	S extends Vocab = StatesFromKeys<K>,
+	RawI extends Vocab | undefined = undefined,
+	RawS extends Vocab | undefined = undefined,
+	I extends Vocab = Declared<RawI, InputsFromKeys<K>>,
+	S extends Vocab = Declared<RawS, StatesFromKeys<K>>,
 >(definition: {
 	readonly initial: Init & Name<NoInfer<S>>
-	// `| null` is what `types()` returns, and inference subtracts it: the
-	// vocabulary lands as `I` rather than `I | null`, so nothing downstream
-	// carries a null it would have to strip again.
-	readonly inputs?: I | null
-	readonly states?: S | null
+	// `| undefined` is what `types()` returns, and inference subtracts it: the
+	// vocabulary lands as `RawI` rather than `RawI | undefined`, so nothing
+	// downstream carries an undefined it would have to strip again. Spelled
+	// out rather than left to `?:` alone because `exactOptionalPropertyTypes`
+	// makes those two different: omitting the key is not the same as writing
+	// `inputs: undefined`, and the marker's return type has to satisfy both.
+	readonly inputs?: RawI | undefined
+	readonly states?: RawS | undefined
 	readonly transitions: Table<I, S, K>
 }): Machine<I, S, K, Init> {
 	const { initial, transitions } = definition as unknown as {
