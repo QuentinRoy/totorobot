@@ -13,29 +13,29 @@ type-test pass stays red until 04, so `pnpm test` as a whole is not yet green.
 
 **Blocked by:** 01 (size feedback loop), 02 (correct target).
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The definition parses every transition key **once** into an eager index
+- [x] The definition parses every transition key **once** into an eager index
       from source state to input name to an ordered list of candidate rows. It
       never mutates, annotates or caches anything on the caller's configuration
       object.
-- [ ] `available` falls out of the index's key insertion order — declaration
+- [x] `available` falls out of the index's key insertion order — declaration
       order and de-duplication for free, with no `Set`
-- [ ] Patterns are parsed **once, at registration**, into three coordinates;
+- [x] Patterns are parsed **once, at registration**, into three coordinates;
       dispatch compares coordinates, with `*` the wildcard in state positions and
       the empty string the wildcard in the label position. A pattern naming a
       state that does not exist never matches and never throws; a bare key
       likewise.
-- [ ] The transition-key splitting helper is shared between the index build and
+- [x] The transition-key splitting helper is shared between the index build and
       pattern registration
-- [ ] `skip` is a module-level unique symbol with a single shared function
+- [x] `skip` is a module-level unique symbol with a single shared function
       returning it — **not** a self-returning function, and not a closure created
       per handler call
-- [ ] Host state lives in closure variables; `current` and `available` are
+- [x] Host state lives in closure variables; `current` and `available` are
       getters; the definition exposes `start` only
-- [ ] The queue is an array with a draining flag reset in a `finally`, so a
+- [x] The queue is an array with a draining flag reset in a `finally`, so a
       throwing listener leaves the host usable and the flag correct
-- [ ] Nothing throws, warns or validates its arguments anywhere
-- [ ] The previous generation's exports are deleted, not deprecated
-- [ ] The examples are ported to v1 and run
-- [ ] Every runtime test in the suite passes
+- [x] Nothing throws, warns or validates its arguments anywhere
+- [x] The previous generation's exports are deleted, not deprecated
+- [x] The examples are ported to v1 and run
+- [x] Every runtime test in the suite passes

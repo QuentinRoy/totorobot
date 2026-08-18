@@ -1,88 +1,88 @@
-import { defineMachine } from '../../src/totorobot.ts'
+import { machine, types } from '../../src/totorobot.ts'
 
 /**
- * Example 2: per-state context + a typed async `invoke`.
+ * Example 2: per-state data, a declining row, and an asynchronous result.
  *
- * `token` exists only on `authenticated`, `password` only while
- * `authenticating`, and `error` only on `idle` - so none of them can be read
- * from a state where they would be meaningless.
+ * `token` exists only on `authenticated`, `username` only from
+ * `authenticating` onwards, and `error` only on `idle` — so none of them can be
+ * read from a state where they would be meaningless.
+ *
+ * There is no library-owned request lifecycle: a transition is pure, so the
+ * request lives in the caller and its settlement arrives as an ordinary
+ * `send`. That is also what makes a stale result free — a `succeed` arriving
+ * after we have already left `authenticating` matches no row and does nothing.
  */
-export interface LoginEvent {
-	type: 'login'
-	username: string
-	password: string
+type Inputs = {
+	login: { username: string; password: string }
+	succeed: { token: string }
+	fail: { reason: string }
 }
+
+type States = {
+	idle: { error: string | null; attempts: number }
+	authenticating: { username: string; password: string; attempts: number }
+	authenticated: { username: string; token: string }
+}
+
+export const authMachine = machine({
+	initial: 'idle',
+	inputs: types<Inputs>(),
+	states: types<States>(),
+
+	transitions: {
+		// A blank username is not an attempt: the row declines, so nothing
+		// changes and no listener fires. Declining is an ordinary outcome.
+		'idle -login> authenticating': ({ data, input, skip }) =>
+			input.username.trim()
+				? {
+						username: input.username,
+						password: input.password,
+						attempts: data.attempts + 1,
+					}
+				: skip(),
+
+		'authenticating -succeed> authenticated': ({ data, input }) => ({
+			username: data.username,
+			token: input.token,
+		}),
+
+		'authenticating -fail> idle': ({ data, input }) => ({
+			error: input.reason,
+			attempts: data.attempts,
+		}),
+	},
+})
 
 interface Credentials {
 	username: string
 	password: string
 }
 
-interface LoginResult {
-	token: string
-}
-
-async function fakeLogin(credentials: Credentials): Promise<LoginResult> {
+async function fakeLogin({
+	username,
+	password,
+}: Credentials): Promise<{ token: string }> {
 	await new Promise((resolve) => setTimeout(resolve, 50))
-	if (credentials.password !== 'hunter2') {
-		throw new Error('invalid credentials')
-	}
-	return { token: `token-for-${credentials.username}` }
+	if (password !== 'hunter2') throw new Error('invalid credentials')
+	return { token: `token-for-${username}` }
 }
 
-type AuthSpec = {
-	states: {
-		idle: { error: string | null; attempts: number }
-		authenticating: Credentials & { attempts: number }
-		authenticated: { username: string; token: string }
-	}
-	events: {
-		login: Omit<LoginEvent, 'type'>
+/**
+ * The effect, owned by the caller: submit the credentials, then report the
+ * outcome back as an input. `available` is consulted rather than a `send`
+ * return value, because `send` has none.
+ */
+export async function signIn(
+	host: ReturnType<typeof authMachine.start>,
+	credentials: Credentials,
+): Promise<void> {
+	host.send('login', credentials)
+	if (host.current.state !== 'authenticating') return
+	try {
+		host.send('succeed', await fakeLogin(credentials))
+	} catch (error) {
+		host.send('fail', {
+			reason: error instanceof Error ? error.message : String(error),
+		})
 	}
 }
-
-export const authMachine = defineMachine<AuthSpec>().create(
-	'idle',
-	({ state, transition, invoke, guard, reduce }) => ({
-		idle: state(
-			transition(
-				'login',
-				'authenticating',
-				// A guard sees the same typed context + event as the reducer.
-				guard((_context, event) => event.username.trim().length > 0),
-				reduce((context, event) => ({
-					username: event.username,
-					password: event.password,
-					attempts: context.attempts + 1,
-				})),
-			),
-		),
-
-		// `Credentials` comes from `fakeLogin`'s parameter, and `LoginResult` flows
-		// into `done` as `result` - no hand-written settlement event wrapper.
-		authenticating: invoke(
-			(context) => fakeLogin(context),
-			({ done, error }) => [
-				done(
-					'authenticated',
-					reduce((context, result) => ({
-						username: context.username,
-						token: result.token,
-					})),
-				),
-				error(
-					'idle',
-					reduce((context, invokeError) => ({
-						error:
-							invokeError instanceof Error
-								? invokeError.message
-								: String(invokeError),
-						attempts: context.attempts,
-					})),
-				),
-			],
-		),
-
-		authenticated: state(),
-	}),
-)

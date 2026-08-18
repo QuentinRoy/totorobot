@@ -484,7 +484,8 @@ in the repository yet — so they are a _relative_ comparison, not a prediction 
 the shipped number. And all three are structurally complete but were never run
 against the suite; they were written to be size-representative, not correct. The
 first number the implementation produces under the real toolchain supersedes all
-of this.
+of this. It now has: the shipped runtime measures **826 raw / 496 gzip / 435
+brotli** under `pnpm size`, so the prototypes overshot by roughly a third.
 
 The headline is that the whole runtime lands somewhere near 700 bytes brotli, and
 that the two structural choices between them span about 5% — which is why the
