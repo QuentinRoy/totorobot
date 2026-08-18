@@ -283,6 +283,55 @@ test('declaring states and omitting inputs checks states and infers inputs from 
 	expectTypeOf(host.send).parameter(0).toEqualTypeOf<'toggle'>()
 })
 
+test('`*` in a key position is rejected rather than joining the inferred vocabulary (#22)', () => {
+	// Every row here parses fine at runtime — `*` is a well-formed name to the
+	// grammar `parse` enforces — so nothing throws. The rejection is entirely
+	// the type layer's: `*` never joins `StatesFromKeys`/`InputsFromKeys`, so
+	// `Key` never matches these rows and `Table` poisons each on its own line.
+	machine({
+		initial: 'off',
+		transitions: {
+			// @ts-expect-error - '*' is the wildcard, not an inferable state name
+			'* -go> on': () => {},
+			// @ts-expect-error - '*' is the wildcard, not an inferable state name
+			'on -back> *': () => {},
+			// @ts-expect-error - '*' is the wildcard, not an inferable input name
+			'off -*> on': () => {},
+		},
+	})
+})
+
+test('`initial: "*"` is rejected once `*` is excluded from the inferred states (#22)', () => {
+	machine({
+		// @ts-expect-error - '*' never joins the inferred state vocabulary, even
+		// though it is mentioned in a row — that row is itself rejected below
+		initial: '*',
+		transitions: {
+			'off -go> on': () => {},
+			// @ts-expect-error - '*' is the wildcard, not an inferable state name
+			'* -back> off': () => {},
+		},
+	})
+})
+
+test('a name padded by a leading or trailing space is rejected rather than joining the inferred vocabulary (#22)', () => {
+	// Each of these parses to a well-formed, if oddly spelled, key at runtime —
+	// #16's grammar check only rejects a spelling that collides with ` -`/`> `,
+	// and a padded name does not. The rejection here is the type layer's alone.
+	machine({
+		initial: 'off',
+		transitions: {
+			'off -go> on': () => {},
+			// @ts-expect-error - the doubled space puts a leading space into ' on'
+			'on -go>  on': () => {},
+			// @ts-expect-error - the trailing space names 'on ', not 'on'
+			'on -go> on ': () => {},
+			// @ts-expect-error - the space after '-' names input ' go', not 'go'
+			'on - go> off': () => {},
+		},
+	})
+})
+
 test('passing the marker explicitly as undefined behaves as omitting the property does', () => {
 	// `exactOptionalPropertyTypes` makes a bare `inputs: undefined` a
 	// different call from leaving `inputs` out — both are legal writes of

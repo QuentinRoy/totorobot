@@ -181,6 +181,26 @@ test('skip() is returnable from a handler for every target shape, including a vo
 	})
 })
 
+test('a declared vocabulary may still name `*` or a padded name explicitly (#22)', () => {
+	// The exclusion in `StatesFromKeys`/`InputsFromKeys` only narrows what an
+	// *omitted* half infers from the table. A vocabulary declared through
+	// `types<T>()` is a different inference site entirely, and declaring ' b'
+	// or '*' by hand is deliberate in a way a doubled space in a key never is
+	// — so neither is filtered here.
+	type OddStates = { off: void; '*': void; ' padded': void }
+	type OddInputs = { go: void }
+
+	machine({
+		initial: 'off',
+		inputs: types<OddInputs>(),
+		states: types<OddStates>(),
+		transitions: {
+			'off -go> *': () => {},
+			'* -go>  padded': () => {},
+		},
+	})
+})
+
 test('a wrong-shaped return is still rejected on a row that could also skip()', () => {
 	machine({
 		initial: 'draft',

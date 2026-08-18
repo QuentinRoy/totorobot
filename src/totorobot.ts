@@ -201,6 +201,26 @@ type Label<K> = K extends `${string} -${infer L}> ${string}` ? L : never
 type To<K> = K extends `${string} -${string}> ${infer T}` ? T : never
 
 /**
+ * A name a key can round-trip, kept as itself; anything else, dropped to
+ * `never` so the mapped types below drop the property entirely.
+ *
+ * `*` is excluded because it is the wildcard, not a name: every `Pattern`
+ * already reads a state coordinate of `*` as "any state," so a key that
+ * *means* the literal state `*` could never be addressed by one — `'b -back>
+ * *'` would commit into a state no pattern can single out again. A name
+ * padded by a leading or trailing space is excluded because the space is the
+ * grammar's own delimiter (` -` and `> `): `'a -x>  b'` does not fail to
+ * parse, it quietly moves the extra space into the target, minting a state
+ * that only that one spelling can ever name again. A tab or newline is left
+ * alone — it collides with nothing in the grammar, so rejecting it would be
+ * this library having opinions about naming rather than protecting its own
+ * syntax.
+ */
+type RoundTrips<N extends string> = N extends '*' | ` ${string}` | `${string} `
+	? never
+	: N
+
+/**
  * The default state and input vocabularies, used when `machine` is called
  * with `states`/`inputs` omitted: every name mentioned anywhere in
  * `transitions`, each mapped to `unknown` — the names narrow to what the
@@ -214,10 +234,19 @@ type To<K> = K extends `${string} -${string}> ${infer T}` ? T : never
  * once did. A malformed key drops out silently: `From`/`Label`/`To` only
  * match the well-formed template, so a key that fails it contributes no name,
  * and its row is still rejected on its own by `Table` below.
+ *
+ * The `as RoundTrips<N>` remap drops `*` and any leading/trailing-space name
+ * out of the *inferred* vocabulary before either mapped type is built, so a
+ * key that mints one fails `Key` and is rejected on its own row, the same as
+ * any other unknown name — see `RoundTrips`. A vocabulary declared through
+ * `types<T>()` is untouched: only what gets inferred from a key is filtered,
+ * never `Name` itself.
  */
-type StatesFromKeys<K extends string> = { [N in From<K> | To<K>]: unknown }
+type StatesFromKeys<K extends string> = {
+	[N in From<K> | To<K> as RoundTrips<N>]: unknown
+}
 type InputsFromKeys<K extends string> = {
-	[N in Exclude<Label<K>, ''>]: unknown
+	[N in Exclude<Label<K>, ''> as RoundTrips<N>]: unknown
 }
 
 /**
