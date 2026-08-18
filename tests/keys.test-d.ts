@@ -3,7 +3,7 @@
  * malformed spellings, the bare-key rule, and `skip()`.
  */
 
-import { test } from 'vitest'
+import { expectTypeOf, test } from 'vitest'
 
 import { machine, types } from 'totorobot'
 
@@ -99,8 +99,44 @@ test('malformed key spellings are rejected, one per row', () => {
 			'empty -open>draft': () => ({ text: '', revision: 0 }),
 			// @ts-expect-error - two spaces after ">"
 			'empty -open>  draft': () => ({ text: '', revision: 0 }),
-			// @ts-expect-error - no input label at all; an edge always names an input
-			'empty -> draft': () => ({ text: '', revision: 0 }),
+		},
+	})
+})
+
+test('an unlabelled arrow is accepted as an immediate transition', () => {
+	machine({
+		initial: 'empty',
+		inputs: types<Inputs>(),
+		states: types<States>(),
+		transitions: {
+			'empty -open> draft': ({ input }) => ({
+				text: input.text,
+				revision: 0,
+			}),
+			'draft -> draft': ({ data }) => data,
+		},
+	})
+})
+
+test("an immediate row's handler receives no input, and a wrong-shaped return is still rejected", () => {
+	machine({
+		initial: 'empty',
+		inputs: types<Inputs>(),
+		states: types<States>(),
+		transitions: {
+			'empty -open> draft': ({ input }) => ({
+				text: input.text,
+				revision: 0,
+			}),
+			'draft -cancel> empty': () => {},
+			'empty -> draft': ({ data, input }) => {
+				// @ts-expect-error - empty's data is void; there is no `.anything` to read
+				data.anything
+				expectTypeOf(input).toEqualTypeOf<undefined>()
+				return { text: '', revision: 0 }
+			},
+			// @ts-expect-error - draft's data needs a `revision`, not just `text`
+			'draft -> draft': () => ({ text: '' }),
 		},
 	})
 })

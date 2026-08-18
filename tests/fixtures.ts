@@ -43,6 +43,81 @@ type EditorStates = {
  * that always declines (`poke`), a self-transition (`revise`) and `locked` has no
  * outgoing rows at all.
  */
+type GateInputs = { submit: { quota: number }; reset: void }
+type GateStates = {
+	draft: void
+	checking: { quota: number }
+	allowed: { quota: number }
+	denied: { quota: number }
+}
+
+/**
+ * A guarded choice, expressed as ordered immediate rows out of a transient
+ * state: `checking` decides between `allowed` and `denied` by trying its own
+ * rows in declaration order and letting `skip()` fall through.
+ */
+export const gate = machine({
+	initial: 'draft',
+	inputs: types<GateInputs>(),
+	states: types<GateStates>(),
+	transitions: {
+		'draft -submit> checking': ({ input }) => ({ quota: input.quota }),
+		'checking -> allowed': ({ data, skip }) => (data.quota > 0 ? data : skip()),
+		'checking -> denied': ({ data }) => data,
+		'allowed -reset> draft': () => {},
+		'denied -reset> draft': () => {},
+	},
+})
+
+/**
+ * A single immediate row that can skip, with an ordinary input row left live
+ * on the same source. Reaching `checking` with a non-positive quota leaves the
+ * machine parked there — "not met yet" — rather than settling anywhere.
+ */
+export const pending = machine({
+	initial: 'draft',
+	inputs: types<{ submit: { quota: number }; cancel: void }>(),
+	states: types<{
+		draft: void
+		checking: { quota: number }
+		allowed: { quota: number }
+	}>(),
+	transitions: {
+		'draft -submit> checking': ({ input }) => ({ quota: input.quota }),
+		'checking -> allowed': ({ data, skip }) => (data.quota > 0 ? data : skip()),
+		'checking -cancel> draft': () => {},
+	},
+})
+
+/**
+ * A self-immediate that never skips: entering `loop` chains into itself
+ * forever, which is what a hop-budget test needs. `stop` is a plain input row
+ * left on `loop` so a test can show the host still works after the budget
+ * throws.
+ */
+export const spinner = machine({
+	initial: 'idle',
+	inputs: types<{ go: void; stop: void }>(),
+	states: types<{ idle: void; loop: number }>(),
+	transitions: {
+		'idle -go> loop': () => 0,
+		'loop -> loop': ({ data }) => data + 1,
+		'loop -stop> idle': () => {},
+	},
+})
+
+/** A chain of immediate hops, three deep, off one input. */
+export const chain = machine({
+	initial: 'a',
+	inputs: types<{ go: void }>(),
+	states: types<{ a: void; b: void; c: void; d: void }>(),
+	transitions: {
+		'a -go> b': () => {},
+		'b -> c': () => {},
+		'c -> d': () => {},
+	},
+})
+
 export const editor = machine({
 	initial: 'idle',
 	inputs: types<EditorInputs>(),

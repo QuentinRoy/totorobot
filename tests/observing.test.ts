@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'vitest'
 
 import { machine, types } from 'totorobot'
-import { toggle } from './fixtures.ts'
+import { chain, gate, toggle } from './fixtures.ts'
+import { residency } from './helpers.ts'
 
 describe('observing', () => {
 	test('on returns an unsubscribe function, and calling it more than once is harmless', () => {
@@ -96,6 +97,89 @@ describe('observing', () => {
 		})
 		docB.send('toggle')
 		expect(logB).toEqual(['only'])
+	})
+
+	test("an immediate transition's record carries on: undefined and input: undefined, distinguishable from a void input", () => {
+		const host = gate.start()
+		const records: unknown[] = []
+		host.on('* -> *', (e) => records.push(e))
+
+		// draft -submit> checking (input-driven), then checking -> allowed (immediate)
+		host.send('submit', { quota: 1 })
+		// allowed -reset> draft — a void input, not an immediate
+		host.send('reset')
+
+		expect(records).toEqual([
+			{
+				on: 'submit',
+				input: { quota: 1 },
+				from: { state: 'draft', data: undefined },
+				to: { state: 'checking', data: { quota: 1 } },
+			},
+			{
+				on: undefined,
+				input: undefined,
+				from: { state: 'checking', data: { quota: 1 } },
+				to: { state: 'allowed', data: { quota: 1 } },
+			},
+			{
+				on: 'reset',
+				input: undefined,
+				from: { state: 'allowed', data: { quota: 1 } },
+				to: { state: 'draft', data: undefined },
+			},
+		])
+	})
+
+	test('unlabelled patterns match an immediate hop at both ends; a labelled pattern never matches it', () => {
+		const host = gate.start()
+		const log: string[] = []
+		host.on('* -> allowed', () => log.push('entry'))
+		host.on('checking -> *', () => log.push('exit'))
+		host.on('checking -submit> *', () => log.push('labelled'))
+		host.on('* -> *', () => log.push('broad'))
+
+		// draft -submit> checking (matches only the broad pattern), then
+		// checking -> allowed, immediate (matches entry, exit and broad — never
+		// the labelled pattern, even though its state coordinates would).
+		host.send('submit', { quota: 1 })
+
+		expect(log).toEqual(['broad', 'entry', 'exit', 'broad'])
+	})
+
+	test('every hop in a chain notifies, in order, and e.to agrees with current on every hop', () => {
+		const host = chain.start()
+		const seen: { to: string; agreesWithCurrent: boolean }[] = []
+		host.on('* -> *', (e) => {
+			seen.push({
+				to: e.to.state,
+				agreesWithCurrent: e.to.state === host.current.state,
+			})
+		})
+
+		host.send('go')
+
+		expect(seen).toEqual([
+			{ to: 'b', agreesWithCurrent: true },
+			{ to: 'c', agreesWithCurrent: true },
+			{ to: 'd', agreesWithCurrent: true },
+		])
+	})
+
+	test('the residency recipe runs setup and teardown for a state entered and left immediately, mid-chain', () => {
+		const host = chain.start()
+		const log: string[] = []
+		residency(host, 'c', () => {
+			log.push('setup')
+			return () => log.push('teardown')
+		})
+
+		// a -go> b, then b -> c and c -> d immediately: 'c' is occupied only
+		// mid-chain, and residency must still see both the arrival and the
+		// departure.
+		host.send('go')
+
+		expect(log).toEqual(['setup', 'teardown'])
 	})
 
 	test('a self-transition matches both the exit pattern and the entry pattern', () => {

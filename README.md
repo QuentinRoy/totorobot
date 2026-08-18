@@ -82,10 +82,9 @@ at runtime (`available`) rather than enforced by the compiler.
 This repository is a design prototype, not a released library. There is no
 stability guarantee, compatibility promise, or npm release yet.
 
-`actions`, immediate transitions, and composition of invoked children are
-designed but not part of v1 — see
-[Designed, not in v1](docs/api.md#designed-not-in-v1). The design is also
-flat: no hierarchy, no parallel regions.
+`actions` and composition of invoked children are designed but not part of v1
+— see [Designed, not in v1](docs/api.md#designed-not-in-v1). The design is
+also flat: no hierarchy, no parallel regions.
 
 ## Documentation
 

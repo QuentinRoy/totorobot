@@ -5,9 +5,9 @@
 > says why.
 >
 > **v1 is topology and data**: a declared vocabulary, a transition table, a host, and
-> listeners on the host. One transition per input. `actions`, immediate transitions and
-> composition are argued but deferred, and none of them promised — see
-> [Designed, not in v1](#designed-not-in-v1).
+> listeners on the host — including immediate transitions, which fire on entering a
+> state rather than on an input. `actions` and composition are argued but deferred, and
+> neither is promised — see [Designed, not in v1](#designed-not-in-v1).
 
 ## The whole thing at a glance
 
@@ -109,7 +109,7 @@ carries stays `unknown`, since nothing declares it — and **the key grammar sti
 enforced**, a malformed key a compile error whether or not a vocabulary was declared.
 Declaring one map and not the other is supported and checks that half while the other's
 names are still read off the table. This is a guarantee, not an accident: see
-[observable behaviour](#observable-behaviour) items 27–29.
+[observable behaviour](#observable-behaviour) items 32–35.
 
 _Why declared, what it closed, and what it costs:_
 [rationale §5](api-rationale.md#5-the-declared-vocabulary).
@@ -131,9 +131,13 @@ The input is the arrow's **label**. Two rules:
   Any other spelling is a compile error, and the source is therefore at column 1 on
   every row.
 - **A key with no `->` names a state. An edge always contains an arrow.** So the two
-  halves of the grammar are decidable from the string alone. In v1 every key is an edge
-  — a bare key is invalid in `transitions` and in `.on()`. The bare form is reserved
-  for residency, which is what [`actions`](#designed-not-in-v1) would use.
+  halves of the grammar are decidable from the string alone. A bare key is invalid in
+  `transitions` and in `.on()` — it is reserved for residency, which is what
+  [`actions`](#designed-not-in-v1) would use.
+- **An arrow with no label is an [immediate transition](#immediate-transitions-an-edge-with-no-input)** —
+  `'checking -> allowed'` rather than `'checking -input> allowed'`. Declaring one says
+  the edge has no input at all, which is different from a pattern's unlabelled arrow,
+  where the same absence means the input is unconstrained.
 
 _Why this notation, and the spellings it rejects:_
 [rationale §4](api-rationale.md#adopted-the-label-on-the-arrow).
@@ -169,6 +173,49 @@ one, and it commits and notifies like any other row:
 ```ts
 'draft -revise> draft': ({ data, input }) => ({ …, revision: data.revision + 1 }),
 ```
+
+### Immediate transitions: an edge with no input
+
+A row whose arrow carries no input. It fires on **entering** its source state, tried
+in declaration order alongside every other immediate row declared for that state:
+
+```ts
+'draft -submit> checking': ({ data }) => data,
+'checking -> allowed':     ({ data, skip }) => (data.quota > 0 ? data : skip()),
+'checking -> denied':      ({ data }) => data,
+```
+
+Sending `submit` from `draft` lands in `checking`, which immediately tries its own
+rows and continues on to `allowed` or `denied` without anyone sending anything.
+`skip()` falls through to the next candidate, exactly as on an input-driven row — a
+guarded choice needs no new concept, no `cond`, no junction pseudostate. If every
+candidate skips, the machine stays in `checking`, and `checking`'s input rows stay
+live and advertised: "the condition is not met yet" needs nothing invented.
+
+**Chains settle before anything else runs.** Landing somewhere that itself has
+immediate rows continues the chain, hop after hop — each one committing and notifying
+before the next is tried — until the machine stops moving on its own. Only then is the
+next queued input taken; see [Commit ordering](#commit-ordering).
+
+**The handler receives no input**: `input` is `undefined`, typed that way rather than
+absent, so reading it is as ordinary as on any other row. The transition record it
+produces carries `on: undefined` too — the discriminant that tells an immediate apart
+from a `void` input, whose `on` is still its name.
+
+**A chain that never settles throws.** After 1e5 consecutive hops the machine raises
+`RangeError` — `maximum transitions reached in '<state>'` — naming the state it could
+not settle, which is a state inside the cycle. There is no rollback: by the time it
+throws, listeners have already seen every hop that did commit, and the host stays
+usable afterward. `1e5` is high on purpose — `'a -> a'` is legal, and a handler that
+rewrites its own data and eventually `skip()`s is a terminating loop the budget must
+not interrupt.
+
+**`.start()` does not settle the initial state's immediates.** A machine whose initial
+state has immediate rows starts out sitting there, observably, before anything runs —
+"on entering" applies from the first input onward, not to construction.
+
+_Why chaining, why a budget instead of forbidding it, and what it costs:_
+[rationale §7](api-rationale.md#7-immediate-transitions).
 
 ### What you get for free
 
@@ -268,10 +315,11 @@ and an unlabelled arrow means any input, or none:
 ```
 
 There is no `-*>`: `*` appears only in state positions, so the input coordinate is
-either a name or absent. The unlabelled form is the broad one — it matches input-driven
-edges, and would match edges with no input at all if
-[immediate transitions](#designed-not-in-v1) ever land. A bare key is not legal:
-`doc.on('draft', fn)` names a state, and states mean residency.
+either a name or absent. The unlabelled form is the broad one — it matches
+input-driven edges **and**
+[immediate transitions](#immediate-transitions-an-edge-with-no-input), which have no
+input at all. A bare key is not legal: `doc.on('draft', fn)` names a state, and states
+mean residency.
 
 _Why patterns and a record rather than a snapshot:_
 [rationale §12](api-rationale.md#observation-on-on-the-host-with-patterns).
@@ -314,21 +362,31 @@ declared in the definition ([rationale §12](api-rationale.md#residency-is-deriv
 
 Five rules, and they are the whole execution model:
 
-1. **One input yields at most one transition.**
+1. **One input yields at most one chain.** The input itself causes at most one
+   transition, but arriving somewhere with immediate rows continues on, hop after
+   hop, until the machine stops moving on its own — see
+   [immediate transitions](#immediate-transitions-an-edge-with-no-input).
 2. **Commit, then notify.** A listener always sees a fully committed machine, so `e.to`
-   and `doc.current` agree — for every listener, always.
-3. **Listeners fire in registration order.**
+   and `doc.current` agree — for every listener, on every hop, always.
+3. **Listeners fire in registration order**, on every hop.
 4. **A send from a listener is queued**, and the queue drains before the outermost
    `send` returns — never on a microtask, never nested. So a listener is never
-   re-entered while an earlier call is still running, and the listeners after it are
-   never told about a transition the machine has already left.
+   re-entered while an earlier call is still running, the listeners after it are never
+   told about a transition the machine has already left, and a queued send waits for
+   the whole chain to settle rather than landing mid-hop.
 5. **`send` returns nothing**, including when it was queued.
+
+**A chain that never settles throws.** After 1e5 consecutive hops, `RangeError` —
+naming the state it could not settle — unwinds out of `send` exactly as a throwing
+listener does: there is no rollback, the transition stays at its last committed hop,
+and the host stays usable.
 
 **There is no `stop()`.** Disposal is unsubscribing your listeners and not sending any
 more; the host holds nothing else.
 
-_Why a queue, and what a throwing listener does:_
-[rationale §12](api-rationale.md#commit-ordering).
+_Why a queue, why chaining resolves the way it does, and what a throwing listener
+does:_ [rationale §12](api-rationale.md#commit-ordering) and
+[rationale §7](api-rationale.md#7-immediate-transitions).
 
 ---
 
@@ -372,40 +430,58 @@ implementation to be driven from.
 15. `send` returns `undefined`, always.
 16. An input name that is not in the vocabulary (reachable from untyped code) changes
     nothing.
+17. Entering a state by an input runs its immediate rows in declaration order;
+    `skip()` falls through exactly as it does on an input-driven row, and a state
+    whose candidates all skip stays put, its input rows still live and advertised.
+18. A chain — several immediate hops in a row — settles fully before `send` returns,
+    however many hops it takes.
 
 **Observing**
 
-17. `on` returns an unsubscribe function; calling it more than once is harmless.
-18. Listeners fire after the commit, in registration order.
-19. Inside a listener, `e.to` deep-equals `doc.current`.
-20. `*` matches any state; an unlabelled arrow matches any input; a labelled one matches
-    only that input.
-21. The listener list is snapshotted before dispatch: a listener unsubscribed by an
+19. `on` returns an unsubscribe function; calling it more than once is harmless.
+20. Listeners fire after the commit, in registration order — on every hop of a chain.
+21. Inside a listener, `e.to` deep-equals `doc.current` — for every listener, on every
+    hop.
+22. `*` matches any state; an unlabelled arrow matches any input, or none — including an
+    immediate transition; a labelled one matches only that input and never an
+    immediate.
+23. The listener list is snapshotted before dispatch: a listener unsubscribed by an
     earlier listener still runs for the current transition, and one registered during a
     dispatch does not.
+24. An immediate transition's record carries `on: undefined` and `input: undefined`; a
+    `void` input's record — `on` its name, `input: undefined` — stays distinguishable
+    from it.
 
-**The queue**
+**Commit ordering**
 
-22. A `send` from inside a listener does not take effect before the remaining listeners
+25. A `send` from inside a listener does not take effect before the remaining listeners
     for the current transition have run.
-23. The queue drains before the outermost `send` returns — synchronously, not on a
+26. The queue drains before the outermost `send` returns — synchronously, not on a
     microtask.
-24. Several sends from listeners drain first-in-first-out.
-25. A queued send is evaluated against the state at drain time, so it may find no row
+27. Several sends from listeners drain first-in-first-out.
+28. A queued send is evaluated against the state at drain time, so it may find no row
     and do nothing.
-26. A listener that throws propagates out of `send`. The listeners after it do not run
+29. A listener that throws propagates out of `send`. The listeners after it do not run
     and that dispatch's queue is abandoned, but the transition stays committed. **The
     host still works afterwards**: a later `send` transitions and notifies normally.
+30. An input sent from a listener mid-chain is drained only once the whole chain has
+    settled, never mid-hop.
+31. A chain that never settles throws `RangeError`, naming the state it could not
+    settle. There is no rollback — every hop up to that point has already committed and
+    notified — and **the host stays usable afterward**.
 
 **The untyped path**
 
-27. With `inputs` and `states` both omitted, a well-formed table compiles: state and
+32. With `inputs` and `states` both omitted, a well-formed table compiles: state and
     input names are exactly the ones `transitions` mentions, `data` and `input` are
     `unknown`, and `initial` must name a state that appears somewhere in the table.
-28. A malformed key is still rejected with no vocabulary declared, and the error still
+33. A malformed key is still rejected with no vocabulary declared, and the error still
     lands on the offending line rather than on the `transitions` block.
-29. Declaring one map and omitting the other checks that half and infers the other from
+34. Declaring one map and omitting the other checks that half and infers the other from
     the table, the same as omitting both.
+35. An immediate row works the same with no vocabulary declared: its handler's `input`
+    is still `undefined`, and it never leaks the empty label into the inferred input
+    names.
 
 ## What the types check
 
@@ -454,14 +530,13 @@ Not oversights. What to reach for instead, and where the argument is:
 | a `send` return value       | `current` and `available` ([§12](api-rationale.md#send-returns-nothing))                                         |
 | `stop()`                    | unsubscribe, and stop sending ([§12](api-rationale.md#no-disposal-and-a-listener-that-throws))                   |
 | typed `send`                | `available` at runtime; recorded but unbuilt ([§11](api-rationale.md#if-it-comes-back-it-comes-back-as-s12))     |
-| immediate transitions       | an explicit input on the edge ([§7](api-rationale.md#7-immediate-transitions))                                   |
 | hierarchy, parallel regions | out of scope ([§10](api-rationale.md#what-the-rest-of-the-record-forbids))                                       |
 
 ---
 
 ## Designed, not in v1
 
-Three directions v1 leaves room for, argued in the rationale and none of them built.
+Two directions v1 leaves room for, argued in the rationale and neither built.
 Sketches rather than commitments: whether each ships, in what order, and — for
 composition — in what shape are all open.
 
@@ -486,14 +561,6 @@ already-declared inputs, so `actions` adds nothing to the vocabulary. One action
 trigger.
 
 _Full argument: [rationale §9](api-rationale.md#9-actions)._
-
-### Immediate transitions — `'from -> to'`, no input
-
-A transition that fires on entering a state, with `skip()` fall-through giving a guarded
-choice for free. The least certain of the three: chaining is the one feature that
-forfeits guaranteed termination, so this may end up not landing at all.
-
-_Full argument: [rationale §7](api-rationale.md#7-immediate-transitions)._
 
 ### Composition — invoked children
 
@@ -522,11 +589,12 @@ _Full argument, the rival designs, and what is unresolved:
 ## Scope
 
 **v1** is this document. Two costs are known and accepted: the notation is not settled
-beyond appeal — rival layouts still compile — and the completion payload grows as
-|states|², measured, with latency fine
-([rationale §15](api-rationale.md#15-still-open), `pnpm measure:completions`).
+beyond appeal — rival layouts still compile — and the completion payload is now
+|inputs| × |states|² for input-driven edges plus |states|² for immediate ones, measured,
+with latency fine ([rationale §15](api-rationale.md#15-still-open),
+`pnpm measure:completions`).
 
 **After v1**, likeliest first and none of it promised: `actions`, which is what extends
 commit ordering to effects — teardown, setup and notification within one commit, plus an
-error channel for a throwing action — then immediate transitions, then composition.
+error channel for a throwing action — then composition.
 [Rationale §15](api-rationale.md#15-still-open) has what is still open.
