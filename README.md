@@ -4,10 +4,11 @@
 > Totorobot is an experimental work in progress. It is not published to npm,
 > its API may change without notice, and it should not be used in production.
 
-Totorobot is a small TypeScript finite-state-machine experiment built around
-**per-state context** (typestate). Declaring each state's context separately
-lets TypeScript narrow both the context and the events that can be sent after
-you narrow the current state.
+Totorobot is a small TypeScript finite-state-machine library built around a
+declared vocabulary and a flat, string-keyed transition table with the input
+as an arrow label. Definitions are inert data; a host created by `.start()` is
+the only mutable object, and listeners are attached by whoever runs the
+machine.
 
 The project asks a specific question: how much state-machine correctness can
 TypeScript enforce while keeping a compact, Robot-inspired creation API?
@@ -15,108 +16,84 @@ TypeScript enforce while keeping a compact, Robot-inspired creation API?
 ## Example
 
 ```ts
-import { defineMachine, interpret } from 'totorobot'
+import { machine, types } from 'totorobot'
 
-type CounterSpec = {
-	states: {
-		idle: { count: number }
-		finished: { result: number }
-	}
-	events: {
-		finish: Record<never, never>
-	}
+type Inputs = {
+	open: { text: string }
+	revise: { text: string }
+	submit: { route: 'review' | 'publish'; reviewer?: string }
+	cancel: void
+}
+type States = {
+	empty: void
+	draft: { text: string; revision: number }
+	review: { text: string; revision: number; reviewer: string }
+	published: { text: string; revision: number }
 }
 
-const counter = defineMachine<CounterSpec>().create(
-	'idle',
-	({ state, transition, reduce }) => ({
-		idle: state(
-			transition(
-				'finish',
-				'finished',
-				reduce((context) => ({ result: context.count })),
-			),
-		),
-		finished: state(),
-	}),
-)
-
-const service = interpret(counter, { count: 42 })
-service.send({ type: 'finish' })
-
-if (service.current.state === 'finished') {
-	service.current.context.result // number
-}
-```
-
-The machine spec is declared first, then `create` checks the state map against
-it. Builders such as `state`, `transition`, `invoke`, `guard`, `reduce`, and
-`action` are scoped to the creation callback so their context and event types
-can be inferred.
-
-## What is checked
-
-Totorobot currently catches:
-
-- transitions to unknown states;
-- undeclared events and incorrectly shaped payloads;
-- reducers that return the wrong target-state context;
-- reads of context fields that do not exist in the current state;
-- missing or extra state definitions;
-- an initial context that does not match the declared initial state;
-- events sent through `service.current.send` that the narrowed state does not
-  handle;
-- multiple reducers on one transition.
-
-Runtime support currently includes guarded transitions, actions, context
-reducers, promise invocation with typed success/error branches, cancellation,
-and terminal states represented by `state()` with no transitions.
-
-## Status and limitations
-
-This repository is a design prototype, not a released library. There is no
-stability guarantee, package build, compatibility promise, or npm release yet.
-
-Notable missing features include immediate transitions and entry/exit hooks.
-Some inference also depends on keeping transition declarations inline in the
-state map.
-
-## The next API
-
-The code above is the **first generation**. The design has since settled on a
-different shape — a declared vocabulary, a flat string-keyed transition table with the input as an arrow label, and
-listeners attached by whoever runs the machine:
-
-```ts
-const publication = machine({
+export const publication = machine({
 	initial: 'empty',
 	inputs: types<Inputs>(),
 	states: types<States>(),
+
 	transitions: {
 		'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
-		'draft -submit> review': ({ data, input, skip }) => …,
+		'draft -submit> review': ({ data, input, skip }) =>
+			input.route === 'review'
+				? { ...data, reviewer: input.reviewer! }
+				: skip(),
+		'draft -submit> published': ({ data, input, skip }) =>
+			input.route === 'publish' ? { ...data } : skip(),
+		'draft -cancel> empty': () => {},
 	},
 })
 
 const doc = publication.start()
 doc.on('* -> published', (e) => notify(e.to.data))
+doc.send('open', { text: 'hello' })
 ```
 
-It is designed, not built. Read [the API](docs/api.md) for what it is, and
-[the design record](docs/api-rationale.md) for why.
+| part          | answers                               |
+| ------------- | ------------------------------------- |
+| `initial`     | where a new host starts               |
+| `inputs`      | what can happen                       |
+| `states`      | what we can be                        |
+| `transitions` | how we move, and what the new data is |
+| `.on()`       | what the outside world does about it  |
+
+Read [the API](docs/api.md) for the full design, and
+[the design record](docs/api-rationale.md) for why it looks this way.
+
+## What is checked
+
+- **Per-state data.** Narrowing the state narrows its data, with no nullable
+  padding in states that logically guarantee a field.
+- Unknown state or input names anywhere in a transition key or a pattern.
+- A handler returning the wrong shape for its target state.
+- Reads of source data the source state does not have.
+- Malformed keys — wrong spacing included — reported as
+  `not a transition: '…'` on the offending line.
+
+What is **not** checked: the send site. Per-state capabilities are advertised
+at runtime (`available`) rather than enforced by the compiler.
+
+## Status and limitations
+
+This repository is a design prototype, not a released library. There is no
+stability guarantee, compatibility promise, or npm release yet.
+
+`actions`, immediate transitions, and composition of invoked children are
+designed but not part of v1 — see
+[Designed, not in v1](docs/api.md#designed-not-in-v1). The design is also
+flat: no hierarchy, no parallel regions.
 
 ## Documentation
 
-**The next API**
-
-- [The API](docs/api.md) — the settled design: the blocks, the key language, what
-  is checked, what is deliberately absent, and what is deferred past v1.
+- [The API](docs/api.md) — the design: the blocks, the key language, what is
+  checked, what is deliberately absent, and what is deferred past v1.
 - [Design record](docs/api-rationale.md) — the decision ledger, what was
   considered and rejected and on what evidence, and the reusable TypeScript
   findings.
-
-**Inputs that still govern**
-
 - [FSM library requirements](docs/requirements.md) prioritizes the target
   behavior, type guarantees, design latitude, and non-goals.
 - [FSM API acceptance cases](docs/acceptance-cases.md) defines the pinned
@@ -124,11 +101,6 @@ It is designed, not built. Read [the API](docs/api.md) for what it is, and
 - [Research notes](docs/research/) — ten prior-art notes on automata theory,
   execution semantics, HCI state machines, typestate, TypeScript type
   engineering, and the JS FSM landscape.
-
-**The current implementation**
-
-- [Design notes](docs/design-notes.md) explains the shipped API, its type
-  guarantees, runtime semantics, and known limitations.
 - [Explorations](explorations/README.md) holds the compilable prototypes behind
   the findings, including one built over Robot3 itself. They are type-checked
   and the Robot3 one is tested, so a rejected option that starts working again
@@ -141,9 +113,8 @@ It is designed, not built. Read [the API](docs/api.md) for what it is, and
 - `examples/index.ts` — runs both case studies.
 - `tests/` — the v1 test suite: runtime tests (`*.test.ts`), type tests
   (`*.test-d.ts`) and the plain-JavaScript untyped path (`untyped.test.js`).
-- `docs/api.md` — the design the project is moving to.
+- `docs/api.md` — the shipped design.
 - `docs/api-rationale.md` — the evidence behind that design.
-- `docs/design-notes.md` — reference for the current, shipped design.
 - `explorations/` — prototypes of alternative API shapes, kept compiling as
   evidence for that history. Not part of the library.
 - `explorations/candidates/` — the notation candidates and the three rival
@@ -151,8 +122,9 @@ It is designed, not built. Read [the API](docs/api.md) for what it is, and
 
 ## Development
 
-Requires Node.js 26 or newer and pnpm. Node runs the TypeScript sources directly,
-so this experimental repository has no build step.
+Requires Node.js 26 or newer and pnpm. Node runs the TypeScript sources
+directly for development; `pnpm build` produces the published ESM bundle and
+type declarations in `dist/`.
 
 ```bash
 pnpm install
@@ -161,11 +133,19 @@ pnpm test
 pnpm examples
 ```
 
-**`pnpm test` is expected to fail.** The v1 test suite in `tests/` is written
-against the API in [docs/api.md](docs/api.md), which `src/` does not implement
-yet; the suite was landed red on purpose, to be the specification the
-implementation is written against. `pnpm typecheck` — which covers `src/`,
-`examples/` and `explorations/` — must stay green.
+`pnpm test` runs the runtime tests, type tests, and the plain-JavaScript
+untyped path in `tests/` against the shipped API. `pnpm typecheck` covers
+`src/`, `examples/` and `explorations/`.
+
+### CI
+
+Pull requests run `pnpm test` and `pnpm test:dist`, then get a brotli size
+diff on `dist/totorobot.js` from
+[`compressed-size-action`](https://github.com/preactjs/compressed-size-action).
+The action measures with node's zlib at brotli defaults, the same as
+`pnpm size` — no committed baseline, no size gate, the diff only reports.
+The action cannot comment on pull requests from forks; it prints the diff to
+the job log instead.
 
 ## Relationship to Robot3
 

@@ -5,8 +5,15 @@
 	"description": "Experimental type-safe finite state machines with per-state context",
 	"type": "module",
 	"exports": {
-		".": "./src/totorobot.ts"
+		".": {
+			"types": "./dist/totorobot.d.ts",
+			"default": "./dist/totorobot.js"
+		}
 	},
+	"files": [
+		"dist"
+	],
+	"sideEffects": false,
 	"engines": {
 		"node": ">=26.0.0"
 	},
@@ -14,11 +21,14 @@
 		"start": "node examples/index.ts",
 		"dev": "node --watch examples/index.ts",
 		"examples": "node examples/index.ts",
+		"build": "vite build",
+		"size": "pnpm build && node scripts/size.ts",
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
 		"test": "vitest run",
 		"test:types": "vitest run --typecheck.only",
 		"test:coverage": "vitest run --coverage",
+		"test:dist": "pnpm build && vitest run --config vitest.dist.config.ts",
 		"typecheck": "tsc --noEmit",
 		"typecheck:candidates": "node scripts/check-candidates.ts",
 		"measure:completions": "node scripts/measure-completions.mjs"
@@ -33,10 +43,14 @@
 	},
 	"devDependencies": {
 		"@types/node": "^26.1.2",
+		"@typescript/typescript6": "^6.0.2",
 		"@vitest/coverage-v8": "^4.1.10",
 		"prettier": "^3.9.6",
 		"robot3": "^1.2.0",
+		"terser": "^5.50.0",
 		"typescript": "^7.0.2",
+		"vite": "^8.2.1",
+		"vite-plugin-dts": "^5.0.3",
 		"vitest": "^4.1.10"
 	},
 	"packageManager": "pnpm@10.15.1"

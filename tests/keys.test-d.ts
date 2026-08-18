@@ -5,7 +5,7 @@
 
 import { test } from 'vitest'
 
-import { machine, types } from '../src/totorobot.ts'
+import { machine, types } from 'totorobot'
 
 type Inputs = {
 	open: { text: string }

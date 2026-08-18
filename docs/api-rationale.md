@@ -150,7 +150,7 @@ priority?**
 Three prototypes answered it. Inferring states from the map worked but reported
 errors machine-wide; a Kysely-style fluent builder made payload inference
 order-dependent and cascaded errors through the chain; declaring the spec first
-shipped, and is what `src/` and [design-notes.md](design-notes.md) describe.
+shipped as generation 1, since superseded by v1 (this document's subject).
 
 Three constraints from that generation still hold:
 
@@ -522,9 +522,10 @@ only legal state was that bogus one, every real key was rejected, and the error 
 off the offending line onto the whole `transitions` block. That fails P1.4 ("should
 not collapse into an unusable surface") and P1.2 (locality) at once.
 
-**Three things fix it**, built and asserted in
-[`explorations/vocabulary-degradation.ts`](../explorations/vocabulary-degradation.ts),
-which covers all four combinations of declared maps:
+**Three things fix it**, asserted in
+[`tests/untyped.test-d.ts`](../tests/untyped.test-d.ts), which covers every
+combination of declared maps with one omitted — the fully typed case is
+[`tests/vocabulary.test-d.ts`](../tests/vocabulary.test-d.ts):
 
 1. **Constrained defaults.** `S extends Vocab = Vocab`, with
    `Vocab = Record<string, unknown>`. Widening then falls out of the constraint —

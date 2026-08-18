@@ -249,8 +249,8 @@ ownership of them.
 >   Interaction code lives in callbacks, so this is the common case, not an edge
 >   case.
 >
-> The current implementation's `service.current` view is the pattern most at
-> risk here; see [design-notes.md](design-notes.md).
+> The generation-1 implementation's `service.current` view was the pattern
+> most at risk here.
 
 ### P0.5 — Make transition decisions deterministic and synchronous
 

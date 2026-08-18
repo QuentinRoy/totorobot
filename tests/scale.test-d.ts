@@ -4,11 +4,20 @@
  * inference aspect is used here — declaration size, cold check duration and
  * editor latency belong to `scripts/measure-completions.mjs`, not to this
  * suite.
+ *
+ * The `reset` rows carry `as const` on `owner` because they take **no
+ * argument**. TypeScript types a handler that reads nothing from its arguments
+ * before it has inferred `states:` from the sibling property, so that handler's
+ * return has no contextual type yet and its `'s00'` widens to `string`. Every
+ * handler that destructures `data` or `input` is deferred until after the
+ * vocabulary is known and keeps its literals with no annotation — which is why
+ * the wrong-literal assertion at the bottom of this file still bites. The
+ * limitation is recorded on `Handler` in `src/totorobot.ts`.
  */
 
 import { expectTypeOf, test } from 'vitest'
 
-import { machine, types, type Handled } from '../src/totorobot.ts'
+import { machine, types, type Handled } from 'totorobot'
 
 type Inputs = {
 	next: { delta: number }
@@ -123,26 +132,26 @@ const stress = machine({
 			visits: data.visits + input.delta,
 			owner: 's00',
 		}),
-		's00 -reset> s00': () => ({ visits: 0, owner: 's00' }),
-		's01 -reset> s00': () => ({ visits: 0, owner: 's00' }),
-		's02 -reset> s00': () => ({ visits: 0, owner: 's00' }),
-		's03 -reset> s00': () => ({ visits: 0, owner: 's00' }),
-		's04 -reset> s00': () => ({ visits: 0, owner: 's00' }),
-		's05 -reset> s00': () => ({ visits: 0, owner: 's00' }),
-		's06 -reset> s00': () => ({ visits: 0, owner: 's00' }),
-		's07 -reset> s00': () => ({ visits: 0, owner: 's00' }),
-		's08 -reset> s00': () => ({ visits: 0, owner: 's00' }),
-		's09 -reset> s00': () => ({ visits: 0, owner: 's00' }),
-		's10 -reset> s00': () => ({ visits: 0, owner: 's00' }),
-		's11 -reset> s00': () => ({ visits: 0, owner: 's00' }),
-		's12 -reset> s00': () => ({ visits: 0, owner: 's00' }),
-		's13 -reset> s00': () => ({ visits: 0, owner: 's00' }),
-		's14 -reset> s00': () => ({ visits: 0, owner: 's00' }),
-		's15 -reset> s00': () => ({ visits: 0, owner: 's00' }),
-		's16 -reset> s00': () => ({ visits: 0, owner: 's00' }),
-		's17 -reset> s00': () => ({ visits: 0, owner: 's00' }),
-		's18 -reset> s00': () => ({ visits: 0, owner: 's00' }),
-		's19 -reset> s00': () => ({ visits: 0, owner: 's00' }),
+		's00 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
+		's01 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
+		's02 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
+		's03 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
+		's04 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
+		's05 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
+		's06 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
+		's07 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
+		's08 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
+		's09 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
+		's10 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
+		's11 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
+		's12 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
+		's13 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
+		's14 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
+		's15 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
+		's16 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
+		's17 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
+		's18 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
+		's19 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
 		's00 -skip> s05': ({ data }) => ({
 			visits: data.visits + 1,
 			owner: 's05',
@@ -167,7 +176,12 @@ test('the full twenty-state, forty-four-row table type-checks, and start() requi
 	// @ts-expect-error - s00's data is not void; start() requires it
 	stress.start()
 
-	expectTypeOf(stress.start().current.state).toEqualTypeOf<
+	// Started with its data, because the two lines above are the assertion that
+	// it has to be: reading `current` off a `start()` this file has just
+	// declared illegal would contradict them.
+	expectTypeOf(
+		stress.start({ visits: 0, owner: 's00' }).current.state,
+	).toEqualTypeOf<
 		| 's00'
 		| 's01'
 		| 's02'
@@ -234,12 +248,12 @@ test('a wrong owner literal is still rejected at this scale', () => {
 		inputs: types<Inputs>(),
 		states: types<States>(),
 		transitions: {
-			// @ts-expect-error - s01's owner literal is "s01", not "s00"
 			's00 -next> s01': ({ data, input }) => ({
 				visits: data.visits + input.delta,
+				// @ts-expect-error - s01's owner literal is "s01", not "s00"
 				owner: 's00',
 			}),
-			's00 -reset> s00': () => ({ visits: 0, owner: 's00' }),
+			's00 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
 		},
 	})
 })

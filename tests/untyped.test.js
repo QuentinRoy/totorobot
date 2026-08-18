@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'vitest'
 
-import { machine } from '../src/totorobot.ts'
+import { machine } from 'totorobot'
 
 describe('the untyped path', () => {
 	test('a machine with no vocabulary at all works: it starts, transitions and notifies', () => {

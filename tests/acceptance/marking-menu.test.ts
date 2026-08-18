@@ -16,7 +16,7 @@
 
 import { describe, expect, test } from 'vitest'
 
-import { machine, types } from '../../src/totorobot.ts'
+import { machine, types } from 'totorobot'
 
 type Item = { readonly label: string }
 type Menu = {

@@ -64,9 +64,12 @@ different spec shapes.
 
 ### Callback-kit family
 
-Keeps the current record-shaped spec and the builder callback; only the call
-shape changes. Both import the real types from
-[`src/totorobot.ts`](../src/totorobot.ts).
+Keeps the record-shaped spec and the builder callback of the generation these
+records were written against; only the call shape changes. Both import their
+types from [`typestate-kit.ts`](typestate-kit.ts), which is that generation's
+type surface — v1 replaced the library entry with a transition table, so the
+declarations these two prototypes compile against moved beside them rather than
+being deleted with it.
 
 | File                                                               | Shape                                                        | Result                                                                                                                                                                                                                            |
 | ------------------------------------------------------------------ | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -105,7 +108,7 @@ makes resolving that conditional force `To` before the `target` argument is
 read, and `To` collapses onto `K`. `transition('login', 'authenticating', ...)`
 is then rejected with `"authenticating" is not assignable to "idle"`.
 
-Carrying `Context` as its own free type parameter avoids it. The real `Kit` in
-[`src/totorobot.ts`](../src/totorobot.ts) already does this, for an unrelated
-reason - variance of reusable combinators - so the current design was standing
-on this without the note having been written down.
+Carrying `Context` as its own free type parameter avoids it. The `Kit` these
+records were written against — now [`typestate-kit.ts`](typestate-kit.ts) —
+already did this, for an unrelated reason: variance of reusable combinators. So
+that design was standing on this without the note having been written down.

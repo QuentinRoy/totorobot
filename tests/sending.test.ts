@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { machine, types } from '../src/totorobot.ts'
+import { machine, types } from 'totorobot'
 import { editor } from './fixtures.ts'
 
 describe('sending', () => {

@@ -1,0 +1,12 @@
+{
+	/* The type half of `pnpm test:dist`: the same suite, checked against the
+     emitted declarations instead of the source they came from. Only the
+     mapping changes — `include` is inherited and still resolves relative to
+     the file that declares it, so it means this directory either way. */
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"paths": {
+			"totorobot": ["../dist/totorobot.d.ts"]
+		}
+	}
+}

@@ -1,45 +1,38 @@
-import { interpret } from '../src/totorobot.ts'
-import { authMachine } from './case-studies/auth-machine.ts'
+import { authMachine, signIn } from './case-studies/auth-machine.ts'
 import { trafficLight } from './case-studies/traffic-light.ts'
 
-console.log('--- Traffic light (per-state context) ---')
+console.log('--- Traffic light (per-state data) ---')
 
-const traffic = interpret(trafficLight, { changes: 0 }, (snapshot) => {
-	// `snapshot.context` is narrowed by `snapshot.state`: `blinking` only exists on
-	// yellow,
-	// and reading it in any other branch would not compile.
-	const extra =
-		snapshot.state === 'yellow' ? ` blinking=${snapshot.context.blinking}` : ''
-	console.log(
-		`  -> ${snapshot.state} (changes: ${snapshot.context.changes})${extra}`,
-	)
+const traffic = trafficLight.start({ changes: 0 })
+
+// Observation is on the host, never the definition: an imported definition
+// stays inert. `*` matches any state, and the unlabelled arrow any input.
+traffic.on('* -> *', (e) => {
+	console.log(`  ${e.from.state} -${e.on}> ${e.to.state}`, e.to.data)
 })
+traffic.on('* -> yellow', () => console.log('    (blinking)'))
 
-traffic.send({ type: 'next' })
-traffic.send({ type: 'next' })
-traffic.send({ type: 'next' })
+traffic.send('next')
+traffic.send('next')
+traffic.send('next')
 
-console.log('\n--- Auth machine (typed invoke + typestate) ---')
+console.log('  available in red:', traffic.available)
 
-const auth = interpret(
-	authMachine,
-	{ error: null, attempts: 0 },
-	(snapshot) => {
-		console.log(`  -> ${snapshot.state}`, snapshot.context)
-	},
-)
+console.log('\n--- Auth machine (declining rows + an asynchronous result) ---')
 
-auth.send({ type: 'login', username: 'quentin', password: 'wrong' })
+const auth = authMachine.start({ error: null, attempts: 0 })
+auth.on('* -> *', (e) => console.log(`  -> ${e.to.state}`, e.to.data))
 
-setTimeout(() => {
-	auth.send({ type: 'login', username: 'quentin', password: 'hunter2' })
-}, 150)
+// A blank username: the only row for `login` declines, so nothing happens.
+await signIn(auth, { username: '  ', password: 'hunter2' })
+console.log('  after a blank username:', auth.current.state)
 
-setTimeout(() => {
-	// The payoff: `token` is only reachable once TS knows we're authenticated.
-	if (auth.current.state === 'authenticated') {
-		console.log(
-			`\ntoken (typed, no null check needed): ${auth.current.context.token}`,
-		)
-	}
-}, 300)
+await signIn(auth, { username: 'quentin', password: 'wrong' })
+await signIn(auth, { username: 'quentin', password: 'hunter2' })
+
+// The payoff: `token` is only reachable once the state says we are
+// authenticated. No nullable padding on the states that do not have one.
+const now = auth.current
+if (now.state === 'authenticated') {
+	console.log(`\ntoken (typed, no null check needed): ${now.data.token}`)
+}

@@ -1,577 +1,613 @@
 /**
- * A finite state machine with per-state context ("typestate"), built from a spec
- * declared up front.
+ * Totorobot — finite state machines declared as a transition table.
  *
- * An earlier design declared a state's context inline, which means a
- * transition's target type is not yet known while the type checker is looking
- * at the reducer nested in the same object literal. That forced target checking
- * into a deferred, machine-wide validation at `defineMachine(...)`, with the
- * unreadable errors that came with it.
+ *     const publication = machine({
+ *       initial: 'empty',
+ *       inputs: types<Inputs>(),
+ *       states: types<States>(),
+ *       transitions: {
+ *         'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
+ *         'draft -cancel> empty': () => {},
+ *       },
+ *     })
  *
- * Here the spec - every state's context and every event's payload - is a type
- * argument, so both ends of a transition are known when its modifiers are
- * checked. A wrong reducer output is reported on the `reduce(...)` call itself.
+ *     const doc = publication.start()
+ *     doc.on('* -> published', (e) => notify(e.to.data))
+ *     doc.send('open', { text: 'hello' })
  *
- *     defineMachine<Spec>().create("idle", ({
- *       state, transition, guard, reduce,
- *     }) => ({
- *       idle: state(
- *         transition("login", "authenticating",
- *           guard((context, event) => event.username.length > 0),
- *           reduce((context, event) => ({ ... })),
- *         ),
- *       ),
- *       authenticated: state(),
- *     }))
+ * The API is specified in `docs/api.md` and argued in `docs/api-rationale.md`.
+ * This module is the whole library: one definition builder, one host, and no
+ * dependencies.
  *
- * `context` and `event` are inferred from the enclosing state key and the event
- * name. Nothing is annotated by hand.
+ * ## On what is exported
+ *
+ * An exported type is a promise, so the list is the one `docs/api.md` publishes
+ * and nothing more: `machine`, `types`, the derived `InputsOf`, `StatesOf`,
+ * `Handled` and `Sources`, and `Skip`, which is unavoidably public because it
+ * is in every handler's return type.
+ *
+ * Everything else — `Machine`, `Host`, `Snapshot`, `Transition`, `Listener`,
+ * `Pattern` and the machinery under them — is module-local **on purpose**. The
+ * emitted declarations still carry them, so every public signature resolves and
+ * hover text reads normally; they simply cannot be imported, which is what
+ * leaves them free to change. A caller who needs to name one names it through
+ * what it came from — `typeof publication`,
+ * `ReturnType<typeof publication.start>` — rather than through a type whose
+ * parameter list would then be frozen. Adding an `export` here widens the API;
+ * do it deliberately, and say so in `docs/api.md`.
+ *
+ * ## On size
+ *
+ * The shipped file is minified, so short identifiers and terse formatting buy
+ * nothing — every local is renamed and every comment stripped. What moves the
+ * number is how many distinct code shapes exist, whether helpers are shared,
+ * and closures versus objects. The comments below record which alternative was
+ * rejected and why, so the shape is not re-litigated blindly. Measure with
+ * `pnpm size` before changing any of them.
+ *
+ * The type layer is free: every one of the types below is erased, so the
+ * checking it does costs a consumer nothing at runtime.
+ *
+ * ## On validation
+ *
+ * There is none, anywhere. Nothing throws, nothing warns, nothing checks its
+ * arguments: the specification makes every malformed input a silent no-op, so
+ * validation code would be bytes spent contradicting it. An input name outside
+ * the table finds no row; a pattern naming a state that does not exist parses
+ * fine and never matches.
  */
 
 // ---------------------------------------------------------------------------
-// Spec
+// Declining
 // ---------------------------------------------------------------------------
 
 /**
- * The shape a machine spec must have. `states` maps a state name to the context
- * that state carries; `events` maps an event name to the payload it carries in
- * addition to its `type` field. Event names may be strings or symbols.
+ * The sentinel a handler returns to decline its row. A module-level `const`
+ * symbol types as `unique symbol`, so `Skip` needs no brand machinery.
+ *
+ * Rejected: `const skip = () => skip`, which makes the function its own
+ * sentinel and saves a binding. It silently accepts a handler that returns
+ * `skip` *without calling it*. The byte difference is single digits.
  */
-export interface MachineSpec {
-	readonly states: object
-	readonly events: object
-}
+const SKIP = Symbol()
 
-export type StateName<S extends MachineSpec> = keyof S['states'] & string
-export type EventName<S extends MachineSpec> = keyof S['events']
-
-/** The context carried by state `K`. */
-export type ContextOf<
-	S extends MachineSpec,
-	K extends StateName<S>,
-> = S['states'][K & keyof S['states']]
-
-/** The full event object for event `E`: its `type` plus its declared payload. */
-export type EventObject<
-	S extends MachineSpec,
-	E extends EventName<S>,
-> = E extends unknown
-	? { readonly type: E } & S['events'][E & keyof S['events']]
-	: never
-
-/** Every event the machine accepts. */
-export type AnyEvent<S extends MachineSpec> = EventObject<S, EventName<S>>
-
-// ---------------------------------------------------------------------------
-// Modifiers
-//
-// These are real runtime objects, not phantom-typed markers: `kind` and `apply`
-// both exist. That keeps the public surface honest (no `__types` placeholders)
-// and, more importantly, puts `Context`/`Event` in `apply`'s parameter positions,
-// where TypeScript's contravariance gives reusable combinators the variance
-// they need. Branding a modifier with a tuple of its type parameters instead
-// makes it invariant, and a guard written against `{ attempts: number }` would
-// stop fitting a state whose context is `{ attempts: number; tries: number }`.
-// ---------------------------------------------------------------------------
-
-export interface ReduceModifier<Context, Event, Output> {
-	readonly kind: 'reduce'
-	readonly apply: (context: Context, event: Event) => Output
-}
-
-export interface GuardModifier<Context, Event> {
-	readonly kind: 'guard'
-	readonly apply: (context: Context, event: Event) => boolean
-}
-
-export interface ActionModifier<Context, Event> {
-	readonly kind: 'action'
-	readonly apply: (context: Context, event: Event) => void
-}
-
-export type Modifier<Context, Event, Output> =
-	| ReduceModifier<Context, Event, Output>
-	| GuardModifier<Context, Event>
-	| ActionModifier<Context, Event>
-
-/** Modifiers that leave the context shape alone, so any number may appear. */
-export type ShapeNeutralModifier<Context, Event> =
-	GuardModifier<Context, Event> | ActionModifier<Context, Event>
+/** What `skip()` returns. Part of every handler's return type. */
+export type Skip = typeof SKIP
 
 /**
- * The modifier list a transition accepts: any number of guards and actions,
- * then an optional trailing reducer - guards decide, then the context is mapped.
- *
- * When `Context` is not assignable to `Output` the reducer stops being optional. A
- * transition between differently shaped states cannot silently carry the source
- * context across, and stating the rule in the signature is what makes the checker
- * enforce it instead of the documentation.
- *
- * Fixing the reducer's position is also what keeps a transition to one reducer.
- * robot3 pipelines them (each receives the previous one's output), which cannot
- * be typed once context is per-state: reducer n's input is reducer n-1's output,
- * and that fold is not expressible through the inference path used here.
+ * One shared function for every handler call, rather than a closure built per
+ * call — the sentinel carries no per-call information, so there is nothing for
+ * a fresh closure to capture.
  */
-export type TransitionModifiers<Context, Event, Output> = [Context] extends [
-	Output,
+const skip = (): Skip => SKIP
+
+// ---------------------------------------------------------------------------
+// The key grammar
+// ---------------------------------------------------------------------------
+
+/**
+ * `from -input> to`, and its pattern form with coordinates left open. Spacing
+ * is load-bearing and nothing is trimmed or normalised: the grammar admits
+ * exactly one spelling, and the type layer rejects the rest on the offending
+ * row.
+ *
+ * Splitting on the two separators leaves the label as the empty string in an
+ * unlabelled arrow (`'* -> *'`), which is what makes the empty string the
+ * wildcard in the label position for free. A bare key contains neither
+ * separator and parses to a single coordinate whose `undefined` label fails
+ * every comparison — so a state name registered as a pattern never matches,
+ * and never throws.
+ */
+const parse = (key: string) =>
+	key.split(/ -|> /) as [from: string, input?: string, to?: string]
+
+// ---------------------------------------------------------------------------
+// The vocabulary
+// ---------------------------------------------------------------------------
+
+/**
+ * The constraint both vocabulary maps carry **and** the default they fall back
+ * to when the caller declares neither.
+ *
+ * Widening then falls out of the constraint itself: `keyof Vocab & string` is
+ * `string` and `Vocab[string]` is `unknown`, so nothing below needs a
+ * conditional to express "no vocabulary was declared". That is what keeps the
+ * untyped path a widening rather than a collapse, and it is why the defaults
+ * are constrained rather than `any`.
+ */
+type Vocab = Record<string, unknown>
+
+/** The names a vocabulary declares — `string` when it declares none. */
+type Name<V> = keyof V & string
+
+/**
+ * `void` is how a vocabulary spells "carries no data"; `undefined` is how that
+ * data arrives. The tuples stop a union of state data from distributing, which
+ * would turn `A | void` into `A | undefined` one member at a time.
+ *
+ * Applied where data is *read* — `current.data`, a handler's `data` and
+ * `input`, the record's two ends — and deliberately **not** to a handler's
+ * return type, where `void` itself is what lets `() => {}` satisfy a data-free
+ * target.
+ */
+type Value<T> = [T] extends [void] ? undefined : T
+
+// ---------------------------------------------------------------------------
+// The key grammar, at the type level
+// ---------------------------------------------------------------------------
+
+/**
+ * Every legal transition key, as one union rather than a conditional that
+ * merely validates: a union is what an editor can offer as completions. It is
+ * |states|² × |inputs| members, which is the measured cost of completions
+ * recorded in the rationale.
+ *
+ * Spacing is load-bearing, and this is the whole of the enforcement: the
+ * literal ` -` and `> ` in the template admit exactly one spelling. With no
+ * vocabulary declared the coordinates widen to `string` and the two separators
+ * are all that is left — which is why a malformed key is still a compile error
+ * on the untyped path.
+ */
+type Key<
+	I extends Vocab,
+	S extends Vocab,
+> = `${Name<S>} -${Name<I>}> ${Name<S>}`
+
+/**
+ * The three coordinates of a key, read back out of the string.
+ *
+ * A leading `infer` matches up to the *first* occurrence of the literal that
+ * follows it, so these agree with the runtime's split on the same two
+ * separators. They are only ever applied to a key that has already passed
+ * `Key`, so the `never` branches are unreachable from checked code.
+ */
+type From<K> = K extends `${infer F} -${string}> ${string}` ? F : never
+type Label<K> = K extends `${string} -${infer L}> ${string}` ? L : never
+type To<K> = K extends `${string} -${string}> ${infer T}` ? T : never
+
+/**
+ * Every legal `.on()` pattern: the key grammar with the state coordinates left
+ * open. `*` is a state name that no vocabulary can shadow, and the unlabelled
+ * arrow is the broad form — so there is no `-*>`, and a bare key, which names a
+ * state, is not a pattern.
+ */
+type Wildcard<S extends Vocab> = Name<S> | '*'
+type Pattern<I extends Vocab = Vocab, S extends Vocab = Vocab> =
+	| `${Wildcard<S>} -${Name<I>}> ${Wildcard<S>}`
+	| `${Wildcard<S>} -> ${Wildcard<S>}`
+
+// ---------------------------------------------------------------------------
+// The table
+// ---------------------------------------------------------------------------
+
+/**
+ * A handler, typed from its own row: the **source** state's data and the input
+ * named by the arrow's label in, the **target** state's data out.
+ *
+ * `Skip` rides alongside the target's data rather than replacing it, so
+ * declining costs no type safety — a wrong-shaped return is still rejected on
+ * a row that could also `skip()`.
+ *
+ * One limitation, and it is TypeScript's rather than this notation's: a handler
+ * that destructures nothing — `() => ({ … })` — is not context-sensitive, so
+ * the compiler types it in the same pass that infers `states:` from the sibling
+ * property, before `S` is known. Its return expression therefore has no
+ * contextual type and its literals widen, which a target state pinning a
+ * literal field then rejects. Reading `data` or `input` defers the handler to
+ * the pass after the vocabulary is known and needs no annotation; an
+ * argument-free handler returning a pinned literal needs `as const` or a return
+ * type. Nothing the library can express moves this: the vocabulary and the
+ * table are properties of one object literal, and one is inferred from the
+ * other.
+ */
+type Handler<I extends Vocab, S extends Vocab, K> = (args: {
+	readonly data: Value<S[From<K> & Name<S>]>
+	readonly input: Value<I[Label<K> & Name<I>]>
+	readonly skip: () => Skip
+}) => S[To<K> & Name<S>] | Skip
+
+/**
+ * The transitions table, checked row by row.
+ *
+ * A malformed key **poisons its own value type**: the row is typed as a string
+ * literal no function can satisfy, so the error reads
+ * `not a transition: '…'` and lands on the offending row. Rejected: reporting
+ * through an intersected missing property, which is an object-level error and
+ * would land on the whole table instead — failing the one promise the notation
+ * makes about its own diagnostics.
+ */
+type Table<I extends Vocab, S extends Vocab, K extends string> = {
+	readonly [P in K]: P extends Key<I, S>
+		? Handler<I, S, P>
+		: `not a transition: '${P}'`
+}
+
+// ---------------------------------------------------------------------------
+// What a running machine is
+// ---------------------------------------------------------------------------
+
+/**
+ * The states in `N`, each paired with its own data, as a union discriminated by
+ * `state`. Mapping and immediately indexing is what builds the union: an
+ * interface with both fields could only intersect them.
+ */
+type At<S extends Vocab, N extends string> = {
+	[K in N & Name<S>]: { readonly state: K; readonly data: Value<S[K]> }
+}[N & Name<S>]
+
+/**
+ * A state and the data it carries. Discriminated by `state`, which is what
+ * makes narrowing the state narrow its data, with no nullable padding on the
+ * states that guarantee a field.
+ *
+ * Never mutated: a value read from `current` stays valid.
+ */
+type Snapshot<S extends Vocab = Vocab> = At<S, Name<S>>
+
+/**
+ * What a pattern leaves open, resolved against what the vocabulary declares.
+ * `*` is the wildcard in the state positions and the unlabelled arrow's empty
+ * label is the wildcard in the input position — the same two rules the runtime
+ * compares by, so a listener's type says exactly what its pattern can match.
+ */
+type Select<Coordinate extends string, All extends string> = [
+	Coordinate,
+] extends ['*' | '']
+	? All
+	: Coordinate & All
+
+/**
+ * What a listener is handed, narrowed by its own pattern: a union discriminated
+ * by `on`, over the inputs and the two ends the pattern admits. `'* -> *'`
+ * leaves all three open and is therefore the whole record.
+ */
+type Transition<
+	I extends Vocab = Vocab,
+	S extends Vocab = Vocab,
+	P extends string = '* -> *',
+> = {
+	[N in Select<Label<P>, Name<I>>]: {
+		readonly on: N
+		readonly input: Value<I[N]>
+		readonly from: At<S, Select<From<P>, Name<S>>>
+		readonly to: At<S, Select<To<P>, Name<S>>>
+	}
+}[Select<Label<P>, Name<I>>]
+
+type Listener<
+	I extends Vocab = Vocab,
+	S extends Vocab = Vocab,
+	P extends string = '* -> *',
+> = (transition: Transition<I, S, P>) => void
+
+/**
+ * `send`'s arity follows the input's payload: a `void` input takes none and
+ * rejects one, a payload-carrying input requires one. A union of tuples rather
+ * than a generic rest parameter, so the name position stays readable as
+ * `Parameters<…>[0]`.
+ *
+ * An undeclared vocabulary widens the payload to `unknown`, which no caller can
+ * produce a value *for*, so it becomes optional there rather than required.
+ */
+type Dispatch<I extends Vocab> = {
+	[N in Name<I>]: [I[N]] extends [void]
+		? [name: N]
+		: unknown extends I[N]
+			? [name: N, payload?: I[N]]
+			: [name: N, payload: I[N]]
+}[Name<I>]
+
+/** `start`'s arity follows the initial state's data, by the same rule. */
+type Start<S extends Vocab, Init extends string> = [S[Init & Name<S>]] extends [
+	void,
 ]
-	? | ShapeNeutralModifier<Context, Event>[]
-		| [
-				...ShapeNeutralModifier<Context, Event>[],
-				ReduceModifier<Context, Event, Output>,
-		  ]
-	: [
-			...ShapeNeutralModifier<Context, Event>[],
-			ReduceModifier<Context, Event, Output>,
-		]
+	? []
+	: unknown extends S[Init & Name<S>]
+		? [data?: S[Init & Name<S>]]
+		: [data: S[Init & Name<S>]]
 
-/**
- * Map the source context to the target state's context. At most one per transition.
- * It may be omitted when the source context is already assignable to the target's.
- */
-function reduce<Context, Event, Output>(
-	apply: (context: Context, event: Event) => Output,
-): ReduceModifier<Context, Event, Output> {
-	return { kind: 'reduce', apply }
+/** A running machine: the only mutable thing in the design. */
+interface Host<I extends Vocab = Vocab, S extends Vocab = Vocab> {
+	readonly current: Snapshot<S>
+	readonly available: readonly Name<I>[]
+	readonly send: (...args: Dispatch<I>) => void
+	// Generic in the pattern, so the record the listener receives is narrowed by
+	// the pattern that selected it rather than being the whole union every time.
+	readonly on: <P extends Pattern<I, S>>(
+		pattern: P,
+		listener: Listener<I, S, P>,
+	) => () => void
 }
 
 /**
- * Veto the transition. Multiple guards are evaluated in order and combined with
- * `&&`, so the first one to return `false` stops the rest from running.
+ * Carries the vocabulary and the table's keys at the type level, and nothing at
+ * all at runtime — the property is optional and never present. It is what the
+ * derived types below read a machine back out of, and a function position is
+ * what keeps the three parameters inferable together.
  */
-function guard<Context, Event>(
-	apply: (context: Context, event: Event) => boolean,
-): GuardModifier<Context, Event> {
-	return { kind: 'guard', apply }
+declare const vocabulary: unique symbol
+interface Vocabulary<I extends Vocab, S extends Vocab, K extends string> {
+	readonly [vocabulary]?: (declared: readonly [I, S, K]) => void
 }
 
-/**
- * A side effect. Runs in order once every guard has passed, before the state
- * changes, and receives the *source* context - which is what its type says.
- * Unlike robot3's `action` (sugar over `reduce`, so its output shape had to
- * equal its input shape) this is its own kind, so it can be attached to a
- * transition that changes shape.
- */
-function action<Context, Event>(
-	apply: (context: Context, event: Event) => void,
-): ActionModifier<Context, Event> {
-	return { kind: 'action', apply }
+/** A declared machine. Inert, shareable, and never mutated by running one. */
+interface Machine<
+	I extends Vocab = Vocab,
+	S extends Vocab = Vocab,
+	K extends string = string,
+	Init extends string = string,
+> extends Vocabulary<I, S, K> {
+	readonly start: (...data: Start<S, Init>) => Host<I, S>
 }
 
 // ---------------------------------------------------------------------------
-// Transitions and states
+// Reading a machine type back out
 // ---------------------------------------------------------------------------
 
 /**
- * `Context` binds the source state's context; `Handled` records which event this
- * transition responds to, so `state(...)` can collect the set of events a state
- * accepts and `send` can be narrowed to it.
+ * Everything a machine type carries, recovered in one match. The three are
+ * inferred together and named rather than extracted one at a time: matching
+ * `Machine` itself cannot work, because a partly-inferred `start` is not
+ * assignable to a fully-inferred one and the check would simply fail.
  */
-export interface TransitionDefinition<Context, Handled> {
-	readonly handles: Handled
-	readonly target: string
-	readonly modifiers: readonly Modifier<Context, never, unknown>[]
-}
+type Carried<M> =
+	M extends Vocabulary<infer I, infer S, infer K>
+		? { inputs: I; states: S; keys: K }
+		: never
 
-/** A settlement branch of an `invoke` state. */
-export interface SettlementDefinition<Context, Result> {
-	readonly settlement: 'done' | 'error'
-	readonly target: string
-	readonly modifiers: readonly Modifier<Context, Result, unknown>[]
-}
+/** The input vocabulary a machine was declared with. */
+export type InputsOf<M> = Carried<M>['inputs']
 
-export interface StateDefinition<S extends MachineSpec, K, Handled> {
-	readonly state?: K
-	readonly handles?: Handled
-	readonly transitions: readonly TransitionDefinition<
-		ContextOf<S, StateName<S>>,
-		EventName<S>
-	>[]
-	readonly source:
-		((context: never, signal: AbortSignal) => Promise<unknown>) | undefined
-	readonly settlements: readonly SettlementDefinition<never, never>[]
-}
+/** The state vocabulary a machine was declared with. */
+export type StatesOf<M> = Carried<M>['states']
 
-type AnyStateDefinition<S extends MachineSpec> = StateDefinition<
-	S,
-	StateName<S>,
-	EventName<S>
+/**
+ * The inputs state `S` has rows for — `available`, at the type level, and the
+ * `'draft -'` text search made derivable.
+ */
+export type Handled<M, S extends string> = Label<
+	Extract<Carried<M>['keys'], `${S} -${string}> ${string}`>
 >
 
-/** The events state `K` of a built machine actually handles. */
-export type HandledBy<States, K extends keyof States> = States[K] extends {
-	readonly handles?: infer Handled
-}
-	? Exclude<Handled, undefined>
-	: never
+/** The states that can reach `S`: the reverse index, from the same keys. */
+export type Sources<M, S extends string> = From<
+	Extract<Carried<M>['keys'], `${string} -${string}> ${S}`>
+>
 
 // ---------------------------------------------------------------------------
-// The builder kit
+// The definition
 // ---------------------------------------------------------------------------
-
-export interface InvokeKit<
-	S extends MachineSpec,
-	K extends StateName<S>,
-	Result,
-> {
-	/** Taken when the source promise resolves. `result` is its resolved value. */
-	done: <To extends StateName<S>>(
-		target: To,
-		...modifiers: TransitionModifiers<ContextOf<S, K>, Result, ContextOf<S, To>>
-	) => SettlementDefinition<ContextOf<S, K>, Result>
-	/** Taken when the source promise rejects. `error` is `unknown`, as it must be. */
-	error: <To extends StateName<S>>(
-		target: To,
-		...modifiers: TransitionModifiers<
-			ContextOf<S, K>,
-			unknown,
-			ContextOf<S, To>
-		>
-	) => SettlementDefinition<ContextOf<S, K>, Result>
-}
-
-export interface StateBuilder<S extends MachineSpec> {
-	(): StateDefinition<S, never, never>
-	<K extends StateName<S>, Handled extends EventName<S>>(
-		transition: TransitionDefinition<ContextOf<S, K>, Handled>,
-		...transitions: TransitionDefinition<ContextOf<S, K>, Handled>[]
-	): StateDefinition<S, K, Handled>
-}
-
-export interface InvokeBuilder<S extends MachineSpec> {
-	<K extends StateName<S>, Result>(
-		source: (context: ContextOf<S, K>, signal: AbortSignal) => Promise<Result>,
-		settlements: (
-			kit: InvokeKit<S, K, Result>,
-		) => SettlementDefinition<ContextOf<S, K>, Result>[],
-	): StateDefinition<S, K, never>
-}
-
-export interface Kit<S extends MachineSpec> {
-	reduce: typeof reduce
-	guard: typeof guard
-	action: typeof action
-	state: StateBuilder<S>
-
-	/**
-	 * An edge. Guards and actions may appear in any order, followed by an
-	 * optional reducer (robot3 partitions modifiers by kind, so their relative
-	 * order was never meaningful anyway).
-	 *
-	 * The reducer is *required* exactly when the source context is not already
-	 * assignable to the target's - which is the only way to state that rule so
-	 * the checker enforces it rather than the documentation.
-	 */
-	transition: <Context, E extends EventName<S>, To extends StateName<S>>(
-		event: E,
-		target: To,
-		...modifiers: TransitionModifiers<
-			Context,
-			EventObject<S, E>,
-			ContextOf<S, To>
-		>
-	) => TransitionDefinition<Context, E>
-
-	/**
-	 * A state that runs a promise on entry.
-	 *
-	 * The settlement branches are built by a callback rather than passed
-	 * variadically, because `Result` has to be fixed by `source` before `done`'s
-	 * modifiers can be checked against it. Passing `done(...)` as a sibling
-	 * argument leaves `Result` unresolved and its reducer sees `unknown`.
-	 */
-	invoke: InvokeBuilder<S>
-}
-
-// ---------------------------------------------------------------------------
-// Machine
-// ---------------------------------------------------------------------------
-
-export interface Machine<
-	S extends MachineSpec,
-	States extends Record<StateName<S>, unknown>,
-	Initial extends StateName<S>,
-> {
-	readonly states: States
-	readonly initial: Initial
-}
-
-/** Narrowing `state` narrows its associated `context`. */
-export type Snapshot<S extends MachineSpec> = {
-	[K in StateName<S>]: {
-		readonly state: K
-		readonly context: ContextOf<S, K>
-	}
-}[StateName<S>]
 
 /**
- * The current state, its context, and a `send` accepting only the events this
- * state actually handles. Narrowing `state` narrows both `context` and `send`.
+ * The runtime's own view of the pieces it touches. Every checked surface —
+ * per-state data, the key grammar, `start` and `send` arity — belongs to the
+ * type layer above and has already been enforced by the time any of this runs,
+ * so widening here costs nothing and keeps the implementation readable.
  */
-export type Current<
-	S extends MachineSpec,
-	States extends Record<StateName<S>, unknown>,
-> = {
-	[K in StateName<S> & keyof States]: {
-		readonly state: K
-		readonly context: ContextOf<S, K>
-		readonly send: (
-			event: EventObject<S, HandledBy<States, K> & EventName<S>>,
-		) => void
-	}
-}[StateName<S> & keyof States]
+type Data = any
 
-export interface Service<
-	S extends MachineSpec,
-	States extends Record<StateName<S>, unknown>,
-> {
-	/** Narrowed view: state, context, and the events this state handles. */
-	readonly current: Current<S, States>
-	readonly snapshot: Snapshot<S>
-	/** Unnarrowed escape hatch: accepts any of the machine's events. */
-	readonly send: (event: AnyEvent<S>) => void
-	/** Abort a pending `invoke` and stop accepting events. */
-	readonly stop: () => void
-}
+/** A handler as the runtime calls it: data and payload in, data or the sentinel out. */
+type Call = (args: {
+	readonly data: Data
+	readonly input: Data
+	readonly skip: () => Skip
+}) => Data | Skip
 
-const state = (...transitions: unknown[]) => ({
-	transitions,
-	source: undefined,
-	settlements: [],
-})
-
-const makeInvoke = (
-	source: unknown,
-	settlements: (kit: unknown) => unknown[],
-) => ({
-	transitions: [],
-	source,
-	settlements: settlements({
-		done: (target: string, ...modifiers: unknown[]) => ({
-			settlement: 'done',
-			target,
-			modifiers,
-		}),
-		error: (target: string, ...modifiers: unknown[]) => ({
-			settlement: 'error',
-			target,
-			modifiers,
-		}),
-	}),
-})
-
-const invoke = (source: unknown, settlements: (kit: unknown) => unknown[]) =>
-	makeInvoke(source, settlements)
-
-const kit = {
-	reduce,
-	guard,
-	action,
-	state,
-	transition: (
-		handles: PropertyKey,
-		target: string,
-		...modifiers: unknown[]
-	) => ({
-		handles,
-		target,
-		modifiers,
-	}),
-	invoke,
-} as unknown as Kit<MachineSpec>
+/** A candidate row, parsed: where it goes, and what it projects. */
+type Row = readonly [to: string, handler: Call]
 
 /**
- * Define the type-level shape of a machine, then create its state map from an
- * explicit initial state.
+ * A host as the runtime builds it: the same object the declared `Host` above
+ * describes, with every coordinate widened to what the implementation actually
+ * handles. The two are reconciled by the single cast in `machine`.
+ */
+interface RawHost {
+	readonly current: Snapshot
+	readonly available: readonly string[]
+	readonly send: (name: string, payload?: unknown) => void
+	readonly on: (pattern: string, listener: Listener) => () => void
+}
+
+/**
+ * Source state to input name to the rows declared for that pair, in
+ * declaration order.
  *
- * The separate `create(...)` call lets TypeScript infer the state map's own
- * type after the spec has been fixed. That inferred type is what lets a state
- * key absent from the spec be rejected and `send` be narrowed per state.
+ * Null-prototype at both levels so an untyped `send('toString')` finds nothing
+ * rather than finding `Object.prototype`'s method and calling it as a handler.
+ * A name outside the table has to change nothing rather than throw, and +10 B
+ * brotli over plain object literals is the whole cost of honouring it.
  */
-export function defineMachine<S extends MachineSpec>() {
-	return {
-		create<
-			Initial extends StateName<S>,
-			States extends Record<StateName<S>, unknown>,
-		>(
-			initial: Initial,
-			build: (kit: Kit<S>) => States & {
-				[K in StateName<S>]: StateDefinition<S, K, EventName<S>>
-			} & { [K in Exclude<keyof States, StateName<S>>]: never },
-		): Machine<S, States, Initial> {
-			const states = build(kit as unknown as Kit<S>) as Record<
-				string,
-				AnyStateDefinition<S>
-			>
-
-			if (!(initial in states)) {
-				throw new Error(`machine has no state named "${initial}"`)
-			}
-
-			// At most one `reduce` per transition. robot3 pipelines multiple
-			// reducers (each receives the previous one's output), which cannot be
-			// typed here: with per-state context every reducer's input depends on
-			// the previous one's output, and that fold is not expressible through
-			// the inference path this design relies on. Rejecting it is better than
-			// typing the second reducer's `context` as the source state's and handing
-			// it the first one's output.
-			for (const [name, definition] of Object.entries(states)) {
-				const branches = [
-					...definition.transitions,
-					...definition.settlements,
-				] as readonly { readonly modifiers: readonly { kind: string }[] }[]
-				for (const branch of branches) {
-					const reducers = branch.modifiers.filter(
-						(modifier) => modifier.kind === 'reduce',
-					)
-					if (reducers.length > 1) {
-						throw new Error(
-							`state "${name}" has a transition with ${reducers.length} reduce() modifiers; at most one is allowed`,
-						)
-					}
-				}
-			}
-
-			return {
-				states: states as unknown as States,
-				initial,
-			}
-		},
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Interpreter
-// ---------------------------------------------------------------------------
-
-interface RuntimeModifier {
-	readonly kind: 'reduce' | 'guard' | 'action'
-	readonly apply: (context: unknown, event: unknown) => unknown
-}
-
-interface RuntimeBranch {
-	readonly target: string
-	readonly modifiers: readonly RuntimeModifier[]
-	readonly handles?: PropertyKey
-	readonly settlement?: 'done' | 'error'
-}
-
-interface RuntimeState {
-	readonly transitions: readonly RuntimeBranch[]
-	readonly settlements: readonly RuntimeBranch[]
-	readonly source:
-		((context: unknown, signal: AbortSignal) => Promise<unknown>) | undefined
-}
+type Index = Record<string, Record<string, Row[] | undefined> | undefined>
 
 /**
- * Run a machine from its declared initial state. `initialContext` is checked
- * against exactly that state's declared context.
+ * Carries a vocabulary at the type level and nothing at all at runtime: it
+ * **returns `null`**, which is what a caller observes. Nothing reads the
+ * fields it fills in.
+ *
+ * The return type says so. `T` alone would need a cast through `unknown` to
+ * hand back a `null`, which is the one place in the library where the types
+ * would be describing something other than what runs; `T | null` needs no cast
+ * at all, and `machine` subtracts the `null` back out on the way in.
+ *
+ * The rationale records `null | T` as proposed and not taken, on two grounds.
+ * Neither applies here. Extraction still reads through `InputsOf` and
+ * `StatesOf` rather than through the marker's own type, which is the first;
+ * and a bare `inputs: null` no longer collapses `keyof S & string` to `never`,
+ * because with nothing left to infer the constrained default takes over and
+ * that half simply widens — the same surface omitting it gives.
  */
-export function interpret<
-	S extends MachineSpec,
-	States extends Record<StateName<S>, unknown>,
-	Initial extends StateName<S>,
->(
-	machine: Machine<S, States, Initial>,
-	initialContext: ContextOf<S, Initial>,
-	onChange?: (snapshot: Snapshot<S>) => void,
-): Service<S, States> {
-	const states = machine.states as unknown as Record<string, RuntimeState>
+export const types = <T>(): T | null => null
 
-	let currentState: string = machine.initial
-	let currentContext: unknown = initialContext
-	let stopped = false
-	// Bumped on every transition so a promise settling after we have already
-	// left the invoke state is ignored.
-	let epoch = 0
-	let pending: AbortController | undefined
+/**
+ * Declare a machine. The result is inert data — it holds the index in a
+ * closure, never touches or annotates the configuration object it was given,
+ * and exposes `start` only, because observation is a property of a running
+ * machine and an imported definition stays inert.
+ *
+ * Every key is parsed **once**, here. Rejected: storing nothing and
+ * prefix-scanning the raw keys on every dispatch, which came within 1.6% in the
+ * pre-implementation prototypes — not a basis for choosing. The index wins on
+ * behaviour: dispatch is a lookup rather than a scan, `available` falls out of
+ * key insertion order (declaration order and de-duplication for free, deleting
+ * the `Set` a scan needs), and a malformed key arriving from untyped code
+ * cannot accidentally prefix-match.
+ *
+ * `inputs` and `states` are the only inference sites for the vocabulary, and
+ * both are optional, so omitting one widens that half and leaves the other
+ * checked. `initial` is a plain `NoInfer` position rather than a conditional:
+ * without it `initial` reverse-infers the state vocabulary, after which the
+ * name it invented is the only legal state, every real row is rejected, and the
+ * error moves off the row onto the whole table. The intersection with `Init`
+ * recovers the initial state's *name* without reopening that inference, which
+ * is what lets `start` follow that one state's data.
+ *
+ * `K` is the table's keys, inferred from the mapped type in `transitions`
+ * because a mapped type over a bare type parameter infers its own key set.
+ * Rejected: a second `transitions: T` alongside it, which infers the same thing
+ * and makes the contextual type of every row an intersection — enough call
+ * signatures that the compiler stops elaborating into the handler, and a
+ * wrong-shaped return is reported against the whole row instead of against the
+ * expression that is wrong.
+ */
+export function machine<
+	Init extends string,
+	K extends string,
+	I extends Vocab = Vocab,
+	S extends Vocab = Vocab,
+>(definition: {
+	readonly initial: Init & Name<NoInfer<S>>
+	// `| null` is what `types()` returns, and inference subtracts it: the
+	// vocabulary lands as `I` rather than `I | null`, so nothing downstream
+	// carries a null it would have to strip again.
+	readonly inputs?: I | null
+	readonly states?: S | null
+	readonly transitions: Table<I, S, K>
+}): Machine<I, S, K, Init> {
+	const { initial, transitions } = definition as unknown as {
+		readonly initial: string
+		readonly transitions: Readonly<Record<string, Call>>
+	}
+	const index: Index = Object.create(null)
 
-	const runBranch = (branch: RuntimeBranch, event: unknown): boolean => {
-		for (const modifier of branch.modifiers) {
-			if (modifier.kind === 'guard' && !modifier.apply(currentContext, event)) {
-				return false
-			}
-		}
-		for (const modifier of branch.modifiers) {
-			if (modifier.kind === 'action') modifier.apply(currentContext, event)
-		}
-		const reducer = branch.modifiers.find((m) => m.kind === 'reduce')
-		epoch++
-		pending?.abort()
-		pending = undefined
-		currentContext = reducer
-			? reducer.apply(currentContext, event)
-			: currentContext
-		currentState = branch.target
-		onChange?.({
-			state: currentState,
-			context: currentContext,
-		} as Snapshot<S>)
-		enter()
-		return true
+	for (const key in transitions) {
+		const [from, input, to] = parse(key)
+		const bySource = (index[from] ??= Object.create(null))
+		// A key too malformed to carry a label lands under `undefined` and is
+		// simply unreachable — no row, and no complaint.
+		;(bySource[input as string] ??= []).push([to as string, transitions[key]!])
 	}
 
-	const enter = (): void => {
-		if (stopped) return
-		const definition = states[currentState]
-		if (!definition?.source) return
-		const entered = epoch
-		const controller = new AbortController()
-		pending = controller
-		definition.source(currentContext, controller.signal).then(
-			(result) => {
-				if (epoch === entered && !stopped) settle('done', result)
-			},
-			(error: unknown) => {
-				if (epoch === entered && !stopped) settle('error', error)
-			},
-		)
-	}
-
-	const settle = (kind: 'done' | 'error', payload: unknown): void => {
-		const definition = states[currentState]
-		if (!definition) return
-		for (const branch of definition.settlements) {
-			if (branch.settlement !== kind) continue
-			if (runBranch(branch, payload)) return
-		}
-	}
-
-	const dispatch = (event: { type: PropertyKey }): void => {
-		if (stopped) return
-		const definition = states[currentState]
-		if (!definition) return
-		for (const branch of definition.transitions) {
-			if (branch.handles !== event.type) continue
-			if (runBranch(branch, event)) return
-		}
-	}
-
-	enter()
-
-	const send = (event: unknown): void => {
-		dispatch(event as { type: PropertyKey })
-	}
-
+	// Built against the widened surface and handed back as the declared one: the
+	// two agree on every runtime detail and differ only in what the compiler
+	// will let a caller pass, which is the whole point of the layer above.
 	return {
-		get current(): Current<S, States> {
+		start: (data?: unknown): RawHost => {
+			// Host state lives in closure variables read back through getters,
+			// rather than on a plain object with assigned properties that `send`
+			// reaches back into and mutates. Measured against the real toolchain:
+			// assigned properties come out 6 B brotli larger (47 raw, 10 gzip) —
+			// mutating two properties on a bound `host` object costs more than a
+			// getter closing over a local, and the getter needs no extra identifier
+			// for the object itself. `current` is a `state`/`data` pair rather than
+			// two separate variables: a transition record needs both ends as
+			// `{ state, data }`, so keeping the pair already boxed hands `from` and
+			// `to` over as references instead of building two more objects per
+			// commit.
+			let current: Snapshot = { state: initial, data }
+
+			// Copy-on-write at registration, plain iteration at dispatch. Rejected:
+			// a mutable list mutated with `.push()`/`.splice()` at registration and
+			// snapshotted with `.slice()` per dispatch — measured 20 B brotli larger
+			// (29 raw, 14 gzip) against the real toolchain, and it allocates on the
+			// path that runs most (every dispatch) rather than the one that runs
+			// least (every subscribe/unsubscribe). A listener unsubscribed by an
+			// earlier one still runs for the current transition under either
+			// design; one registered during dispatch runs under neither.
+			let listeners: Registration[] = []
+
+			const queue: [name: string, payload: unknown][] = []
+			let draining = false
+
 			return {
-				state: currentState,
-				context: currentContext,
-				send,
-			} as unknown as Current<S, States>
+				get current(): Snapshot {
+					return current
+				},
+
+				// Straight off the index, so the answer is the table's rather than
+				// the handlers': an input whose every row would decline is still
+				// advertised, and no handler runs to produce this list.
+				get available(): readonly string[] {
+					return Object.keys(index[current.state] ?? {})
+				},
+
+				on: (pattern: string, listener: Listener): (() => void) => {
+					// Parsed once, here, rather than kept as an opaque string and
+					// matched by generating the eight patterns each transition could
+					// answer to — 4.8% larger in the pre-implementation prototypes, and
+					// a `Set` allocated per transition. Parsing at registration also
+					// shares `parse` with the index build, which is part of why it
+					// compresses better.
+					const registration: Registration = [...parse(pattern), listener]
+					listeners = [...listeners, registration]
+					// Idempotent because removing what is already gone is a no-op.
+					return () => {
+						listeners = listeners.filter((other) => other !== registration)
+					}
+				},
+
+				send: (name: string, payload?: unknown): void => {
+					queue.push([name, payload])
+					// Already inside a dispatch: this call was made from a listener, so
+					// it waits its turn rather than running nested. The outermost call
+					// owns the drain.
+					if (draining) return
+					draining = true
+					try {
+						while (queue.length) {
+							const [on, input] = queue.shift()!
+							// Evaluated against the state at drain time, so a queued send
+							// may correctly find no row and do nothing.
+							for (const [to, handler] of index[current.state]?.[on] ?? []) {
+								const data = handler({ data: current.data, input, skip })
+								// Declining is an ordinary, silent outcome: fall through to
+								// the next row declared for the same source and input.
+								if (data === SKIP) continue
+
+								// Commit, then notify — so every listener sees a machine that
+								// agrees with the record it was handed.
+								const from = current
+								current = { state: to, data }
+								const record: Transition = { on, input, from, to: current }
+								for (const [f, l, t, listener] of listeners) {
+									if (
+										(f === '*' || f === from.state) &&
+										(l === '' || l === on) &&
+										(t === '*' || t === to)
+									) {
+										listener(record)
+									}
+								}
+								// One input yields at most one transition.
+								break
+							}
+						}
+					} finally {
+						// In a `finally` so a throwing listener leaves the host usable and
+						// the flag correct. The queue is abandoned rather than drained:
+						// the transition stays committed, but nothing further runs.
+						draining = false
+						queue.length = 0
+					}
+				},
+			}
 		},
-		get snapshot(): Snapshot<S> {
-			return {
-				state: currentState,
-				context: currentContext,
-			} as Snapshot<S>
-		},
-		send: send as (event: AnyEvent<S>) => void,
-		stop: (): void => {
-			stopped = true
-			pending?.abort()
-			pending = undefined
-		},
-	}
+	} as unknown as Machine<I, S, K, Init>
 }
+
+/** A pattern parsed into its three coordinates, with the listener alongside. */
+type Registration = readonly [
+	from: string,
+	input: string | undefined,
+	to: string | undefined,
+	listener: Listener,
+]

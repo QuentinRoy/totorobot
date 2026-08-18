@@ -28,7 +28,7 @@ import type {
 	MachineSpec,
 	StateDefinition,
 	StateName,
-} from '../src/totorobot.ts'
+} from './typestate-kit.ts'
 
 interface DefineKit {
 	define: <S extends MachineSpec>() => <

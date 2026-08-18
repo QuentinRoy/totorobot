@@ -12,7 +12,7 @@ import {
 	type InputsOf,
 	type Sources,
 	type StatesOf,
-} from '../src/totorobot.ts'
+} from 'totorobot'
 
 type Inputs = {
 	open: { text: string }

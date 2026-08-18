@@ -46,7 +46,7 @@ import type {
 	MachineSpec,
 	StateDefinition,
 	StateName,
-} from '../src/totorobot.ts'
+} from './typestate-kit.ts'
 
 /**
  * A phantom marker. `S` appears only in a covariant readonly position, the same

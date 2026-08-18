@@ -1,57 +1,35 @@
-import { defineMachine } from '../../src/totorobot.ts'
+import { machine, types } from '../../src/totorobot.ts'
 
 /**
- * Example 1: per-state context.
+ * Example 1: per-state data.
  *
  * `yellow` carries a `blinking` flag that simply does not exist on the other
- * states - the thing robot3's single flat context could not express.
+ * states — the thing a single flat context could not express. Reading
+ * `data.blinking` from the `red` or `green` rows is a compile error rather than
+ * a nullable field everyone has to check.
  */
-export interface NextEvent {
-	type: 'next'
+type Inputs = { next: void }
+
+type States = {
+	red: { changes: number }
+	green: { changes: number }
+	yellow: { changes: number; blinking: boolean }
 }
 
-type TrafficLightSpec = {
-	states: {
-		red: { changes: number }
-		green: { changes: number }
-		yellow: { changes: number; blinking: boolean }
-	}
-	events: {
-		next: Omit<NextEvent, 'type'>
-	}
-}
+export const trafficLight = machine({
+	initial: 'red',
+	inputs: types<Inputs>(),
+	states: types<States>(),
 
-export const trafficLight = defineMachine<TrafficLightSpec>().create(
-	'red',
-	({ state, transition, reduce }) => ({
-		red: state(
-			transition(
-				'next',
-				'green',
-				reduce((context) => ({
-					changes: context.changes + 1,
-				})),
-			),
-		),
-		green: state(
-			transition(
-				'next',
-				'yellow',
-				reduce((context) => ({
-					changes: context.changes + 1,
-					blinking: true,
-				})),
-			),
-		),
-		yellow: state(
-			transition(
-				'next',
-				'red',
-				// `context.blinking` is available here and nowhere else.
-				reduce((context) => ({
-					changes: context.changes + (context.blinking ? 1 : 0),
-				})),
-			),
-		),
-	}),
-)
+	transitions: {
+		'red -next> green': ({ data }) => ({ changes: data.changes + 1 }),
+		'green -next> yellow': ({ data }) => ({
+			changes: data.changes + 1,
+			blinking: true,
+		}),
+		// `data.blinking` is available here and nowhere else.
+		'yellow -next> red': ({ data }) => ({
+			changes: data.changes + (data.blinking ? 1 : 0),
+		}),
+	},
+})
