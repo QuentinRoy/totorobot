@@ -28,6 +28,7 @@
 		"test": "vitest run",
 		"test:types": "vitest run --typecheck.only",
 		"test:coverage": "vitest run --coverage",
+		"test:dist": "pnpm build && vitest run --config vitest.dist.config.ts",
 		"typecheck": "tsc --noEmit",
 		"typecheck:candidates": "node scripts/check-candidates.ts",
 		"measure:completions": "node scripts/measure-completions.mjs"

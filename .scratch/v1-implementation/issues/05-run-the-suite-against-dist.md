@@ -12,17 +12,17 @@ rollup can alter the public type surface with no runtime symptom at all.
 
 **Blocked by:** 01, 04.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `pnpm test:dist` builds, then runs the **whole existing suite** against the
+- [x] `pnpm test:dist` builds, then runs the **whole existing suite** against the
       built artifact — no test is duplicated to get there
-- [ ] Both halves are covered: runtime tests against the minified bundle, type
+- [x] Both halves are covered: runtime tests against the minified bundle, type
       tests against the emitted declarations
-- [ ] Coverage is disabled for this run — its thresholds are scoped to the source
+- [x] Coverage is disabled for this run — its thresholds are scoped to the source
       directory
-- [ ] Redirecting the type pass uses a path mapping, since the type pass resolves
+- [x] Redirecting the type pass uses a path mapping, since the type pass resolves
       through the tests' own tsconfig rather than a bundler alias
-- [ ] The dist run stays **out** of the default `pnpm test`, so the local edit
+- [x] The dist run stays **out** of the default `pnpm test`, so the local edit
       loop does not wait on a build
-- [ ] The public sentinel type survives declaration emit — it appears in every
+- [x] The public sentinel type survives declaration emit — it appears in every
       handler's return type, so the symbol must stay reachable
