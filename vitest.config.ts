@@ -16,6 +16,9 @@ export default defineConfig({
 		],
 
 		typecheck: {
+			// The single switch for the type-test pass: every `vitest run`
+			// — `pnpm test` and `pnpm test:coverage` alike — includes it, so
+			// no script needs to pass `--typecheck` of its own.
 			enabled: true,
 			tsconfig: 'tests/tsconfig.json',
 			ignoreSourceErrors: false,

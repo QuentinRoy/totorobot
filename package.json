@@ -16,7 +16,7 @@
 		"examples": "node examples/index.ts",
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
-		"test": "vitest run --typecheck",
+		"test": "vitest run",
 		"test:types": "vitest run --typecheck.only",
 		"test:coverage": "vitest run --coverage",
 		"typecheck": "tsc --noEmit",

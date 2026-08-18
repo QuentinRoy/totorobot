@@ -2,21 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import { machine, types } from '../src/totorobot.ts'
 import { toggle } from './fixtures.ts'
-
-/** Clones plain objects and arrays; leaves functions and other values by reference. */
-function cloneDeep<T>(value: T): T {
-	if (Array.isArray(value)) return value.map(cloneDeep) as T
-	if (
-		value !== null &&
-		typeof value === 'object' &&
-		value.constructor === Object
-	) {
-		return Object.fromEntries(
-			Object.entries(value).map(([key, v]) => [key, cloneDeep(v)]),
-		) as T
-	}
-	return value
-}
+import { cloneDeep } from './helpers.ts'
 
 describe('construction', () => {
 	test('start(data) yields a host whose current is { state: initial, data }', () => {
@@ -36,6 +22,13 @@ describe('construction', () => {
 	test('start() takes no argument for a void initial state, and current.data is undefined', () => {
 		const host = toggle.start()
 		expect(host.current).toEqual({ state: 'off', data: undefined })
+	})
+
+	test('types<T>() carries no runtime value and returns null', () => {
+		// `null` rather than `undefined` or a marker object is what a caller
+		// observes — docs/api.md is explicit about which of the three it is.
+		expect(types<{ increment: void }>()).toBeNull()
+		expect(types<{ ready: { count: number } }>()).toBeNull()
 	})
 
 	test('two hosts from one definition share no current state', () => {

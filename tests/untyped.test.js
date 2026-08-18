@@ -8,6 +8,30 @@ import { describe, expect, test } from 'vitest'
 import { machine } from '../src/totorobot.ts'
 
 describe('the untyped path', () => {
+	test('a machine with no vocabulary at all works: it starts, transitions and notifies', () => {
+		const untyped = machine({
+			initial: 'off',
+			transitions: {
+				'off -toggle> on': () => {},
+				'on -toggle> off': () => {},
+			},
+		})
+
+		const host = untyped.start()
+		const log = []
+		host.on('* -> *', (e) => log.push(`${e.from.state}->${e.to.state}`))
+
+		expect(host.current).toEqual({ state: 'off', data: undefined })
+
+		host.send('toggle')
+		expect(host.current).toEqual({ state: 'on', data: undefined })
+
+		host.send('toggle')
+		expect(host.current).toEqual({ state: 'off', data: undefined })
+
+		expect(log).toEqual(['off->on', 'on->off'])
+	})
+
 	test('an input name outside the vocabulary changes nothing', () => {
 		const untyped = machine({
 			initial: 'off',

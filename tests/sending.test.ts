@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import { machine, types } from '../src/totorobot.ts'
-import { editor, toggle } from './fixtures.ts'
+import { editor } from './fixtures.ts'
 
 describe('sending', () => {
 	test('a handled input commits, and every listener whose pattern matches fires', () => {
@@ -152,12 +152,19 @@ describe('sending', () => {
 		expect(host.send('open', { text: 'again' })).toBeUndefined() // no row matches
 	})
 
-	test('an input name outside the declared vocabulary, reached from typed code via an explicit cast, changes nothing', () => {
-		const host = toggle.start()
-		const before = host.current
+	test('send returns undefined when it was queued, too', () => {
+		const host = editor.start()
 
-		host.send('bogus' as never)
+		let queued: unknown = 'unset'
+		const off = host.on('idle -> draft', () => {
+			// A send from inside a listener is queued rather than run nested;
+			// it still returns nothing to its caller.
+			queued = host.send('touch')
+		})
 
-		expect(host.current).toEqual(before)
+		host.send('open', { text: 'hello' })
+		off()
+
+		expect(queued).toBeUndefined()
 	})
 })

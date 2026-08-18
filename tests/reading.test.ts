@@ -1,21 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import { editor } from './fixtures.ts'
-
-/** Clones plain objects and arrays; leaves functions and other values by reference. */
-function cloneDeep<T>(value: T): T {
-	if (Array.isArray(value)) return value.map(cloneDeep) as T
-	if (
-		value !== null &&
-		typeof value === 'object' &&
-		value.constructor === Object
-	) {
-		return Object.fromEntries(
-			Object.entries(value).map(([key, v]) => [key, cloneDeep(v)]),
-		) as T
-	}
-	return value
-}
+import { cloneDeep } from './helpers.ts'
 
 describe('reading', () => {
 	test('current is { state, data }, with data undefined for a void state', () => {

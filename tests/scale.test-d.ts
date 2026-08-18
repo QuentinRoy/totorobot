@@ -194,9 +194,16 @@ test('the full twenty-state, forty-four-row table type-checks, and start() requi
 test('skip is only available from s00, s05, s10 and s15', () => {
 	type M = typeof stress
 
+	// Pure type-level assertions: `toEqualTypeOf` accepts `any` against
+	// anything, so the `toBeAny` guards keep this test from passing
+	// vacuously against an unresolved import or an `any` implementation.
+	expectTypeOf<Handled<M, 's00'>>().not.toBeAny()
 	expectTypeOf<Handled<M, 's00'>>().toEqualTypeOf<'next' | 'reset' | 'skip'>()
+	expectTypeOf<Handled<M, 's05'>>().not.toBeAny()
 	expectTypeOf<Handled<M, 's05'>>().toEqualTypeOf<'next' | 'reset' | 'skip'>()
+	expectTypeOf<Handled<M, 's01'>>().not.toBeAny()
 	expectTypeOf<Handled<M, 's01'>>().toEqualTypeOf<'next' | 'reset'>()
+	expectTypeOf<Handled<M, 's19'>>().not.toBeAny()
 	expectTypeOf<Handled<M, 's19'>>().toEqualTypeOf<'next' | 'reset'>()
 })
 
