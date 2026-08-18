@@ -513,8 +513,9 @@ as an obscure type-level message — which is the class P1.2 rules out by name.
 
 **Both markers are optional, which is P1.4 rather than a concession.** A JavaScript
 caller writes `machine({ initial, transitions })`; a TypeScript caller who omits them
-should get `string` names and `unknown` data, with the key _grammar_ still enforced,
-since the grammar does not depend on the vocabulary.
+should still get a usable, checked interface — names and data read off `transitions`
+itself (see the revision note below) rather than `any` — with the key _grammar_ still
+enforced, since the grammar does not depend on the vocabulary.
 
 **It does not fall out for free.** A first attempt had `S` **reverse-inferred from
 `initial`** — `initial: 'whatever'` produced `S = { whatever: any }` — after which the
@@ -547,6 +548,21 @@ transition: 'K'"`. That reports on the offending line, where intersecting an ext
 every failure becomes `No overload matches this call` at the call site rather than on a
 line, and the states-only combination does not resolve at all. Trading P1.2 for P1.4 is
 not a fix.
+
+**Revision: the default's _names_ were later changed from `Vocab` to a table-derived
+vocabulary, its _data_ left at `unknown`.** Widening an omitted half's names to `string`
+turned out to give up more than it needed to: `K` (the table's own keys) is already
+inferred cleanly, via the same homomorphic-mapped-type mechanism as `Table` itself, so
+`From<K> | To<K>` and `Label<K>` recover the exact names `transitions` mentions without
+repeating the `initial` cliff — the risk there was reverse-inferring `S` from a single
+field, not deriving it from a sibling parameter that is already resolved. `I`/`S` now
+default to `InputsFromKeys<K>`/`StatesFromKeys<K>` (each name mapped to `unknown`)
+rather than to `Vocab`, so an omitted half's _names_ narrow to what the table says while
+its _data_ stays `unknown` exactly as before — nothing declares what an inferred name's
+data is, so assuming it absent would be a claim the table never made. Point 1 above
+("constrained defaults... `Vocab`") describes the superseded design for names; points 2
+and 3 — `NoInfer` on `initial`, and a bad key poisoning its own value type — are
+unchanged and still what keep this safe.
 
 **The alternative shape** — `machine<Publication>()({ … })` — removes the `types:`
 property but needs the double call, because TypeScript has no partial
