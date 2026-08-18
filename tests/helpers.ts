@@ -4,7 +4,14 @@
  * same helper verbatim.
  */
 
-/** Clones plain objects and arrays; leaves functions and other values by reference. */
+/**
+ * Clones plain objects and arrays; leaves functions and other values by reference.
+ *
+ * Not `structuredClone`: definitions carry transition functions, and
+ * `structuredClone` throws on those. Non-plain values are intentionally kept
+ * by reference too, so identity-sensitive assertions (`toStrictEqual` on a
+ * definition) aren't broken by cloning things that were never expected to change.
+ */
 export function cloneDeep<T>(value: T): T {
 	if (Array.isArray(value)) return value.map(cloneDeep) as T
 	if (
