@@ -24,6 +24,13 @@ jobs:
   size:
     name: Size
     runs-on: ubuntu-latest
+    # The repo default GITHUB_TOKEN permissions are read-only; the action
+    # posts the diff via the issue-comments API, which needs issues: write
+    # even though the target is a pull request.
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
