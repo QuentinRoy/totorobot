@@ -522,9 +522,10 @@ only legal state was that bogus one, every real key was rejected, and the error 
 off the offending line onto the whole `transitions` block. That fails P1.4 ("should
 not collapse into an unusable surface") and P1.2 (locality) at once.
 
-**Three things fix it**, built and asserted in
-[`explorations/vocabulary-degradation.ts`](../explorations/vocabulary-degradation.ts),
-which covers all four combinations of declared maps:
+**Three things fix it**, asserted in
+[`tests/untyped.test-d.ts`](../tests/untyped.test-d.ts), which covers every
+combination of declared maps with one omitted — the fully typed case is
+[`tests/vocabulary.test-d.ts`](../tests/vocabulary.test-d.ts):
 
 1. **Constrained defaults.** `S extends Vocab = Vocab`, with
    `Vocab = Record<string, unknown>`. Widening then falls out of the constraint —

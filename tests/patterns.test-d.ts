@@ -32,27 +32,39 @@ const doc = machine({
 	},
 })
 
+// Observation is a property of a running machine: `.on()` lives on the host and
+// not on the definition, so that an imported definition stays inert. Every
+// pattern assertion below therefore goes through `start()`.
+
 test('unknown names in a pattern are rejected', () => {
+	const host = doc.start()
+
 	// @ts-expect-error - "nope" is not a declared state
-	doc.on('nope -> *', () => {})
+	host.on('nope -> *', () => {})
 	// @ts-expect-error - "nope" is not a declared state
-	doc.on('* -> nope', () => {})
+	host.on('* -> nope', () => {})
 	// @ts-expect-error - "nope" is not a declared input
-	doc.on('* -nope> *', () => {})
+	host.on('* -nope> *', () => {})
 })
 
 test('there is no -*> form; the wildcard appears only in state positions', () => {
+	const host = doc.start()
+
 	// @ts-expect-error - "*" is not a legal input name
-	doc.on('draft -*> *', () => {})
+	host.on('draft -*> *', () => {})
 })
 
 test('a bare key names a state and is not a legal pattern', () => {
+	const host = doc.start()
+
 	// @ts-expect-error - a bare key names a state; states mean residency
-	doc.on('draft', () => {})
+	host.on('draft', () => {})
 })
 
 test('the transition record is discriminated by its input name, and each end carries its own state and data', () => {
-	doc.on('* -> *', (e) => {
+	const host = doc.start()
+
+	host.on('* -> *', (e) => {
 		if (e.on === 'open') {
 			expectTypeOf(e.input).toEqualTypeOf<{ text: string }>()
 		}
