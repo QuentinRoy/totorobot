@@ -137,6 +137,16 @@ pnpm examples
 untyped path in `tests/` against the shipped API. `pnpm typecheck` covers
 `src/`, `examples/` and `explorations/`.
 
+### CI
+
+Pull requests run `pnpm test` and `pnpm test:dist`, then get a brotli size
+diff on `dist/totorobot.js` from
+[`compressed-size-action`](https://github.com/preactjs/compressed-size-action).
+The action measures with node's zlib at brotli defaults, the same as
+`pnpm size` — no committed baseline, no size gate, the diff only reports.
+The action cannot comment on pull requests from forks; it prints the diff to
+the job log instead.
+
 ## Relationship to Robot3
 
 Totorobot was inspired by [Robot3](https://thisrobot.life/) and deliberately
