@@ -69,4 +69,59 @@ describe('the untyped path', () => {
 
 		expect(log).toEqual([])
 	})
+
+	describe('an unlabelled arrow in the transitions table (#7)', () => {
+		test('available reports only the labelled input name, not the empty string', () => {
+			const untyped = machine({
+				initial: 'draft',
+				transitions: {
+					'draft -submit> published': () => ({ via: 'submit' }),
+					'draft -> published': () => ({ via: 'unlabelled arrow' }),
+				},
+			})
+
+			const host = untyped.start()
+
+			expect(host.available).toEqual(['submit'])
+		})
+
+		test("send('') changes nothing and fires no listener", () => {
+			const untyped = machine({
+				initial: 'draft',
+				transitions: {
+					'draft -submit> published': () => ({ via: 'submit' }),
+					'draft -> published': () => ({ via: 'unlabelled arrow' }),
+				},
+			})
+
+			const host = untyped.start()
+			const before = host.current
+			const log = []
+			host.on('* -> *', () => log.push('fired'))
+
+			host.send('')
+
+			expect(host.current).toEqual(before)
+			expect(log).toEqual([])
+		})
+
+		test('a key too malformed to carry a label still lands where it lands today', () => {
+			// A bare key parses with an *absent* label (`undefined`), not an empty
+			// one — it must not be swept in with the unlabelled-arrow rows above.
+			// Today it lands under the literal input name `'undefined'`, which is
+			// what this pins down: a fix that splits on falsy rather than on
+			// exactly `''` would instead make it disappear from `available`.
+			const untyped = machine({
+				initial: 'off',
+				transitions: {
+					'off -toggle> on': () => {},
+					off: () => {},
+				},
+			})
+
+			const host = untyped.start()
+
+			expect(host.available).toEqual(['toggle', 'undefined'])
+		})
+	})
 })

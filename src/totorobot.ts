@@ -436,6 +436,16 @@ interface RawHost {
 type Index = Record<string, Record<string, Row[] | undefined> | undefined>
 
 /**
+ * Source state to the unlabelled rows declared out of it, in declaration
+ * order. Kept apart from `Index` rather than filtered out of it at read
+ * time: `available` and `send` read `Index` directly, so a row stored here
+ * is structurally unreachable from either rather than merely absent by
+ * convention. Unused by anything yet — the next change wires it up — which
+ * is the point: that change is an addition, not surgery on this one.
+ */
+type Immediates = Record<string, Row[] | undefined>
+
+/**
  * Carries a vocabulary at the type level and nothing at all at runtime: it
  * **returns `null`**, which is what a caller observes. Nothing reads the
  * fields it fills in.
@@ -510,13 +520,23 @@ export function machine<
 		readonly transitions: Readonly<Record<string, Call>>
 	}
 	const index: Index = Object.create(null)
+	const immediates: Immediates = Object.create(null)
 
 	for (const key in transitions) {
 		const [from, input, to] = parse(key)
-		const bySource = (index[from] ??= Object.create(null))
-		// A key too malformed to carry a label lands under `undefined` and is
-		// simply unreachable — no row, and no complaint.
-		;(bySource[input as string] ??= []).push([to as string, transitions[key]!])
+		const row: Row = [to as string, transitions[key]!]
+		// The label is the empty string only for an unlabelled arrow — `parse`
+		// gives a key too malformed to carry a label an *absent* (`undefined`)
+		// one instead, which keeps landing in `index`, under the literal name
+		// `'undefined'`, exactly as it does without this branch: simply
+		// unreachable, no row, no complaint. Splitting on falsy rather than on
+		// exactly `''` would sweep it into `immediates` too.
+		if (input === '') {
+			;(immediates[from] ??= []).push(row)
+		} else {
+			const bySource = (index[from] ??= Object.create(null))
+			;(bySource[input as string] ??= []).push(row)
+		}
 	}
 
 	// Built against the widened surface and handed back as the declared one: the
