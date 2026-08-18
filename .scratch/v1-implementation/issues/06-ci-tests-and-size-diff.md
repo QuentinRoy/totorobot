@@ -9,14 +9,14 @@ There is no CI in the repository today; this creates it.
 
 **Blocked by:** 05.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Pull requests run the suite, including the dist run
-- [ ] Pull requests get a brotli size diff comment from the compressed-size
+- [x] Pull requests run the suite, including the dist run
+- [x] Pull requests get a brotli size diff comment from the compressed-size
       action, configured over the built output
-- [ ] The local `pnpm size` number is **verified** to match the action's by
+- [x] The local `pnpm size` number is **verified** to match the action's by
       running both on one commit and comparing — not assumed to match
-- [ ] No committed size baseline and no hard size gate: the diff reports, it does
+- [x] No committed size baseline and no hard size gate: the diff reports, it does
       not block. A budget is deliberately not a scoring threshold.
-- [ ] Known limitation noted: the action cannot comment on pull requests from
+- [x] Known limitation noted: the action cannot comment on pull requests from
       forks and prints to its log instead
