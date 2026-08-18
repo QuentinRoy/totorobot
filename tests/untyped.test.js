@@ -70,6 +70,27 @@ describe('the untyped path', () => {
 		expect(log).toEqual([])
 	})
 
+	describe('immediate transitions', () => {
+		test('an immediate row fires on entry with no vocabulary declared', () => {
+			const untyped = machine({
+				initial: 'draft',
+				transitions: {
+					'draft -submit> checking': () => ({ via: 'submit' }),
+					'checking -> settled': () => ({ via: 'immediate' }),
+				},
+			})
+
+			const host = untyped.start()
+			host.send('submit')
+
+			expect(host.current).toEqual({
+				state: 'settled',
+				data: { via: 'immediate' },
+			})
+			expect(host.available).toEqual([])
+		})
+	})
+
 	describe('an unlabelled arrow in the transitions table (#7)', () => {
 		test('available reports only the labelled input name, not the empty string', () => {
 			const untyped = machine({

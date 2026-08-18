@@ -12,6 +12,37 @@
  * by reference too, so identity-sensitive assertions (`toStrictEqual` on a
  * definition) aren't broken by cloning things that were never expected to change.
  */
+/**
+ * The residency recipe from `docs/api.md`, verbatim: setup/teardown scoped to
+ * "while we are in `state`", built from nothing but `.on()`. Kept here rather
+ * than imported from `src/` because it is documentation, not library surface
+ * — the point of the recipe is that a caller can write it themselves.
+ */
+// `doc` is typed `any` on purpose: the recipe is plain JavaScript in
+// `docs/api.md`, with no annotations of its own, and threading a real host's
+// pattern-checked `on` through a helper signature would type-check only the
+// one machine it was written against.
+export function residency(
+	doc: any,
+	state: string,
+	setup: (snapshot: unknown) => (() => void) | undefined,
+) {
+	let teardown: (() => void) | undefined
+	const offExit = doc.on(`${state} -> *`, () => {
+		teardown?.()
+		teardown = undefined
+	})
+	const offEnter = doc.on(`* -> ${state}`, (e: { to: unknown }) => {
+		teardown = setup(e.to)
+	})
+	if (doc.current.state === state) teardown = setup(doc.current)
+	return () => {
+		offExit()
+		offEnter()
+		teardown?.()
+	}
+}
+
 export function cloneDeep<T>(value: T): T {
 	if (Array.isArray(value)) return value.map(cloneDeep) as T
 	if (

@@ -199,6 +199,27 @@ test('start() takes an optional, unknown payload for an inferred initial state',
 	untyped.start({ anything: true })
 })
 
+test('an immediate row is legal with no vocabulary declared, and contributes no input name', () => {
+	const untyped = machine({
+		initial: 'draft',
+		transitions: {
+			'draft -submit> checking': () => ({ via: 'submit' }),
+			'checking -> settled': ({ input }) => {
+				expectTypeOf(input).not.toBeAny()
+				expectTypeOf(input).toEqualTypeOf<undefined>()
+				return { via: 'immediate' }
+			},
+		},
+	})
+
+	const host = untyped.start()
+	expectTypeOf(host.current.state).toEqualTypeOf<
+		'draft' | 'checking' | 'settled'
+	>()
+	// the immediate row must not leak '' into the inferred input vocabulary
+	expectTypeOf(host.send).parameter(0).toEqualTypeOf<'submit'>()
+})
+
 test('declaring inputs and omitting states checks inputs and infers states from the table', () => {
 	type Inputs = { toggle: void }
 

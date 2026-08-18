@@ -170,6 +170,25 @@ test('InputsOf, StatesOf, Handled and Sources resolve correctly over a machine t
 	expectTypeOf<Sources<M, 'empty'>>().toEqualTypeOf<'draft'>()
 })
 
+test('Handled excludes an immediate row; Sources includes an immediate source', () => {
+	const withImmediate = machine({
+		initial: 'draft',
+		inputs: types<Inputs>(),
+		states: types<States>(),
+		transitions: {
+			'draft -cancel> empty': () => {},
+			'empty -> draft': () => ({ text: '', revision: 0 }),
+		},
+	})
+
+	type M = typeof withImmediate
+
+	expectTypeOf<Handled<M, 'empty'>>().not.toBeAny()
+	expectTypeOf<Handled<M, 'empty'>>().toEqualTypeOf<never>()
+	expectTypeOf<Sources<M, 'draft'>>().not.toBeAny()
+	expectTypeOf<Sources<M, 'draft'>>().toEqualTypeOf<'empty'>()
+})
+
 test('available is asserted only as a readonly array of input names, not a per-state literal union', () => {
 	const host = read(doc.start())
 	expectTypeOf(host.available).not.toBeAny()

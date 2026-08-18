@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { editor } from './fixtures.ts'
+import { editor, pending } from './fixtures.ts'
 import { cloneDeep } from './helpers.ts'
 
 describe('reading', () => {
@@ -60,6 +60,17 @@ describe('reading', () => {
 		// 'draft -poke> draft' always calls skip(), yet it is still advertised —
 		// available is derived from the table, not from running the handler.
 		expect(host.available).toContain('poke')
+	})
+
+	test('available never contains an immediate', () => {
+		const host = pending.start()
+		// the only immediate candidate skips at a non-positive quota, so the
+		// machine stays in 'checking' rather than settling into 'allowed'
+		host.send('submit', { quota: 0 })
+
+		expect(host.current.state).toBe('checking')
+		expect(host.available).toEqual(['cancel'])
+		expect(host.available).not.toContain('')
 	})
 
 	test('available is empty for a state with no outgoing rows', () => {

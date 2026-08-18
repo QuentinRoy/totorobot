@@ -50,11 +50,16 @@
  *
  * ## On validation
  *
- * There is none, anywhere. Nothing throws, nothing warns, nothing checks its
- * arguments: the specification makes every malformed input a silent no-op, so
- * validation code would be bytes spent contradicting it. An input name outside
- * the table finds no row; a pattern naming a state that does not exist parses
- * fine and never matches.
+ * Almost none, anywhere. A malformed input is still a silent no-op rather than
+ * a checked argument: an input name outside the table finds no row, and a
+ * pattern naming a state that does not exist parses fine and never matches.
+ *
+ * One exception. A chain of immediate transitions that never settles — `'a ->
+ * b'` declared alongside `'b -> a'` — throws a `RangeError` after 1e5
+ * consecutive hops, naming the state it could not settle in. This is not
+ * argument validation; it is the one place the library cannot make an
+ * unbounded loop a silent no-op, because a hang is worse than a loud failure.
+ * Everything else keeps the no-validation rule.
  */
 
 // ---------------------------------------------------------------------------
@@ -166,10 +171,8 @@ type Value<T> = [T] extends [void] ? undefined : T
  * are all that is left — which is why a malformed key is still a compile error
  * on the untyped path.
  */
-type Key<
-	I extends Vocab,
-	S extends Vocab,
-> = `${Name<S>} -${Name<I>}> ${Name<S>}`
+type Key<I extends Vocab, S extends Vocab> =
+	`${Name<S>} -${Name<I>}> ${Name<S>}` | `${Name<S>} -> ${Name<S>}`
 
 /**
  * The three coordinates of a key, read back out of the string.
@@ -199,7 +202,9 @@ type To<K> = K extends `${string} -${string}> ${infer T}` ? T : never
  * and its row is still rejected on its own by `Table` below.
  */
 type StatesFromKeys<K extends string> = { [N in From<K> | To<K>]: unknown }
-type InputsFromKeys<K extends string> = { [N in Label<K>]: unknown }
+type InputsFromKeys<K extends string> = {
+	[N in Exclude<Label<K>, ''>]: unknown
+}
 
 /**
  * Every legal `.on()` pattern: the key grammar with the state coordinates left
@@ -296,19 +301,35 @@ type Select<Coordinate extends string, All extends string> = [
  * What a listener is handed, narrowed by its own pattern: a union discriminated
  * by `on`, over the inputs and the two ends the pattern admits. `'* -> *'`
  * leaves all three open and is therefore the whole record.
+ *
+ * An unlabelled pattern also admits an immediate hop — `on: undefined`,
+ * `input: undefined` — which is why that case is a separate union arm rather
+ * than folded into the mapped type: the mapped type is indexed by input name,
+ * and an immediate has none. A labelled pattern's `Label<P>` is never `''`, so
+ * the arm drops out there, matching the runtime, where a labelled pattern
+ * never matches an immediate.
  */
 type Transition<
 	I extends Vocab = Vocab,
 	S extends Vocab = Vocab,
 	P extends string = '* -> *',
-> = {
-	[N in Select<Label<P>, Name<I>>]: {
-		readonly on: N
-		readonly input: Value<I[N]>
-		readonly from: At<S, Select<From<P>, Name<S>>>
-		readonly to: At<S, Select<To<P>, Name<S>>>
-	}
-}[Select<Label<P>, Name<I>>]
+> =
+	| {
+			[N in Select<Label<P>, Name<I>>]: {
+				readonly on: N
+				readonly input: Value<I[N]>
+				readonly from: At<S, Select<From<P>, Name<S>>>
+				readonly to: At<S, Select<To<P>, Name<S>>>
+			}
+	  }[Select<Label<P>, Name<I>>]
+	| ([Label<P>] extends ['']
+			? {
+					readonly on: undefined
+					readonly input: undefined
+					readonly from: At<S, Select<From<P>, Name<S>>>
+					readonly to: At<S, Select<To<P>, Name<S>>>
+				}
+			: never)
 
 type Listener<
 	I extends Vocab = Vocab,
@@ -399,10 +420,12 @@ export type StatesOf<M> = Carried<M>['states']
 
 /**
  * The inputs state `S` has rows for — `available`, at the type level, and the
- * `'draft -'` text search made derivable.
+ * `'draft -'` text search made derivable. `Exclude<…, ''>` drops an immediate
+ * row's empty label, the same way `available` never lists one at runtime.
  */
-export type Handled<M, S extends string> = Label<
-	Extract<Carried<M>['keys'], `${S} -${string}> ${string}`>
+export type Handled<M, S extends string> = Exclude<
+	Label<Extract<Carried<M>['keys'], `${S} -${string}> ${string}`>>,
+	''
 >
 
 /** The states that can reach `S`: the reverse index, from the same keys. */
@@ -607,6 +630,52 @@ export function machine<
 			const queue: [name: string, payload: unknown][] = []
 			let draining = false
 
+			// One row-scanning path for both kinds of transition, rather than a
+			// `commit` helper called from two near-identical loops: takes the rows
+			// to try, commits the first that does not decline, and reports whether
+			// the machine moved. Both callers below are then one line each.
+			//
+			// `on` and `input` are simply **left off** for an immediate hop, which
+			// is why they are optional rather than explicitly-passed `undefined`:
+			// nothing sent it, and the record an immediate carries says so.
+			//
+			// Defaulting `rows` to `[]` absorbs both misses — an input with no row,
+			// and a state with no immediates — so neither caller needs `?? []`.
+			//
+			// Rejected: folding the input hop and the chain into a *single* loop,
+			// by reassigning `rows` to the immediates after the first pass. It
+			// reads worse — three mutable locals where the nested form has one —
+			// and measured 13 B brotli *larger* against the real toolchain, so it
+			// loses on both counts. Rejected earlier: a `commit` helper called
+			// from two separate row-scanning loops, which duplicates the scan and
+			// measured 49 B brotli larger than this.
+			const step = (rows: Row[] = [], on?: string, input?: Data): boolean => {
+				for (const [to, handler] of rows) {
+					const data = handler({ data: current.data, input, skip })
+					// Declining is an ordinary, silent outcome: fall through to the
+					// next row declared for the same source and input.
+					if (data === SKIP) continue
+
+					// Commit, then notify — so every listener sees a machine that
+					// agrees with the record it was handed.
+					const from = current
+					current = { state: to, data }
+					const record: Transition = { on, input, from, to: current }
+					for (const [f, l, t, listener] of listeners) {
+						if (
+							(f === '*' || f === from.state) &&
+							(l === '' || l === on) &&
+							(t === '*' || t === to)
+						) {
+							listener(record)
+						}
+					}
+					// One input yields at most one transition.
+					return true
+				}
+				return false
+			}
+
 			return {
 				get current(): Snapshot {
 					return current
@@ -646,28 +715,19 @@ export function machine<
 							const [on, input] = queue.shift()!
 							// Evaluated against the state at drain time, so a queued send
 							// may correctly find no row and do nothing.
-							for (const [to, handler] of index[current.state]?.[on] ?? []) {
-								const data = handler({ data: current.data, input, skip })
-								// Declining is an ordinary, silent outcome: fall through to
-								// the next row declared for the same source and input.
-								if (data === SKIP) continue
-
-								// Commit, then notify — so every listener sees a machine that
-								// agrees with the record it was handed.
-								const from = current
-								current = { state: to, data }
-								const record: Transition = { on, input, from, to: current }
-								for (const [f, l, t, listener] of listeners) {
-									if (
-										(f === '*' || f === from.state) &&
-										(l === '' || l === on) &&
-										(t === '*' || t === to)
-									) {
-										listener(record)
+							if (step(index[current.state]?.[on], on, input)) {
+								// The target's immediates settle to exhaustion before this
+								// queue entry is done — a chain is one input's worth of
+								// work, however many hops it takes. Counted per chain, and
+								// so reset with every input taken off the queue.
+								let hops = 0
+								while (step(immediates[current.state])) {
+									if (hops++ >= 1e5) {
+										throw new RangeError(
+											`maximum transitions reached in '${current.state}'`,
+										)
 									}
 								}
-								// One input yields at most one transition.
-								break
 							}
 						}
 					} finally {

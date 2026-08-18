@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import { machine, types } from 'totorobot'
-import { editor } from './fixtures.ts'
+import { chain, editor, gate, pending } from './fixtures.ts'
 
 describe('sending', () => {
 	test('a handled input commits, and every listener whose pattern matches fires', () => {
@@ -150,6 +150,60 @@ describe('sending', () => {
 		expect(host.send('poke')).toBeUndefined() // every candidate row declines
 		expect(host.send('lock')).toBeUndefined() // handled
 		expect(host.send('open', { text: 'again' })).toBeUndefined() // no row matches
+	})
+
+	describe('immediate transitions', () => {
+		test('entering a state by an input runs its immediate row and lands in its target', () => {
+			const relay = machine({
+				initial: 'draft',
+				inputs: types<{ submit: void }>(),
+				states: types<{
+					draft: void
+					checking: void
+					settled: { via: string }
+				}>(),
+				transitions: {
+					'draft -submit> checking': () => {},
+					'checking -> settled': () => ({ via: 'immediate' }),
+				},
+			})
+
+			const host = relay.start()
+			host.send('submit')
+
+			expect(host.current).toEqual({
+				state: 'settled',
+				data: { via: 'immediate' },
+			})
+		})
+
+		test('several immediate rows for one state are tried in declaration order, and skip() falls through', () => {
+			const allowed = gate.start()
+			allowed.send('submit', { quota: 3 })
+			expect(allowed.current).toEqual({
+				state: 'allowed',
+				data: { quota: 3 },
+			})
+
+			const denied = gate.start()
+			denied.send('submit', { quota: 0 })
+			expect(denied.current).toEqual({ state: 'denied', data: { quota: 0 } })
+		})
+
+		test('a state whose immediate rows all skip stays put, with its input rows still live', () => {
+			const host = pending.start()
+			host.send('submit', { quota: 0 })
+
+			expect(host.current).toEqual({ state: 'checking', data: { quota: 0 } })
+			expect(host.available).toEqual(['cancel'])
+		})
+
+		test('a chain of several immediate hops settles fully before send returns', () => {
+			const host = chain.start()
+			host.send('go')
+
+			expect(host.current).toEqual({ state: 'd', data: undefined })
+		})
 	})
 
 	test('send returns undefined when it was queued, too', () => {

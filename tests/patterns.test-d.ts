@@ -91,3 +91,33 @@ test('the transition record is discriminated by its input name, and each end car
 		}
 	})
 })
+
+test('an unlabelled pattern admits on: undefined for an immediate hop; a labelled pattern excludes it', () => {
+	type ImmediateInputs = { open: { text: string } }
+	type ImmediateStates = { empty: void; draft: { text: string } }
+
+	const withImmediate = machine({
+		initial: 'empty',
+		inputs: types<ImmediateInputs>(),
+		states: types<ImmediateStates>(),
+		transitions: {
+			'empty -open> draft': ({ input }) => ({ text: input.text }),
+			'draft -> draft': ({ data }) => data,
+		},
+	})
+	const host = withImmediate.start()
+
+	host.on('* -> *', (e) => {
+		expectTypeOf(e.on).not.toBeAny()
+		expectTypeOf(e.on).toEqualTypeOf<'open' | undefined>()
+
+		if (e.on === undefined) {
+			expectTypeOf(e.input).toEqualTypeOf<undefined>()
+		}
+	})
+
+	host.on('* -open> *', (e) => {
+		expectTypeOf(e.on).not.toBeAny()
+		expectTypeOf(e.on).toEqualTypeOf<'open'>()
+	})
+})

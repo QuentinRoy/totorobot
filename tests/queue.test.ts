@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'vitest'
 
 import { machine, types } from 'totorobot'
-import { toggle } from './fixtures.ts'
+import { spinner, toggle } from './fixtures.ts'
 
-describe('the queue', () => {
+describe('commit ordering', () => {
 	test('a send from inside a listener does not take effect before the remaining listeners for the current transition have run', () => {
 		const doc = toggle.start()
 		const log: string[] = []
@@ -173,6 +173,70 @@ describe('the queue', () => {
 		doc.send('toggle')
 		expect(reentered).toBe(false)
 		expect(queued).toBe(true)
+	})
+
+	test('a send from inside a listener mid-chain waits for the whole chain to settle, not just the current hop', () => {
+		const relay = machine({
+			initial: 'a',
+			inputs: types<{ go: void; peek: void }>(),
+			states: types<{ a: void; b: void; c: void }>(),
+			transitions: {
+				'a -go> b': () => {},
+				'b -> c': () => {},
+				// exists only so a 'peek' drained too early — while still in 'b',
+				// before the immediate 'b -> c' hop — would be observable
+				'b -peek> b': () => {},
+			},
+		})
+
+		const doc = relay.start()
+		const log: string[] = []
+		doc.on('* -> b', () => {
+			log.push('entered b')
+			doc.send('peek') // must not be drained until the chain is fully settled
+		})
+		doc.on('* -> *', (e) => log.push(`-> ${e.to.state}`))
+
+		doc.send('go')
+
+		expect(doc.current).toEqual({ state: 'c', data: undefined })
+		expect(log).toEqual(['entered b', '-> b', '-> c'])
+	})
+
+	test('a chain that never settles throws RangeError after the hop budget, naming the state it could not settle', () => {
+		const doc = spinner.start()
+
+		expect(() => doc.send('go')).toThrow(
+			new RangeError("maximum transitions reached in 'loop'"),
+		)
+		// no rollback: the 1e5 hops already committed stay committed
+		expect(doc.current.state).toBe('loop')
+	})
+
+	test('the host is usable after a budget throw', () => {
+		const doc = spinner.start()
+		expect(() => doc.send('go')).toThrow(RangeError)
+
+		doc.send('stop')
+		expect(doc.current).toEqual({ state: 'idle', data: undefined })
+	})
+
+	test('an immediate self-loop that rewrites its data and eventually skips terminates normally, well inside the budget', () => {
+		const counter = machine({
+			initial: 'idle',
+			inputs: types<{ go: void }>(),
+			states: types<{ idle: void; counting: number }>(),
+			transitions: {
+				'idle -go> counting': () => 0,
+				'counting -> counting': ({ data, skip }) =>
+					data < 5 ? data + 1 : skip(),
+			},
+		})
+
+		const doc = counter.start()
+		doc.send('go')
+
+		expect(doc.current).toEqual({ state: 'counting', data: 5 })
 	})
 
 	test('every submitted input is considered exactly once', () => {
