@@ -150,7 +150,7 @@ priority?**
 Three prototypes answered it. Inferring states from the map worked but reported
 errors machine-wide; a Kysely-style fluent builder made payload inference
 order-dependent and cascaded errors through the chain; declaring the spec first
-shipped, and is what `src/` and [design-notes.md](design-notes.md) describe.
+shipped as generation 1, since superseded by v1 (this document's subject).
 
 Three constraints from that generation still hold:
 

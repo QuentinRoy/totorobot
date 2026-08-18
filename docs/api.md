@@ -1,9 +1,8 @@
 # The API
 
-> **Status: specified, not built.** Nothing is open that blocks implementing v1. Every
-> choice here is argued in [api-rationale.md](api-rationale.md) — this document says
-> what the API _is_, that one says why. The code in `src/` is the previous generation
-> and does not implement this.
+> **Status: shipped.** This is what `src/` implements. Every choice here is argued in
+> [api-rationale.md](api-rationale.md) — this document says what the API _is_, that one
+> says why.
 >
 > **v1 is topology and data**: a declared vocabulary, a transition table, a host, and
 > listeners on the host. One transition per input. `actions`, immediate transitions and
