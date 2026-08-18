@@ -32,7 +32,7 @@
 
 ## 1. The ledger
 
-Twenty axes. Nineteen are closed.
+Twenty axes. All twenty are closed.
 
 | #   | Axis                       | Answer                                                          | §   |
 | --- | -------------------------- | --------------------------------------------------------------- | --- |
@@ -50,9 +50,9 @@ Twenty axes. Nineteen are closed.
 | 12  | Typed send site            | **dropped** — broad `send` only; reversible later               | 11  |
 | 13  | Composition                | **deferred from v1** — shape unsettled; a design to return to   | 10  |
 | 14  | Actions in v1              | **deferred** — v1 has no effect mechanism at all                | 9   |
-| 15  | Immediate transitions      | `'from -> to'`, no input — designed; **deferred, may not land** | 7   |
+| 15  | Immediate transitions      | `'from -> to'`, no input — **shipped**, chained, budget-guarded | 7   |
 | 16  | Observation                | `.on(pattern, fn)` on the host; no residency key                | 12  |
-| 17  | Commit ordering            | one transition per input; commit, notify in order, queue        | 12  |
+| 17  | Commit ordering            | a chain per input, FIFO; commit, notify in order, queue         | 12  |
 | 18  | Definition and instance    | **split kept** — `publication.start(data)`                      | 12  |
 | 19  | Disposal and errors        | no `stop()` — the host owns nothing; a throw propagates         | 12  |
 | 20  | What `send` returns        | **nothing** — additive to add later, breaking to remove         | 12  |
@@ -717,9 +717,11 @@ reason — the answer moved to the action.
 
 ## 7. Immediate transitions
 
-> **Designed; deferred, and not certain to land at all.** No objection to the shape.
-> The reason to wait is that chaining is the one feature that forfeits guaranteed
-> termination — see the end of this section.
+> **Shipped, and the guarantee below did not survive.** Chaining landed with a hop
+> budget in place of provable termination — a reversal of "v1 keeps the guarantee",
+> not a qualification of it. The reversal is recorded in place, in
+> [What it forces open](#what-it-forces-open), rather than edited out of the
+> argument that concluded the other way.
 
 A transition that fires on **entering** a state rather than on an input. The
 spelling is the transition key with the input part removed:
@@ -747,10 +749,11 @@ multi-target mechanism with the input coordinate deleted.
 - **A child's outcome is a state, not an input** (§10). `'loading.ok -> ready'` is
   the same grammar, and this is what makes the outcome spellable without lying
   about who sends it.
-- It is already on the README's list of missing features, and requirements
-  [Probe 2](requirements.md#probe-2--automatic-or-eventless-transitions) reserves
+- It was already on the README's list of missing features, and requirements
+  [Probe 2](requirements.md#probe-2--automatic-or-eventless-transitions) reserved
   the question — a finalist "may be tested by sketching their cascading and
-  observability semantics", which is what the rest of this section does.
+  observability semantics", which is what the rest of this section does, and what
+  the probe now marks answered.
 
 ### Prior art, and what it says
 
@@ -815,8 +818,7 @@ strictly broader:
 | pattern     | matches                                                   |
 | ----------- | --------------------------------------------------------- |
 | `'a -> b'`  | every transition `a → b` — input-driven **and** immediate |
-| `'a -> b'`  | the input-driven ones only                                |
-| `'a -x> b'` | that one edge                                             |
+| `'a -x> b'` | that one input-driven edge                                |
 
 **This changes how entry and exit should be written.** They were spelled
 `'* -> loading'` and `'draft -> *'`, which now say "by some input" — so they
@@ -831,12 +833,18 @@ gives the intended meaning:
 
 That is a better shape than the sugar reading it replaces. Omitting a coordinate now
 does real work rather than being a shorter way to write `*`, and the two forms are
-each reachable: `'draft -> *'` for "leaving, however", `'draft -> *'` for "leaving
+each reachable: `'draft -> *'` for "leaving, however", `'draft -x> *'` for "leaving
 because someone sent something".
 
-**What it costs:** nothing selects _only_ the immediate edge in the general case —
-`'a -> b'` is too broad and `'a -> b'` excludes it. In practice the broad form is
-exact whenever no input-driven `a → b` is declared, and nobody has asked for more.
+**What it costs:** nothing selects _only_ the input-driven edges, or _only_ the
+immediate one. **Correction, not a silent edit:** an earlier draft of the table
+above carried a second row for `-*>` — "some input, any input" — on the assumption
+that a wildcard existed to complement the broad form. It does not: [§4](#4-layout)
+ruled it out before this section was written, on the same "one wildcard, one
+meaning" ground this section otherwise relies on. The row is removed rather than
+fixed in place, because there is nothing to fix it to. In practice the broad form
+is exact whenever no input-driven `a → b` is declared, and nobody has asked for
+more.
 
 The distinction also stays rare, for a structural reason: **an immediate transition
 makes its source transient**, so there is usually nobody in that state to send it an
@@ -846,27 +854,35 @@ input edges out of that state (`'loading.ok -cancel> empty'`) become meaningful.
 
 ### What it forces open
 
-- **Termination — and this is why it is deferred.** `'a -> b'` with `'b -> a'`
-  spins. Note 02's F6 puts it at the level of a guarantee rather than a cost:
-  _"the only way to have a big step that provably terminates is to forbid chaining
-  — one input, at most one transition. Every 'immediate' / 'always' / eventless /
-  transient transition feature buys expressiveness by giving up the termination
-  guarantee."_ XState #721 is that bug in the wild, and Stately's own docs concede
-  only that XState "will help guard against most infinite loop scenarios". A step
-  budget or **each state entered at most once per settlement** (the statechart
-  microstep rule) is mitigation, not recovery. v1 keeps the guarantee; composition
-  is where the expressiveness is actually needed and where the price is worth
-  paying.
-- **Run-to-completion stops being avoidable.** One `send` causes a chain, so
-  Big-Step Maximality and Order of Small Steps both go live (§12), on top of the
-  queue v1 already has.
-- **Does the initial state settle?** If `initial: 'checking'` and `checking` has
-  immediate rows, the machine is never observably in `checking`. Consistent with
-  "on entering", and it means `run()` can return a host already somewhere else.
-  Defensible, and it should be stated rather than discovered.
-- **The listener event has no input.** The `.on()` event is a union discriminated
-  by `on`; an immediate transition has nothing to put there. Either a `null`
-  discriminant or a separate arm — undecided, and small.
+- **Termination — resolved by spending the guarantee, not by keeping it.**
+  `'a -> b'` with `'b -> a'` spins. Note 02's F6 puts it at the level of a
+  guarantee rather than a cost: _"the only way to have a big step that provably
+  terminates is to forbid chaining — one input, at most one transition. Every
+  'immediate' / 'always' / eventless / transient transition feature buys
+  expressiveness by giving up the termination guarantee."_ XState #721 is that bug
+  in the wild, and Stately's own docs concede only that XState "will help guard
+  against most infinite loop scenarios". **v1 does not keep the guarantee** — the
+  conclusion drawn here when this section was written. A chain settles up to a hop
+  budget of 1e5, reset when the next queued input is taken; exceeding it throws a
+  `RangeError` naming the state it could not settle. F6 still holds — a budget
+  catches the bug, it does not make the big step provably terminate, and nothing
+  here should be read as a solution to the thing F6 names. It is mitigation, spent
+  once, knowingly, because composition needs the same mechanism (§10) and paying
+  for it twice was never on the table. See [§12](#12-the-host) for the mechanism.
+- **Run-to-completion stopped being avoidable, as expected.** One `send` can now
+  cause a chain, so Big-Step Maximality resolved to chaining and Order of Small
+  Steps resolved to FIFO (§12), on top of the queue v1 already had.
+- **The initial state settles.** `initial: 'checking'` with immediate rows on
+  `checking` does not leave the machine observably parked there: `.start()` runs
+  the same settle loop `send` does before handing the host back, so "on entering"
+  needed no exception for the first entering. Leaving it unsettled — the other
+  option floated here — was rejected: it parks the machine in the one state its
+  author declared transient, where `available` for a pure junction is empty.
+- **The listener event has `on: undefined`, not a separate arm or a `null`
+  discriminant.** `on` stays the discriminant an input carrying no data already
+  needed to be distinguishable by (`on: 'cancel'`, `input: undefined`); the empty
+  string was rejected as a value for it, since `.on()` already uses it as the
+  wildcard and one spelling meaning two things is exactly what issue #7 was about.
 
 **One thing it improves**: the arrow test. There is no fictional input on the line,
 so source, target and handler are all that remain.
@@ -2076,17 +2092,22 @@ F5), and P0.7 was amended to say so. Filtered against v1:
 | Combo-Step Maximality                    | **dead** — no internal events to batch                                   |
 | Enabledness Memory (guards)              | **answered** — a handler receives source data; nothing else is in flight |
 | Assignment Memory (what a reaction sees) | **answered** — commit precedes notification                              |
-| Order of Small Steps                     | live only with chaining; FIFO if it ever exists                          |
+| Order of Small Steps                     | **answered** — FIFO, the answer reserved here if chaining ever existed   |
 | Event Lifeline                           | **P0.7 dictates it** — a raised input joins the next step, not this one  |
-| **Big-Step Maximality**                  | **the live one** — one transition per input, or a chain?                 |
+| **Big-Step Maximality**                  | **answered** — chaining, budget-guarded (§7)                             |
 
 **Big-Step Maximality is the immediate-transitions question** (§7), and note 02 F6
-settles v1's answer: _"the only way to have a big step that provably terminates is
-to forbid chaining — one input, at most one transition."_ v1 keeps the guarantee.
+named the trade before it was made: _"the only way to have a big step that provably
+terminates is to forbid chaining — one input, at most one transition."_ **v1 spends
+the guarantee rather than keeping it**: chaining resolves Big-Step Maximality, and
+Order of Small Steps resolves to FIFO. The guard against the forfeited guarantee is
+a hop budget of 1e5 per chain, reset when the next queued input is taken; exceeding
+it throws a `RangeError` naming the state it could not settle.
 
 That leaves the rules, all five of them:
 
-1. **One input yields at most one transition.**
+1. **One input can yield a chain of transitions**, settled to exhaustion — or to
+   the hop budget — before the next queued input is taken.
 2. **Commit, then notify.** A listener always sees a fully committed machine, so
    `e.to` and `doc.current` agree — for every listener, always.
 3. **Listeners fire in registration order.**
@@ -2308,8 +2329,9 @@ pinned) · a class or `new` for instantiation.
   editor filters client-side. A threshold has not been set, and this is the axis on
   which the split layouts are genuinely better.
 - **Composition is designed and deferred** (§10), with the fork between the dotted
-  form and the callback unresolved, and **immediate transitions** (§7) deferred with
-  it — which is where the rest of run-to-completion has to be paid.
+  form and the callback unresolved. **Immediate transitions** (§7) landed ahead of
+  it and already paid run-to-completion's price — composition inherits chaining
+  rather than reopening it.
 - **If handlers ever gain effects, whether losing candidates run becomes
   observable.** Under this design handlers only project, so the order in which
   candidate rows are tried is invisible. It stops being invisible the moment

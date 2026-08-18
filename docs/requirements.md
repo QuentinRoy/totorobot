@@ -558,6 +558,13 @@ A finalist may be tested by sketching their cascading and observability
 semantics. The initial execution model need not reserve a representation for
 them.
 
+> **Answered 2026-08-18.** Immediate transitions shipped in v1 as
+> `'from -> to'`, the transition key with the input removed — see
+> [api-rationale.md, §7](api-rationale.md#7-immediate-transitions). Cascading
+> settles to exhaustion under a hop budget rather than provably terminating;
+> observability is intact, since every hop still commits and notifies before
+> the next candidate is tried.
+
 ### Probe 3 — Explicit Resource Management interoperability
 
 If the library eventually manages effect lifetimes internally, it may
