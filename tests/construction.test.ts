@@ -31,6 +31,102 @@ describe('construction', () => {
 		expect(types<{ ready: { count: number } }>()).toBeUndefined()
 	})
 
+	test("start() settles the initial state's immediate rows before returning", () => {
+		const junction = machine({
+			initial: 'checking',
+			states: types<{
+				checking: { quota: number }
+				allowed: { quota: number }
+				denied: { quota: number }
+			}>(),
+			transitions: {
+				'checking -> allowed': ({ data, skip }) =>
+					data.quota > 0 ? data : skip(),
+				'checking -> denied': ({ data }) => data,
+			},
+		})
+
+		const host = junction.start({ quota: 3 })
+		expect(host.current).toEqual({ state: 'allowed', data: { quota: 3 } })
+	})
+
+	test('a chain from the initial state settles fully, not one hop', () => {
+		const relay = machine({
+			initial: 'a',
+			inputs: types<{ go: void }>(),
+			states: types<{ a: void; b: void; c: void }>(),
+			transitions: {
+				'a -> b': () => {},
+				'b -> c': () => {},
+				'c -go> c': () => {},
+			},
+		})
+
+		const host = relay.start()
+		expect(host.current).toEqual({ state: 'c', data: undefined })
+	})
+
+	test('available on the host returned by start() reflects the settled state, not the declared initial one', () => {
+		const relay = machine({
+			initial: 'a',
+			inputs: types<{ go: void }>(),
+			states: types<{ a: void; b: void; c: void }>(),
+			transitions: {
+				'a -> b': () => {},
+				'b -> c': () => {},
+				'c -go> c': () => {},
+			},
+		})
+
+		const host = relay.start()
+		expect(host.available).toEqual(['go'])
+	})
+
+	test("the initial state's immediates all skipping leaves the host in the declared initial state", () => {
+		const stalled = machine({
+			initial: 'checking',
+			inputs: types<{ submit: void }>(),
+			states: types<{ checking: void; allowed: void }>(),
+			transitions: {
+				'checking -> allowed': ({ skip }) => skip(),
+				'checking -submit> allowed': () => {},
+			},
+		})
+
+		const host = stalled.start()
+		expect(host.current).toEqual({ state: 'checking', data: undefined })
+		expect(host.available).toEqual(['submit'])
+	})
+
+	test("start()'s arity still follows the declared initial state: a void initial that settles into a data-carrying state still takes no argument", () => {
+		const promoted = machine({
+			initial: 'start',
+			states: types<{ start: void; ready: { count: number } }>(),
+			transitions: {
+				'start -> ready': () => ({ count: 0 }),
+			},
+		})
+
+		// No argument to `.start()` — `start` is declared `void`, even though it
+		// settles into `ready`, which carries data.
+		const host = promoted.start()
+		expect(host.current).toEqual({ state: 'ready', data: { count: 0 } })
+	})
+
+	test("a cycle among the initial state's immediates throws RangeError from start(), naming the state it could not settle", () => {
+		const spinningStart = machine({
+			initial: 'loop',
+			states: types<{ loop: number }>(),
+			transitions: {
+				'loop -> loop': ({ data }) => data + 1,
+			},
+		})
+
+		expect(() => spinningStart.start(0)).toThrow(
+			new RangeError("maximum transitions reached in 'loop'"),
+		)
+	})
+
 	test('two hosts from one definition share no current state', () => {
 		const hostA = toggle.start()
 		const hostB = toggle.start()

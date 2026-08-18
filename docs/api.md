@@ -210,9 +210,23 @@ usable afterward. `1e5` is high on purpose — `'a -> a'` is legal, and a handle
 rewrites its own data and eventually `skip()`s is a terminating loop the budget must
 not interrupt.
 
-**`.start()` does not settle the initial state's immediates.** A machine whose initial
-state has immediate rows starts out sitting there, observably, before anything runs —
-"on entering" applies from the first input onward, not to construction.
+**`.start()` settles the initial state's immediates too.** A machine whose initial state
+has immediate rows tries them, chain and all, before the host is handed back — "on
+entering" includes the first entering. If every candidate skips, the host comes back in
+the declared initial state, exactly as it would with no immediate rows at all. Two
+consequences follow when the chain does move it, both worth knowing before you hit
+them:
+
+- **The settling hops are unobservable.** Nobody has subscribed yet when `.start()`
+  runs, so a chain off the initial state produces no events — only the state it lands
+  in is visible, in the host `.start()` returns. If you need to observe an arrival,
+  don't make it the initial state.
+- **`.start()` can throw.** A cycle among the initial state's immediates raises the same
+  `RangeError`, with the same message, from `.start()` rather than from `send`.
+
+What does not change: `.start()`'s argument still follows the **declared** initial
+state's data, not the settled state's — a `void` initial state that settles into a
+data-carrying one still takes no argument.
 
 _Why chaining, why a budget instead of forbidding it, and what it costs:_
 [rationale §7](api-rationale.md#7-immediate-transitions).
@@ -397,89 +411,99 @@ implementation to be driven from.
 
 **Construction**
 
-1. `start(data)` yields a host whose `current` is `{ state: initial, data }`. `start()`
-   takes no argument when the initial state is declared `void`, and its `current.data`
-   is then `undefined`.
-2. Two hosts from one definition share no current state and no listeners.
-3. Nothing ever mutates the definition.
+1. `start(data)` yields a host whose `current` is `{ state: initial, data }` — or, if
+   the initial state's own immediate rows settle it further, whatever state that chain
+   lands in. `start()`'s arity always follows the **declared** initial state: it takes
+   no argument when that state is `void`, even when settling carries it into a state
+   that has data.
+2. A chain off the initial state settles fully, hop after hop, before `start()`
+   returns — exactly as it does after `send` (22).
+3. If the initial state's immediate rows all skip, the host comes back sitting in the
+   declared initial state, exactly as plain construction would.
+4. A cycle among the initial state's immediates throws `RangeError` — same message
+   shape as (35) — from `start()` rather than from `send`.
+5. The hops `start()` settles are unobservable: nothing has subscribed yet, so only the
+   state the chain lands in is visible, never the hops that got it there.
+6. Two hosts from one definition share no current state and no listeners.
+7. Nothing ever mutates the definition.
 
 **Reading**
 
-4. `current` is `{ state, data }`; `data` is `undefined` for a `void` state.
-5. A value read from `current` before a transition is unchanged after it.
-6. `available` lists the current state's inputs in table order, deduplicated. It comes
-   from the table alone: an input whose every candidate row would `skip()` is listed
-   like any other.
-7. `available` is `[]` for a state with no outgoing rows.
+8. `current` is `{ state, data }`; `data` is `undefined` for a `void` state.
+9. A value read from `current` before a transition is unchanged after it.
+10. `available` lists the current state's inputs in table order, deduplicated. It comes
+    from the table alone: an input whose every candidate row would `skip()` is listed
+    like any other.
+11. `available` is `[]` for a state with no outgoing rows.
 
 **Sending**
 
-8. A handled input commits: `current` becomes `{ state: target, data: projection }`, and
-   every listener whose pattern matches that edge fires.
-9. An input no row matches changes nothing and fires no listener.
-10. An input whose every candidate row calls `skip()` changes nothing and fires no
-    listener. Externally indistinguishable from 9, deliberately — except that it is in
-    `available` and the input of 9 is not (6).
-11. With several rows for one `(from, input)`, candidates are tried in declaration order
+12. A handled input commits: `current` becomes `{ state: target, data: projection }`,
+    and every listener whose pattern matches that edge fires.
+13. An input no row matches changes nothing and fires no listener.
+14. An input whose every candidate row calls `skip()` changes nothing and fires no
+    listener. Externally indistinguishable from 13, deliberately — except that it is in
+    `available` and the input of 13 is not (10).
+15. With several rows for one `(from, input)`, candidates are tried in declaration order
     and the first that does not skip wins.
-12. A self-transition commits and notifies like any other, with
+16. A self-transition commits and notifies like any other, with
     `e.from.state === e.to.state`, `e.from.data` the old data and `e.to.data` the new.
-13. A handler receives the source state's data and the input payload; a `void` input's
+17. A handler receives the source state's data and the input payload; a `void` input's
     payload is `undefined`.
-14. A handler whose target is `void` returns nothing.
-15. `send` returns `undefined`, always.
-16. An input name that is not in the vocabulary (reachable from untyped code) changes
+18. A handler whose target is `void` returns nothing.
+19. `send` returns `undefined`, always.
+20. An input name that is not in the vocabulary (reachable from untyped code) changes
     nothing.
-17. Entering a state by an input runs its immediate rows in declaration order;
+21. Entering a state by an input runs its immediate rows in declaration order;
     `skip()` falls through exactly as it does on an input-driven row, and a state
     whose candidates all skip stays put, its input rows still live and advertised.
-18. A chain — several immediate hops in a row — settles fully before `send` returns,
+22. A chain — several immediate hops in a row — settles fully before `send` returns,
     however many hops it takes.
 
 **Observing**
 
-19. `on` returns an unsubscribe function; calling it more than once is harmless.
-20. Listeners fire after the commit, in registration order — on every hop of a chain.
-21. Inside a listener, `e.to` deep-equals `doc.current` — for every listener, on every
+23. `on` returns an unsubscribe function; calling it more than once is harmless.
+24. Listeners fire after the commit, in registration order — on every hop of a chain.
+25. Inside a listener, `e.to` deep-equals `doc.current` — for every listener, on every
     hop.
-22. `*` matches any state; an unlabelled arrow matches any input, or none — including an
+26. `*` matches any state; an unlabelled arrow matches any input, or none — including an
     immediate transition; a labelled one matches only that input and never an
     immediate.
-23. The listener list is snapshotted before dispatch: a listener unsubscribed by an
+27. The listener list is snapshotted before dispatch: a listener unsubscribed by an
     earlier listener still runs for the current transition, and one registered during a
     dispatch does not.
-24. An immediate transition's record carries `on: undefined` and `input: undefined`; a
+28. An immediate transition's record carries `on: undefined` and `input: undefined`; a
     `void` input's record — `on` its name, `input: undefined` — stays distinguishable
     from it.
 
 **Commit ordering**
 
-25. A `send` from inside a listener does not take effect before the remaining listeners
+29. A `send` from inside a listener does not take effect before the remaining listeners
     for the current transition have run.
-26. The queue drains before the outermost `send` returns — synchronously, not on a
+30. The queue drains before the outermost `send` returns — synchronously, not on a
     microtask.
-27. Several sends from listeners drain first-in-first-out.
-28. A queued send is evaluated against the state at drain time, so it may find no row
+31. Several sends from listeners drain first-in-first-out.
+32. A queued send is evaluated against the state at drain time, so it may find no row
     and do nothing.
-29. A listener that throws propagates out of `send`. The listeners after it do not run
+33. A listener that throws propagates out of `send`. The listeners after it do not run
     and that dispatch's queue is abandoned, but the transition stays committed. **The
     host still works afterwards**: a later `send` transitions and notifies normally.
-30. An input sent from a listener mid-chain is drained only once the whole chain has
+34. An input sent from a listener mid-chain is drained only once the whole chain has
     settled, never mid-hop.
-31. A chain that never settles throws `RangeError`, naming the state it could not
+35. A chain that never settles throws `RangeError`, naming the state it could not
     settle. There is no rollback — every hop up to that point has already committed and
     notified — and **the host stays usable afterward**.
 
 **The untyped path**
 
-32. With `inputs` and `states` both omitted, a well-formed table compiles: state and
+36. With `inputs` and `states` both omitted, a well-formed table compiles: state and
     input names are exactly the ones `transitions` mentions, `data` and `input` are
     `unknown`, and `initial` must name a state that appears somewhere in the table.
-33. A malformed key is still rejected with no vocabulary declared, and the error still
+37. A malformed key is still rejected with no vocabulary declared, and the error still
     lands on the offending line rather than on the `transitions` block.
-34. Declaring one map and omitting the other checks that half and infers the other from
+38. Declaring one map and omitting the other checks that half and infers the other from
     the table, the same as omitting both.
-35. An immediate row works the same with no vocabulary declared: its handler's `input`
+39. An immediate row works the same with no vocabulary declared: its handler's `input`
     is still `undefined`, and it never leaks the empty label into the inferred input
     names.
 
