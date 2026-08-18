@@ -511,6 +511,32 @@ through a named helper anyway (`InputsOf<typeof publication>`, matching the
 which `keyof S & string` collapses to `never` and the failure surfaces somewhere else
 as an obscure type-level message — which is the class P1.2 rules out by name.
 
+**Revision: `types()`'s own return type moved from `T | null` to `T | undefined`
+(#15), and this entry's second ground no longer decides anything.** It argued
+against legalising a bare `inputs: null`; that argument is moot once the codebase
+carries no `null` at all — the collapse-to-`never` failure it warned about was never
+about `null` specifically, it was about a marker value that skips inference and lands
+on the bare constraint, and `undefined` inherits the same exposure unless something
+else closes it. The first ground still holds under the new spelling: extraction still
+reads through `InputsOf`/`StatesOf`, not through the marker's own type. What newly had
+to be re-argued was a case this section's original text never had to face, because
+`null` and `undefined` are not interchangeable at the type level the way they are at
+the value level: `inputs?: I | null` and `inputs?: I | undefined` behave differently
+under `exactOptionalPropertyTypes`, and the second form is genuinely reachable two
+ways — an omitted property, and one explicitly written as `undefined` — that must
+resolve to the same default. Constraining the raw parameter to bare `Vocab` (`RawI
+extends Vocab = InputsFromKeys<K>`, the shape this section describes) makes those two
+call sites diverge: `undefined` is not a valid `Vocab`, so TypeScript's fallback for an
+invalid candidate is the constraint itself, and an explicit `inputs: undefined`
+silently widened every name to `string` where the omitted form correctly inferred
+`InputsFromKeys<K>`. The fix widens the constraint one step further, to `Vocab |
+undefined`, so `undefined` is a legal, non-widening candidate rather than a violation,
+and resolves the actual vocabulary through a small conditional (`Declared<Raw,
+Default>` in `src/totorobot.ts`) applied after inference rather than through the
+default position itself. `RawI`/`RawS` — what `inputs`/`states` actually infer to —
+are now separate type parameters from `I`/`S` — the resolved vocabularies used
+everywhere else in `machine`'s signature — for exactly this reason.
+
 **Both markers are optional, which is P1.4 rather than a concession.** A JavaScript
 caller writes `machine({ initial, transitions })`; a TypeScript caller who omits them
 should still get a usable, checked interface — names and data read off `transitions`

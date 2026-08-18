@@ -247,3 +247,26 @@ test('declaring states and omitting inputs checks states and infers inputs from 
 	expectTypeOf(host.current.state).toEqualTypeOf<'off' | 'on'>()
 	expectTypeOf(host.send).parameter(0).toEqualTypeOf<'toggle'>()
 })
+
+test('passing the marker explicitly as undefined behaves as omitting the property does', () => {
+	// `exactOptionalPropertyTypes` makes a bare `inputs: undefined` a
+	// different call from leaving `inputs` out — both are legal writes of
+	// `types()`'s return value, and both must infer the same fallback.
+	const half = machine({
+		initial: 'off',
+		inputs: undefined,
+		states: undefined,
+		transitions: {
+			'off -toggle> on': ({ data, input }) => {
+				expectTypeOf(data).not.toBeAny()
+				expectTypeOf(data).toEqualTypeOf<unknown>()
+				expectTypeOf(input).not.toBeAny()
+				expectTypeOf(input).toEqualTypeOf<unknown>()
+			},
+		},
+	})
+
+	const host = half.start()
+	expectTypeOf(host.current.state).toEqualTypeOf<'off' | 'on'>()
+	expectTypeOf(host.send).parameter(0).toEqualTypeOf<'toggle'>()
+})
