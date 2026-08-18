@@ -12,13 +12,13 @@ behind it instead of a guess.
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `pnpm build` produces one minified ESM bundle, no CommonJS/UMD/IIFE output
-- [ ] Declarations are emitted beside the bundle by the vite declaration plugin
-- [ ] Minification is terser, tuned: multiple compress passes, `unsafe_arrows`,
+- [x] `pnpm build` produces one minified ESM bundle, no CommonJS/UMD/IIFE output
+- [x] Declarations are emitted beside the bundle by the vite declaration plugin
+- [x] Minification is terser, tuned: multiple compress passes, `unsafe_arrows`,
       `unsafe_methods`, toplevel mangle, and **no** property mangling
-- [ ] `pnpm size` prints raw, gzip and brotli sizes for the bundle
-- [ ] Package `exports` points at the built output; `sideEffects: false` is set
-- [ ] The package stays private — no publish, no version bump
-- [ ] No linter is added
+- [x] `pnpm size` prints raw, gzip and brotli sizes for the bundle
+- [x] Package `exports` points at the built output; `sideEffects: false` is set
+- [x] The package stays private — no publish, no version bump
+- [x] No linter is added
