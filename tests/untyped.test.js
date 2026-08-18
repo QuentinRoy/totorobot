@@ -1,6 +1,6 @@
 /**
  * Plain JavaScript, deliberately no `@ts-check` — the runtime half of the
- * untyped path (item 16) needs a caller the type checker never sees.
+ * untyped path (item 20) needs a caller the type checker never sees.
  */
 
 import { describe, expect, test } from 'vitest'
@@ -97,7 +97,10 @@ describe('the untyped path', () => {
 				initial: 'draft',
 				transitions: {
 					'draft -submit> published': () => ({ via: 'submit' }),
-					'draft -> published': () => ({ via: 'unlabelled arrow' }),
+					// Guarded to skip so `.start()` settling the initial state's
+					// immediates does not carry `draft` away before either test
+					// below gets to observe it.
+					'draft -> published': ({ skip }) => skip(),
 				},
 			})
 
@@ -111,7 +114,10 @@ describe('the untyped path', () => {
 				initial: 'draft',
 				transitions: {
 					'draft -submit> published': () => ({ via: 'submit' }),
-					'draft -> published': () => ({ via: 'unlabelled arrow' }),
+					// Guarded to skip so `.start()` settling the initial state's
+					// immediates does not carry `draft` away before either test
+					// below gets to observe it.
+					'draft -> published': ({ skip }) => skip(),
 				},
 			})
 

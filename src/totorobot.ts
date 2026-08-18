@@ -483,8 +483,7 @@ type Index = Record<string, Record<string, Row[] | undefined> | undefined>
  * order. Kept apart from `Index` rather than filtered out of it at read
  * time: `available` and `send` read `Index` directly, so a row stored here
  * is structurally unreachable from either rather than merely absent by
- * convention. Unused by anything yet — the next change wires it up — which
- * is the point: that change is an addition, not surgery on this one.
+ * convention.
  */
 type Immediates = Record<string, Row[] | undefined>
 
@@ -676,6 +675,25 @@ export function machine<
 				return false
 			}
 
+			// The immediates of whatever state was just entered, settled to
+			// exhaustion before the caller sees it — a chain is one arrival's
+			// worth of work, however many hops it takes. Shared by `start`, which
+			// settles the declared initial state before the host is handed back,
+			// and `send`, which settles the target of a committed input. Counted
+			// per call, so a budget spent settling the initial state does not
+			// carry over into the first `send`.
+			const settle = (): void => {
+				let hops = 0
+				while (step(immediates[current.state])) {
+					if (hops++ >= 1e5) {
+						throw new RangeError(
+							`maximum transitions reached in '${current.state}'`,
+						)
+					}
+				}
+			}
+			settle()
+
 			return {
 				get current(): Snapshot {
 					return current
@@ -715,20 +733,7 @@ export function machine<
 							const [on, input] = queue.shift()!
 							// Evaluated against the state at drain time, so a queued send
 							// may correctly find no row and do nothing.
-							if (step(index[current.state]?.[on], on, input)) {
-								// The target's immediates settle to exhaustion before this
-								// queue entry is done — a chain is one input's worth of
-								// work, however many hops it takes. Counted per chain, and
-								// so reset with every input taken off the queue.
-								let hops = 0
-								while (step(immediates[current.state])) {
-									if (hops++ >= 1e5) {
-										throw new RangeError(
-											`maximum transitions reached in '${current.state}'`,
-										)
-									}
-								}
-							}
+							if (step(index[current.state]?.[on], on, input)) settle()
 						}
 					} finally {
 						// In a `finally` so a throwing listener leaves the host usable and
