@@ -2,7 +2,7 @@
  * `.on()` pattern validity, and the transition record's discrimination.
  */
 
-import { expectTypeOf, test } from 'vitest'
+import { expect, expectTypeOf, test } from 'vitest'
 
 import { machine, types } from 'totorobot'
 
@@ -57,8 +57,12 @@ test('there is no -*> form; the wildcard appears only in state positions', () =>
 test('a bare key names a state and is not a legal pattern', () => {
 	const host = doc.start()
 
-	// @ts-expect-error - a bare key names a state; states mean residency
-	host.on('draft', () => {})
+	// A bare pattern throws at runtime too (#16), so the call is asserted to
+	// throw rather than left to run to completion.
+	expect(() =>
+		// @ts-expect-error - a bare key names a state; states mean residency
+		host.on('draft', () => {}),
+	).toThrow(SyntaxError)
 })
 
 test('the transition record is discriminated by its input name, and each end carries its own state and data', () => {

@@ -50,16 +50,21 @@
  *
  * ## On validation
  *
- * Almost none, anywhere. A malformed input is still a silent no-op rather than
- * a checked argument: an input name outside the table finds no row, and a
- * pattern naming a state that does not exist parses fine and never matches.
+ * No validation of *data*, anywhere. A malformed input is still a silent no-op
+ * rather than a checked argument: an input name outside the table finds no
+ * row, and a pattern naming a state that does not exist parses fine and never
+ * matches.
  *
- * One exception. A chain of immediate transitions that never settles — `'a ->
- * b'` declared alongside `'b -> a'` — throws a `RangeError` after 1e5
- * consecutive hops, naming the state it could not settle in. This is not
- * argument validation; it is the one place the library cannot make an
- * unbounded loop a silent no-op, because a hang is worse than a loud failure.
- * Everything else keeps the no-validation rule.
+ * Two throws, for the two things that cannot be silent. A chain of immediate
+ * transitions that never settles — `'a -> b'` declared alongside `'b -> a'` —
+ * throws a `RangeError` after 1e5 consecutive hops, naming the state it could
+ * not settle in: a hang is worse than a loud failure. And a transition key or
+ * `.on()` pattern that is not well formed — anything but exactly one arrow
+ * with a non-empty source and target — throws a `SyntaxError` naming the
+ * string, the same wording the type layer uses for the same mistake: a
+ * mis-typed key is a spelling error in a declaration, not user data, so it is
+ * caught rather than silently building a dead or wrong row. Everything else
+ * keeps the no-validation rule.
  */
 
 // ---------------------------------------------------------------------------
@@ -98,13 +103,22 @@ const skip = (): Skip => SKIP
  *
  * Splitting on the two separators leaves the label as the empty string in an
  * unlabelled arrow (`'* -> *'`), which is what makes the empty string the
- * wildcard in the label position for free. A bare key contains neither
- * separator and parses to a single coordinate whose `undefined` label fails
- * every comparison — so a state name registered as a pattern never matches,
- * and never throws.
+ * wildcard in the label position for free. Anything else — no separator, one
+ * separator without the other, a second arrow, an empty source or target —
+ * throws: a key or pattern this malformed is not a coordinate that merely
+ * fails to match, it is not a transition at all, so it is caught here rather
+ * than registered as one. Both `machine()`'s key loop and `.on()`'s pattern
+ * registration call this one function, so they cannot drift apart on what
+ * they accept.
  */
-const parse = (key: string) =>
-	key.split(/ -|> /) as [from: string, input?: string, to?: string]
+const parse = (key: string): [from: string, input: string, to: string] => {
+	const parts = key.split(/ -|> /)
+	const [from, input, to] = parts
+	if (parts.length !== 3 || !from || !to) {
+		throw new SyntaxError(`not a transition: '${key}'`)
+	}
+	return [from, input as string, to]
+}
 
 // ---------------------------------------------------------------------------
 // The vocabulary
@@ -583,13 +597,11 @@ export function machine<
 
 	for (const key in transitions) {
 		const [from, input, to] = parse(key)
-		const row: Row = [to as string, transitions[key]!]
-		// The label is the empty string only for an unlabelled arrow — `parse`
-		// gives a key too malformed to carry a label an *absent* (`undefined`)
-		// one instead, which keeps landing in `index`, under the literal name
-		// `'undefined'`, exactly as it does without this branch: simply
-		// unreachable, no row, no complaint. Splitting on falsy rather than on
-		// exactly `''` would sweep it into `immediates` too.
+		const row: Row = [to, transitions[key]!]
+		// `parse` has already rejected anything that is not `from`, a label, and
+		// `to` — so the label is the empty string exactly for an unlabelled
+		// arrow, and nothing else reaches this branch. Splitting on falsy rather
+		// than on exactly `''` would sweep a labelled row into `immediates` too.
 		if (input === '') {
 			;(immediates[from] ??= []).push(row)
 		} else {
@@ -751,7 +763,7 @@ export function machine<
 /** A pattern parsed into its three coordinates, with the listener alongside. */
 type Registration = readonly [
 	from: string,
-	input: string | undefined,
-	to: string | undefined,
+	input: string,
+	to: string,
 	listener: Listener,
 ]

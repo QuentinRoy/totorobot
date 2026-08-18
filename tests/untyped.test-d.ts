@@ -38,7 +38,7 @@
  * diagnosable, not so they can be asserted directly.
  */
 
-import { expectTypeOf, test } from 'vitest'
+import { expect, expectTypeOf, test } from 'vitest'
 
 import { machine, types, type Handled } from 'totorobot'
 
@@ -120,25 +120,33 @@ test('initial is checked against the declared states and never infers them', () 
 })
 
 test('a malformed key is rejected with no vocabulary declared', () => {
-	machine({
-		initial: 'off',
-		transitions: {
-			'off -toggle> on': () => {},
-			// @ts-expect-error - no space before '-'
-			'on-toggle> off': () => {},
-		},
-	})
+	// It throws at runtime too (#16), so the call is asserted to throw rather
+	// than left to run to completion.
+	expect(() =>
+		machine({
+			initial: 'off',
+			transitions: {
+				'off -toggle> on': () => {},
+				// @ts-expect-error - no space before '-'
+				'on-toggle> off': () => {},
+			},
+		}),
+	).toThrow(SyntaxError)
 })
 
 test('a bare key naming a state is rejected with no vocabulary declared', () => {
-	machine({
-		initial: 'off',
-		transitions: {
-			'off -toggle> on': () => {},
-			// @ts-expect-error - a bare key names a state, not an edge
-			on: () => {},
-		},
-	})
+	// It throws at runtime too (#16), so the call is asserted to throw rather
+	// than left to run to completion.
+	expect(() =>
+		machine({
+			initial: 'off',
+			transitions: {
+				'off -toggle> on': () => {},
+				// @ts-expect-error - a bare key names a state, not an edge
+				on: () => {},
+			},
+		}),
+	).toThrow(SyntaxError)
 })
 
 test('a state reachable only as a target is still inferred, in a table larger than one edge', () => {
@@ -168,21 +176,27 @@ test('a state reachable only as a target is still inferred, in a table larger th
 })
 
 test('a malformed key does not leak a name into the inferred vocabulary, in a bigger table', () => {
-	const flow = machine({
-		initial: 'off',
-		transitions: {
-			'off -toggle> on': () => {},
-			'on -toggle> off': () => {},
-			// @ts-expect-error - no space before '-'
-			'on-bogus> nowhere': () => {},
-		},
-	})
+	const build = () =>
+		machine({
+			initial: 'off',
+			transitions: {
+				'off -toggle> on': () => {},
+				'on -toggle> off': () => {},
+				// @ts-expect-error - no space before '-'
+				'on-bogus> nowhere': () => {},
+			},
+		})
+
+	// It throws at runtime too (#16), so `build` is never actually called —
+	// its inferred *type* is checked instead, which is what this test is
+	// really about.
+	expect(build).toThrow(SyntaxError)
 
 	// 'nowhere' must not have leaked into the state union alongside the row's
 	// own rejection — this is the "one bad row poisons the whole table" cliff,
 	// checked against a mixed table rather than a single-row one.
-	const host = flow.start()
-	expectTypeOf(host.current.state).toEqualTypeOf<'off' | 'on'>()
+	type Host = ReturnType<ReturnType<typeof build>['start']>
+	expectTypeOf<Host['current']['state']>().toEqualTypeOf<'off' | 'on'>()
 })
 
 test('start() takes an optional, unknown payload for an inferred initial state', () => {
