@@ -502,22 +502,27 @@ export function machine<
 	// will let a caller pass, which is the whole point of the layer above.
 	return {
 		start: (data?: unknown): RawHost => {
-			// Host state lives in closure variables rather than on an object, and
-			// `current` is one of them rather than a `state`/`data` pair: a
-			// transition record needs both ends as `{ state, data }`, so keeping the
-			// pair already boxed hands `from` and `to` over as references instead of
-			// building two more objects per commit. Separate `state` and `data`
-			// variables with a getter that builds the pair fresh measured 1 B
-			// smaller — noise — and allocates three objects per commit rather than
-			// one.
+			// Host state lives in closure variables read back through getters,
+			// rather than on a plain object with assigned properties that `send`
+			// reaches back into and mutates. Measured against the real toolchain:
+			// assigned properties come out 6 B brotli larger (47 raw, 10 gzip) —
+			// mutating two properties on a bound `host` object costs more than a
+			// getter closing over a local, and the getter needs no extra identifier
+			// for the object itself. `current` is a `state`/`data` pair rather than
+			// two separate variables: a transition record needs both ends as
+			// `{ state, data }`, so keeping the pair already boxed hands `from` and
+			// `to` over as references instead of building two more objects per
+			// commit.
 			let current: Snapshot = { state: initial, data }
 
-			// Copy-on-write, so a dispatch iterates the array it captured and needs
-			// no `.slice()` of its own: a listener unsubscribed by an earlier one
-			// still runs for the current transition, and one registered during
-			// dispatch does not. Rejected: a mutable list snapshotted with `.slice()`
-			// per dispatch, which measured 13 B larger and allocates on the path
-			// that runs most.
+			// Copy-on-write at registration, plain iteration at dispatch. Rejected:
+			// a mutable list mutated with `.push()`/`.splice()` at registration and
+			// snapshotted with `.slice()` per dispatch — measured 20 B brotli larger
+			// (29 raw, 14 gzip) against the real toolchain, and it allocates on the
+			// path that runs most (every dispatch) rather than the one that runs
+			// least (every subscribe/unsubscribe). A listener unsubscribed by an
+			// earlier one still runs for the current transition under either
+			// design; one registered during dispatch runs under neither.
 			let listeners: Registration[] = []
 
 			const queue: [name: string, payload: unknown][] = []

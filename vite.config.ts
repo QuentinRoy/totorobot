@@ -30,15 +30,37 @@ export default defineConfig({
 			ecma: 2020,
 			compress: {
 				ecma: 2020,
-				// Repeated passes: each one exposes constants and dead
-				// branches for the next.
-				passes: 3,
-				// The build targets modern Node and modern browsers, where
-				// both of these rewrites are safe.
+				// Measured against this module's actual shape (`pnpm size`,
+				// brotli): passes 2 through 5 land on the exact same byte
+				// count as pass 1, so there is no repeated-pass win to buy
+				// here today. Kept at 1 rather than a larger assumed number;
+				// re-measure if the source grows enough branches for a
+				// second pass to start exposing new constants.
+				passes: 1,
+				// unsafe_methods measures a real 2 B brotli (4 gzip, 7 raw)
+				// smaller. unsafe_arrows measures zero difference on the
+				// current source — nothing here is written in a shape it
+				// rewrites — but it costs nothing to leave on and remains
+				// correct for the target environment, so it stays as a
+				// no-cost safety net rather than because it currently earns
+				// its keep.
 				unsafe_arrows: true,
 				unsafe_methods: true,
+				// `draining` is the only boolean in the module and is never
+				// compared with `===`, only read for truthiness, so
+				// rewriting its literals as 0/1 is safe here. Measures 3 B
+				// smaller, brotli and raw alike.
+				booleans_as_integers: true,
 			},
 			mangle: {
+				// Requesting this is really just documentation: terser
+				// forces `mangle.toplevel` on whenever it also sees
+				// `module: true`, which Vite always passes for `formats:
+				// ['es']` (see terser's `format_mangler_options`) —
+				// setting this to `false` here measurably changes nothing
+				// through the real build, only through terser called
+				// directly on unbundled code. There is no ESM build where
+				// this is actually a choice.
 				toplevel: true,
 				// No property mangling. A closure-based host has almost no
 				// internal property surface to gain from it, against a real
