@@ -17,6 +17,8 @@
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
 		"test": "vitest run",
+		"test:types": "vitest run --typecheck.only",
+		"test:coverage": "vitest run --coverage",
 		"typecheck": "tsc --noEmit",
 		"typecheck:candidates": "node scripts/check-candidates.ts",
 		"measure:completions": "node scripts/measure-completions.mjs"
@@ -31,6 +33,7 @@
 	},
 	"devDependencies": {
 		"@types/node": "^26.1.2",
+		"@vitest/coverage-v8": "^4.1.10",
 		"prettier": "^3.9.6",
 		"robot3": "^1.2.0",
 		"typescript": "^7.0.2",

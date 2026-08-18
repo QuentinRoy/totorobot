@@ -139,7 +139,8 @@ It is designed, not built. Read [the API](docs/api.md) for what it is, and
 - `src/totorobot.ts` — the library implementation and public API.
 - `examples/case-studies/` — traffic-light and asynchronous-auth examples.
 - `examples/index.ts` — runs both case studies.
-- `tests/totorobot.test.ts` — runtime and compile-time coverage.
+- `tests/` — the v1 test suite: runtime tests (`*.test.ts`), type tests
+  (`*.test-d.ts`) and the plain-JavaScript untyped path (`untyped.test.js`).
 - `docs/api.md` — the design the project is moving to.
 - `docs/api-rationale.md` — the evidence behind that design.
 - `docs/design-notes.md` — reference for the current, shipped design.
@@ -159,6 +160,12 @@ pnpm typecheck
 pnpm test
 pnpm examples
 ```
+
+**`pnpm test` is expected to fail.** The v1 test suite in `tests/` is written
+against the API in [docs/api.md](docs/api.md), which `src/` does not implement
+yet; the suite was landed red on purpose, to be the specification the
+implementation is written against. `pnpm typecheck` — which covers `src/`,
+`examples/` and `explorations/` — must stay green.
 
 ## Relationship to Robot3
 
