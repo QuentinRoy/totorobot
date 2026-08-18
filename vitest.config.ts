@@ -1,6 +1,19 @@
+import path from 'node:path'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
+	// The suite imports the library by package name; this resolves it to
+	// source for the runtime half, as `tests/tsconfig.json` does for the type
+	// half. Anchored, so a future `totorobot/…` specifier cannot match it.
+	resolve: {
+		alias: [
+			{
+				find: /^totorobot$/,
+				replacement: path.resolve(import.meta.dirname, 'src/totorobot.ts'),
+			},
+		],
+	},
+
 	test: {
 		// `explorations/` is prototype evidence rather than library coverage,
 		// but it is included for the same reason it is type-checked: a finding

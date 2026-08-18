@@ -39,7 +39,7 @@
 
 import { expectTypeOf, test } from 'vitest'
 
-import { machine, types } from '../src/totorobot.ts'
+import { machine, types } from 'totorobot'
 
 test('a well-formed table compiles with no vocabulary declared', () => {
 	const untyped = machine({

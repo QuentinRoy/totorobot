@@ -5,7 +5,7 @@
  * test file.
  */
 
-import { machine, types } from '../src/totorobot.ts'
+import { machine, types } from 'totorobot'
 
 type ToggleInputs = { toggle: void }
 type ToggleStates = { off: void; on: void }

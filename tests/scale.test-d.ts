@@ -17,7 +17,7 @@
 
 import { expectTypeOf, test } from 'vitest'
 
-import { machine, types, type Handled } from '../src/totorobot.ts'
+import { machine, types, type Handled } from 'totorobot'
 
 type Inputs = {
 	next: { delta: number }

@@ -1,4 +1,13 @@
 {
 	"extends": "../tsconfig.json",
+	"compilerOptions": {
+		/* The suite imports the library by package name, the way a consumer
+       does, rather than reaching into `src/`. This maps that name at the one
+       place the type pass reads; `tsconfig.dist.json` overrides it to the
+       built declarations, which is the whole of the dist type redirect. */
+		"paths": {
+			"totorobot": ["../src/totorobot.ts"]
+		}
+	},
 	"include": ["."]
 }

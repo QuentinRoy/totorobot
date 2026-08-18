@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { machine, types } from '../src/totorobot.ts'
+import { machine, types } from 'totorobot'
 import { toggle } from './fixtures.ts'
 import { cloneDeep } from './helpers.ts'
 
