@@ -3,7 +3,7 @@
  * malformed spellings, the bare-key rule, and `skip()`.
  */
 
-import { expectTypeOf, test } from 'vitest'
+import { expect, expectTypeOf, test } from 'vitest'
 
 import { machine, types } from 'totorobot'
 
@@ -82,25 +82,31 @@ test('unknown state or input names in a transition key are rejected', () => {
 })
 
 test('malformed key spellings are rejected, one per row', () => {
-	machine({
-		initial: 'empty',
-		inputs: types<Inputs>(),
-		states: types<States>(),
-		transitions: {
-			// @ts-expect-error - no space before "-"
-			'empty-open> draft': () => ({ text: '', revision: 0 }),
-			// @ts-expect-error - two spaces before "-"
-			'empty  -open> draft': () => ({ text: '', revision: 0 }),
-			// @ts-expect-error - a space after "-", before the input name
-			'empty - open> draft': () => ({ text: '', revision: 0 }),
-			// @ts-expect-error - a space before ">", after the input name
-			'empty -open > draft': () => ({ text: '', revision: 0 }),
-			// @ts-expect-error - no space after ">"
-			'empty -open>draft': () => ({ text: '', revision: 0 }),
-			// @ts-expect-error - two spaces after ">"
-			'empty -open>  draft': () => ({ text: '', revision: 0 }),
-		},
-	})
+	// Every row here is malformed, so `machine()` also throws at runtime (#16)
+	// on the first one it reaches — that is a property of the runtime check,
+	// not of the type layer this test exercises, so the call is only asserted
+	// to throw rather than left to run to completion.
+	expect(() =>
+		machine({
+			initial: 'empty',
+			inputs: types<Inputs>(),
+			states: types<States>(),
+			transitions: {
+				// @ts-expect-error - no space before "-"
+				'empty-open> draft': () => ({ text: '', revision: 0 }),
+				// @ts-expect-error - two spaces before "-"
+				'empty  -open> draft': () => ({ text: '', revision: 0 }),
+				// @ts-expect-error - a space after "-", before the input name
+				'empty - open> draft': () => ({ text: '', revision: 0 }),
+				// @ts-expect-error - a space before ">", after the input name
+				'empty -open > draft': () => ({ text: '', revision: 0 }),
+				// @ts-expect-error - no space after ">"
+				'empty -open>draft': () => ({ text: '', revision: 0 }),
+				// @ts-expect-error - two spaces after ">"
+				'empty -open>  draft': () => ({ text: '', revision: 0 }),
+			},
+		}),
+	).toThrow(SyntaxError)
 })
 
 test('an unlabelled arrow is accepted as an immediate transition', () => {
@@ -142,19 +148,23 @@ test("an immediate row's handler receives no input, and a wrong-shaped return is
 })
 
 test('a bare key names a state and is rejected in the transitions table', () => {
-	machine({
-		initial: 'empty',
-		inputs: types<Inputs>(),
-		states: types<States>(),
-		transitions: {
-			'empty -open> draft': ({ input }) => ({
-				text: input.text,
-				revision: 0,
-			}),
-			// @ts-expect-error - a bare key names a state; every transitions row is an edge
-			draft: () => ({ text: '', revision: 0 }),
-		},
-	})
+	// A bare key throws at runtime too (#16), so the call is asserted to throw
+	// rather than left to run to completion.
+	expect(() =>
+		machine({
+			initial: 'empty',
+			inputs: types<Inputs>(),
+			states: types<States>(),
+			transitions: {
+				'empty -open> draft': ({ input }) => ({
+					text: input.text,
+					revision: 0,
+				}),
+				// @ts-expect-error - a bare key names a state; every transitions row is an edge
+				draft: () => ({ text: '', revision: 0 }),
+			},
+		}),
+	).toThrow(SyntaxError)
 })
 
 test('skip() is returnable from a handler for every target shape, including a void target', () => {
