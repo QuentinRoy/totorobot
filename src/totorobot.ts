@@ -406,8 +406,20 @@ type Index = Record<string, Record<string, Row[] | undefined> | undefined>
  * Carries a vocabulary at the type level and nothing at all at runtime: it
  * **returns `null`**, which is what a caller observes. Nothing reads the
  * fields it fills in.
+ *
+ * The return type says so. `T` alone would need a cast through `unknown` to
+ * hand back a `null`, which is the one place in the library where the types
+ * would be describing something other than what runs; `T | null` needs no cast
+ * at all, and `machine` subtracts the `null` back out on the way in.
+ *
+ * The rationale records `null | T` as proposed and not taken, on two grounds.
+ * Neither applies here. Extraction still reads through `InputsOf` and
+ * `StatesOf` rather than through the marker's own type, which is the first;
+ * and a bare `inputs: null` no longer collapses `keyof S & string` to `never`,
+ * because with nothing left to infer the constrained default takes over and
+ * that half simply widens — the same surface omitting it gives.
  */
-export const types = <T>(): T => null as unknown as T
+export const types = <T>(): T | null => null
 
 /**
  * Declare a machine. The result is inert data — it holds the index in a
@@ -447,8 +459,11 @@ export function machine<
 	S extends Vocab = Vocab,
 >(definition: {
 	readonly initial: Init & Name<NoInfer<S>>
-	readonly inputs?: I
-	readonly states?: S
+	// `| null` is what `types()` returns, and inference subtracts it: the
+	// vocabulary lands as `I` rather than `I | null`, so nothing downstream
+	// carries a null it would have to strip again.
+	readonly inputs?: I | null
+	readonly states?: S | null
 	readonly transitions: Table<I, S, K>
 }): Machine<I, S, K, Init> {
 	const { initial, transitions } = definition as unknown as {
