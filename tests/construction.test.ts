@@ -46,8 +46,11 @@ describe('construction', () => {
 			},
 		})
 
-		const host = junction.start({ quota: 3 })
-		expect(host.current).toEqual({ state: 'allowed', data: { quota: 3 } })
+		const allowed = junction.start({ quota: 3 })
+		expect(allowed.current).toEqual({ state: 'allowed', data: { quota: 3 } })
+
+		const denied = junction.start({ quota: 0 })
+		expect(denied.current).toEqual({ state: 'denied', data: { quota: 0 } })
 	})
 
 	test('a chain from the initial state settles fully, not one hop', () => {
@@ -111,6 +114,28 @@ describe('construction', () => {
 		// settles into `ready`, which carries data.
 		const host = promoted.start()
 		expect(host.current).toEqual({ state: 'ready', data: { count: 0 } })
+	})
+
+	test('the hop budget spent settling the initial state does not carry over into the first send', () => {
+		const twice = machine({
+			initial: 'a',
+			inputs: types<{ go: void }>(),
+			states: types<{ a: number; b: number }>(),
+			transitions: {
+				// Each chain alone is comfortably under the 1e5 budget; only a
+				// shared counter across start() and send() would push their sum
+				// over it.
+				'a -> a': ({ data, skip }) => (data < 60_000 ? data + 1 : skip()),
+				'a -go> b': () => 0,
+				'b -> b': ({ data, skip }) => (data < 60_000 ? data + 1 : skip()),
+			},
+		})
+
+		const host = twice.start(0)
+		expect(host.current).toEqual({ state: 'a', data: 60_000 })
+
+		host.send('go')
+		expect(host.current).toEqual({ state: 'b', data: 60_000 })
 	})
 
 	test("a cycle among the initial state's immediates throws RangeError from start(), naming the state it could not settle", () => {
