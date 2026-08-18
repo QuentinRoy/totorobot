@@ -100,12 +100,14 @@ or a marker object. Nothing reads it, so the two fields are inert at runtime.
   `InputsOf<typeof publication>`, `StatesOf<typeof publication>` — the same family as
   `Handled<M, 'draft'>` and `Sources<M, 'review'>`, which take the machine type as `M`.
 
-**Both are optional, and omitting them widens rather than breaks.** A JavaScript caller
-writes `machine({ initial, transitions })` and gets a working machine; a TypeScript
-caller who omits them gets state and input names as `string`, `data` and `input` as
-`unknown`, and **the key grammar still enforced** — a malformed key is a compile error
-whether or not a vocabulary was declared. Declaring one map and not the other is
-supported and checks that half. This is a guarantee, not an accident: see
+**Both are optional, and omitting them infers names — not data — from `transitions`.**
+A JavaScript caller writes `machine({ initial, transitions })` and gets a working
+machine; a TypeScript caller who omits a map gets that half's _names_ as exactly what
+`transitions` mentions rather than widening to `string`, while the _data_ each name
+carries stays `unknown`, since nothing declares it — and **the key grammar still
+enforced**, a malformed key a compile error whether or not a vocabulary was declared.
+Declaring one map and not the other is supported and checks that half while the other's
+names are still read off the table. This is a guarantee, not an accident: see
 [observable behaviour](#observable-behaviour) items 27–29.
 
 _Why declared, what it closed, and what it costs:_
@@ -397,11 +399,12 @@ implementation to be driven from.
 **The untyped path**
 
 27. With `inputs` and `states` both omitted, a well-formed table compiles: state and
-    input names are any `string`, `data` and `input` are `unknown`, and `initial`
-    accepts any string.
+    input names are exactly the ones `transitions` mentions, `data` and `input` are
+    `unknown`, and `initial` must name a state that appears somewhere in the table.
 28. A malformed key is still rejected with no vocabulary declared, and the error still
     lands on the offending line rather than on the `transitions` block.
-29. Declaring one map and omitting the other checks that half and widens the other.
+29. Declaring one map and omitting the other checks that half and infers the other from
+    the table, the same as omitting both.
 
 ## What the types check
 

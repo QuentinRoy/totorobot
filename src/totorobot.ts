@@ -106,18 +106,16 @@ const parse = (key: string) =>
 // ---------------------------------------------------------------------------
 
 /**
- * The constraint both vocabulary maps carry **and** the default they fall back
- * to when the caller declares neither.
+ * The constraint both vocabulary maps carry, and the fallback default for the
+ * generic utilities below that describe a vocabulary in the abstract (`Host`,
+ * `Pattern`, `Listener`, …) rather than one particular call.
  *
- * Widening then falls out of the constraint itself: `keyof Vocab & string` is
- * `string` and `Vocab[string]` is `unknown`, so nothing below needs a
- * conditional to express "no vocabulary was declared". That is what keeps the
- * untyped path a widening rather than a collapse, and it is why the defaults
- * are constrained rather than `any`.
+ * `machine` itself does not default `I`/`S` to `Vocab`: see
+ * `StatesFromKeys`/`InputsFromKeys` above, which it defaults to instead.
  */
 type Vocab = Record<string, unknown>
 
-/** The names a vocabulary declares — `string` when it declares none. */
+/** The names a vocabulary declares — every name mentioned in `transitions` when it declares none. */
 type Name<V> = keyof V & string
 
 /**
@@ -164,6 +162,24 @@ type Key<
 type From<K> = K extends `${infer F} -${string}> ${string}` ? F : never
 type Label<K> = K extends `${string} -${infer L}> ${string}` ? L : never
 type To<K> = K extends `${string} -${string}> ${infer T}` ? T : never
+
+/**
+ * The default state and input vocabularies, used when `machine` is called
+ * with `states`/`inputs` omitted: every name mentioned anywhere in
+ * `transitions`, each mapped to `unknown` — the names narrow to what the
+ * table says, but the data each one carries is still unknown rather than
+ * assumed absent, since nothing declares it one way or the other.
+ *
+ * `K` is inferred from `transitions` before either default is applied — `K`
+ * precedes `I` and `S` in `machine`'s own parameter list, and a later default
+ * may reference an earlier parameter — so this reads back the *raw* table
+ * keys rather than reverse-inferring from a single field the way `initial`
+ * once did. A malformed key drops out silently: `From`/`Label`/`To` only
+ * match the well-formed template, so a key that fails it contributes no name,
+ * and its row is still rejected on its own by `Table` below.
+ */
+type StatesFromKeys<K extends string> = { [N in From<K> | To<K>]: unknown }
+type InputsFromKeys<K extends string> = { [N in Label<K>]: unknown }
 
 /**
  * Every legal `.on()` pattern: the key grammar with the state coordinates left
@@ -453,13 +469,19 @@ export const types = <T>(): T | null => null
  * cannot accidentally prefix-match.
  *
  * `inputs` and `states` are the only inference sites for the vocabulary, and
- * both are optional, so omitting one widens that half and leaves the other
- * checked. `initial` is a plain `NoInfer` position rather than a conditional:
- * without it `initial` reverse-infers the state vocabulary, after which the
- * name it invented is the only legal state, every real row is rejected, and the
- * error moves off the row onto the whole table. The intersection with `Init`
- * recovers the initial state's *name* without reopening that inference, which
- * is what lets `start` follow that one state's data.
+ * both are optional: omitting one falls back to `InputsFromKeys<K>` /
+ * `StatesFromKeys<K>`, so that half's *names* are still exactly what
+ * `transitions` mentions rather than widening to `string` — only the data each
+ * name carries widens, to `unknown`, since nothing declares it. The fallback
+ * reads `K` — a *sibling* parameter, already inferred from
+ * `transitions` — rather than reverse-inferring from a single field, which is
+ * what `initial` must not do: a plain `NoInfer` position rather than a
+ * conditional, because letting `initial` itself be a state-vocabulary
+ * inference site makes the name it invented the only legal state, rejects
+ * every real row, and moves the error off the row onto the whole table. The
+ * intersection with `Init` recovers the initial state's *name* without
+ * reopening that inference, which is what lets `start` follow that one
+ * state's data.
  *
  * `K` is the table's keys, inferred from the mapped type in `transitions`
  * because a mapped type over a bare type parameter infers its own key set.
@@ -472,8 +494,8 @@ export const types = <T>(): T | null => null
 export function machine<
 	Init extends string,
 	K extends string,
-	I extends Vocab = Vocab,
-	S extends Vocab = Vocab,
+	I extends Vocab = InputsFromKeys<K>,
+	S extends Vocab = StatesFromKeys<K>,
 >(definition: {
 	readonly initial: Init & Name<NoInfer<S>>
 	// `| null` is what `types()` returns, and inference subtracts it: the
