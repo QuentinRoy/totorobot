@@ -93,6 +93,17 @@ discriminated unions for states and events, and makes `state` / `transition` /
 | [`option-g-define-then-create.ts`](option-g-define-then-create.ts)   | `createMachine(defineMachine<S>()({...}), states)`                         | **Works, and beats D.** Same guarantees, no `as const` on a hoisted spec, bad `initialState` reported at `defineMachine`. Also pins why the one-call spelling `defineMachine<S>({...})` cannot exist. |
 | [`option-h-marker-in-config.ts`](option-h-marker-in-config.ts)       | `createMachine({initialState, specification: defineMachine<S>()}, states)` | **Works, trades differently than G.** No curried call, but no fix for D's `as const` edge either - checked, not assumed.                                                                              |
 
+### The §17 vocabulary
+
+Not part of either family, and later than both: the tagged-union vocabulary decided
+in [§17](../docs/api-rationale.md#17-the-shape-of-a-named-thing), which is unbuilt.
+The section rests on claims about TypeScript's behaviour, and this is those claims as
+assertions so they cannot rot.
+
+| File                                           | Shape                                                                      | Result                                                                                                                                                                                                                                   |
+| ---------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`tagged-vocabulary.ts`](tagged-vocabulary.ts) | `inputs`/`states` as unions tagged `type`/`name`; handler returns tag-less | **Works**, with one negative result pinned: for a payload-free target the tag is not required but also not rejected, because `Omit<{ name: 'x' }, 'name'>` is `{}`. Also pins that a `typeof` query does not see control-flow narrowing. |
+
 ### Robot3 as the runtime
 
 | File                                               | Shape                                                                                                                             | Result                                                                                                                                                                                  |
