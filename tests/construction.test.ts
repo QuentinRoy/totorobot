@@ -167,7 +167,7 @@ describe('construction', () => {
 		const hostB = toggle.start()
 
 		const log: string[] = []
-		hostA.on('* -> *', () => log.push('a'))
+		hostA.observe('* -> *', () => log.push('a'))
 
 		hostB.send('toggle')
 
@@ -178,7 +178,7 @@ describe('construction', () => {
 		const before = cloneDeep(toggle)
 
 		const host = toggle.start()
-		host.on('* -> *', () => {})
+		host.observe('* -> *', () => {})
 		host.send('toggle')
 		host.send('toggle')
 

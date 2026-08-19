@@ -6,7 +6,7 @@
  * The case is specified in terms of effects — "reports start", "schedules
  * dwell", "cancels token", "opens a menu" — but v1 owns no effects; `actions`
  * is deferred (docs/api.md, "Designed, not in v1"). Every effect below is
- * therefore re-expressed as a caller-side `.on()` listener, which is v1's
+ * therefore re-expressed as a caller-side `.observe()` listener, which is v1's
  * documented answer: "the caller writes a function". This shape is a
  * deferral decided in the design, not a limitation discovered here.
  *
@@ -116,8 +116,8 @@ describe('acceptance: Reduced Marking Menu', () => {
 	test('trace 1: down enters startup, reports start, and schedules the dwell token', () => {
 		const doc = markingMenu.start({ nextToken: 0 })
 		const log: string[] = []
-		doc.on('idle -down> startup', () => log.push('report:start'))
-		doc.on('idle -down> startup', (e) =>
+		doc.observe('idle -down> startup', () => log.push('report:start'))
+		doc.observe('idle -down> startup', (e) =>
 			log.push(`schedule:${e.to.data.timerToken}`),
 		)
 
@@ -141,7 +141,7 @@ describe('acceptance: Reduced Marking Menu', () => {
 		})
 
 		const log: string[] = []
-		doc.on('startup -dwellElapsed> novice', () => log.push('open'))
+		doc.observe('startup -dwellElapsed> novice', () => log.push('open'))
 
 		doc.send('dwellElapsed', { token: 0 }) // matches the scheduled token
 
@@ -157,7 +157,7 @@ describe('acceptance: Reduced Marking Menu', () => {
 		doc.send('down', { point: p0 }) // -> startup(timerToken: 0, nextToken: 1)
 
 		const log: string[] = []
-		doc.on('startup -move> expert', (e) =>
+		doc.observe('startup -move> expert', (e) =>
 			log.push(`cancel:${e.from.data.timerToken}`),
 		)
 
@@ -179,7 +179,7 @@ describe('acceptance: Reduced Marking Menu', () => {
 		doc.send('down', { point: p0 }) // -> startup(timerToken: 0, nextToken: 1)
 
 		const log: string[] = []
-		doc.on('startup -cancel> idle', (e) => {
+		doc.observe('startup -cancel> idle', (e) => {
 			log.push(`cancel:${e.from.data.timerToken}`)
 			log.push('report:cancel')
 		})
@@ -194,7 +194,7 @@ describe('acceptance: Reduced Marking Menu', () => {
 		const doc = markingMenu.start({ nextToken: 0 })
 		const before = doc.current
 		const log: string[] = []
-		doc.on('* -> *', () => log.push('fired'))
+		doc.observe('* -> *', () => log.push('fired'))
 
 		doc.send('move', { point: p1Near }) // idle has no row for move
 

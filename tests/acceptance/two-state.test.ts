@@ -34,7 +34,7 @@ describe('acceptance: two-state ceremony floor', () => {
 		const log: string[] = []
 		let queued = false
 
-		doc.on('* -> *', (e) => {
+		doc.observe('* -> *', (e) => {
 			// the first commit-and-observation cycle finishes before the queued
 			// input is applied to `on`
 			log.push(`${e.from.state} -> ${e.to.state}`)

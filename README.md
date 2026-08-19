@@ -49,7 +49,7 @@ export const publication = machine({
 })
 
 const doc = publication.start()
-doc.on('* -> published', (e) => notify(e.to.data))
+doc.observe('* -> published', (e) => notify(e.to.data))
 doc.send('open', { text: 'hello' })
 ```
 
@@ -59,17 +59,17 @@ doc.send('open', { text: 'hello' })
 | `inputs`      | what can happen                       |
 | `states`      | what we can be                        |
 | `transitions` | how we move, and what the new data is |
-| `.on()`       | what the outside world does about it  |
+| `observe()`   | what the outside world does about it  |
 
 Read [the API](docs/api.md) for the full design, and
 [the design record](docs/api-rationale.md) for why it looks this way.
 
 > [!NOTE]
-> The example above is what `src/` implements today, and three parts of it are
+> The example above is what `src/` implements today, and two parts of it are
 > already decided against. Settling where a machine's boundary goes reshaped the
-> vocabulary into a tagged union, dropped a field from the transition record, and
-> renamed `.on` to `observe` — all before v1 tags, while nothing depends on them.
-> See [Changing before v1](docs/api.md#changing-before-v1).
+> vocabulary into a tagged union and dropped a field from the transition record —
+> before v1 tags, while nothing depends on them. See
+> [Changing before v1](docs/api.md#changing-before-v1).
 
 ## What is checked
 
