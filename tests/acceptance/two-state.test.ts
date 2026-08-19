@@ -20,13 +20,13 @@ import { toggle } from '../fixtures.ts'
 describe('acceptance: two-state ceremony floor', () => {
 	test('off and on carry no data, and toggle enters the other state from each', () => {
 		const doc = toggle.start()
-		expect(doc.current).toEqual({ state: 'off', data: undefined })
+		expect(doc.current).toEqual({ name: 'off' })
 
 		doc.send('toggle')
-		expect(doc.current).toEqual({ state: 'on', data: undefined })
+		expect(doc.current).toEqual({ name: 'on' })
 
 		doc.send('toggle')
-		expect(doc.current).toEqual({ state: 'off', data: undefined })
+		expect(doc.current).toEqual({ name: 'off' })
 	})
 
 	test('live-runtime trace 1: a toggle queued while observing off -> on drains to on -> off before the outer call returns', () => {
@@ -37,7 +37,7 @@ describe('acceptance: two-state ceremony floor', () => {
 		doc.observe('* -> *', (e) => {
 			// the first commit-and-observation cycle finishes before the queued
 			// input is applied to `on`
-			log.push(`${e.from.state} -> ${e.to.state}`)
+			log.push(`${e.from.name} -> ${e.to.name}`)
 			if (!queued) {
 				queued = true
 				doc.send('toggle') // an observer submits a second input while observing the first transition
@@ -49,6 +49,6 @@ describe('acceptance: two-state ceremony floor', () => {
 		// the outermost call returns only after the queue drains — no await,
 		// no microtask flush, both transitions have already happened
 		expect(log).toEqual(['off -> on', 'on -> off'])
-		expect(doc.current).toEqual({ state: 'off', data: undefined })
+		expect(doc.current).toEqual({ name: 'off' })
 	})
 })

@@ -11,11 +11,13 @@
  * `transitions` block — failing P1.4 and P1.2 at once.
  *
  * An omitted half now defaults to `StatesFromKeys<K>` / `InputsFromKeys<K>`:
- * every name `transitions` itself mentions, each mapped to `unknown` — the
- * *names* narrow to what the table says instead of widening to `string`, but
- * the *data* each one carries stays `unknown`, since nothing declares it one
- * way or the other. A name the table never mentions — in a row, or in
- * `initial` — is rejected.
+ * every name `transitions` itself mentions. For inputs, the *names* narrow to
+ * what the table says instead of widening to `string`, but the *data* each one
+ * carries stays `unknown`, since nothing declares it one way or the other. For
+ * states, each inferred member keeps its `name` tag exact and widens every
+ * other field to `unknown` the same way — there is no separate `data` bag to
+ * widen instead. A name the table never mentions — in a row, or in `initial` —
+ * is rejected.
  *
  * Three things make that safe rather than a repeat of the `initial` cliff:
  *
@@ -46,12 +48,14 @@ test('a well-formed table compiles with no vocabulary declared', () => {
 	const untyped = machine({
 		initial: 'off',
 		transitions: {
-			'off -toggle> on': ({ data, input }) => {
+			'off -toggle> on': ({ state, input }) => {
 				// `not.toBeAny()` is load-bearing: `toEqualTypeOf<unknown>()` alone
 				// passes against `any` too, which is exactly the historical "any
 				// leak" this design must not repeat.
-				expectTypeOf(data).not.toBeAny()
-				expectTypeOf(data).toEqualTypeOf<unknown>()
+				expectTypeOf(state.name).not.toBeAny()
+				expectTypeOf(state.name).toEqualTypeOf<'off'>()
+				expectTypeOf(state['anything']).not.toBeAny()
+				expectTypeOf(state['anything']).toEqualTypeOf<unknown>()
 				expectTypeOf(input).not.toBeAny()
 				expectTypeOf(input).toEqualTypeOf<unknown>()
 			},
@@ -59,9 +63,9 @@ test('a well-formed table compiles with no vocabulary declared', () => {
 	})
 
 	const host = untyped.start()
-	expectTypeOf(host.current.state).toEqualTypeOf<'off' | 'on'>()
-	expectTypeOf(host.current.data).not.toBeAny()
-	expectTypeOf(host.current.data).toEqualTypeOf<unknown>()
+	expectTypeOf(host.current.name).toEqualTypeOf<'off' | 'on'>()
+	expectTypeOf(host.current['anything']).not.toBeAny()
+	expectTypeOf(host.current['anything']).toEqualTypeOf<unknown>()
 	expectTypeOf(host.send).parameter(0).toEqualTypeOf<'toggle'>()
 })
 
@@ -75,8 +79,13 @@ test('initial must be a state transitions mentions when no states are declared',
 		},
 	})
 
+	// @ts-expect-error - 'bogus' names no state in the table. With no
+	// `states` in the call, this and the "states declared" overload both
+	// fail to match — the mismatch on `initial` alone would otherwise land
+	// on this exact line, but overload resolution reports failing-to-match
+	// against the call as a whole, so the tripwire sits on `machine(` rather
+	// than on `initial` here.
 	machine({
-		// @ts-expect-error - 'bogus' names no state in the table
 		initial: 'bogus',
 		// The rows stay legal and stay checked: were `initial` an inference
 		// site, 'bogus' would become the only known state and every other row
@@ -93,7 +102,7 @@ test('initial must be a state transitions mentions when no states are declared',
 })
 
 test('initial is checked against the declared states and never infers them', () => {
-	type States = { off: void; on: void }
+	type States = { name: 'off' } | { name: 'on' }
 
 	machine({
 		initial: 'off',
@@ -165,7 +174,7 @@ test('a state reachable only as a target is still inferred, in a table larger th
 	})
 
 	const host = flow.start()
-	expectTypeOf(host.current.state).toEqualTypeOf<
+	expectTypeOf(host.current.name).toEqualTypeOf<
 		'empty' | 'draft' | 'review' | 'published'
 	>()
 	expectTypeOf(host.send)
@@ -196,7 +205,7 @@ test('a malformed key does not leak a name into the inferred vocabulary, in a bi
 	// own rejection — this is the "one bad row poisons the whole table" cliff,
 	// checked against a mixed table rather than a single-row one.
 	type Host = ReturnType<ReturnType<typeof build>['start']>
-	expectTypeOf<Host['current']['state']>().toEqualTypeOf<'off' | 'on'>()
+	expectTypeOf<Host['current']['name']>().toEqualTypeOf<'off' | 'on'>()
 })
 
 test('start() takes an optional, unknown payload for an inferred initial state', () => {
@@ -207,8 +216,9 @@ test('start() takes an optional, unknown payload for an inferred initial state',
 		},
 	})
 
-	// 'off' has no declared data, so it widens to `unknown` rather than being
-	// assumed data-free — both an omitted and a present payload are legal.
+	// 'off' has no declared data, so it widens to unknown fields rather than
+	// being assumed payload-free — both an omitted and a present payload are
+	// legal.
 	untyped.start()
 	untyped.start({ anything: true })
 })
@@ -227,7 +237,7 @@ test('an immediate row is legal with no vocabulary declared, and contributes no 
 	})
 
 	const host = untyped.start()
-	expectTypeOf(host.current.state).toEqualTypeOf<
+	expectTypeOf(host.current.name).toEqualTypeOf<
 		'draft' | 'checking' | 'settled'
 	>()
 	// the immediate row must not leak '' into the inferred input vocabulary
@@ -241,60 +251,113 @@ test('declaring inputs and omitting states checks inputs and infers states from 
 		initial: 'off',
 		inputs: types<Inputs>(),
 		transitions: {
-			'off -toggle> on': ({ data, input }) => {
-				// The declared half is checked; the omitted half is read off the table,
-				// with unknown (not `any` — see `not.toBeAny()` above) data since
-				// nothing declares what it is.
+			'off -toggle> on': ({ state, input }) => {
+				// The declared half is checked; the omitted half is read off the
+				// table, with unknown (not `any` — see `not.toBeAny()` above)
+				// fields since nothing declares what they are.
 				expectTypeOf(input).toEqualTypeOf<undefined>()
-				expectTypeOf(data).not.toBeAny()
-				expectTypeOf(data).toEqualTypeOf<unknown>()
+				expectTypeOf(state.name).not.toBeAny()
+				expectTypeOf(state.name).toEqualTypeOf<'off'>()
+				expectTypeOf(state['anything']).not.toBeAny()
+				expectTypeOf(state['anything']).toEqualTypeOf<unknown>()
 			},
-			// @ts-expect-error - 'bogus' is not a declared input
-			'off -bogus> on': () => {},
 		},
 	})
 
 	const host = half.start()
-	expectTypeOf(host.current.state).toEqualTypeOf<'off' | 'on'>()
+	expectTypeOf(host.current.name).toEqualTypeOf<'off' | 'on'>()
 	expectTypeOf(host.send).parameter(0).toEqualTypeOf<'toggle'>()
+
+	// A separate call, kept to a single row beyond the valid one: mixing an
+	// inferred-vocabulary row rejection with a sibling row whose handler
+	// reads `state` corrupts unrelated rows' inference under TS 7.0.2 — see
+	// the note on `machine` in `src/totorobot.ts`.
+	machine({
+		initial: 'off',
+		inputs: types<Inputs>(),
+		transitions: {
+			'off -toggle> on': () => {},
+			// @ts-expect-error - 'bogus' is not a declared input
+			'off -bogus> on': () => {},
+		},
+	})
 })
 
 test('declaring states and omitting inputs checks states and infers inputs from the table', () => {
-	type States = { off: void; on: void }
+	type States = { name: 'off' } | { name: 'on' }
 
 	const half = machine({
 		initial: 'off',
 		states: types<States>(),
 		transitions: {
-			'off -toggle> on': ({ data, input }) => {
-				// The declared half is checked; the omitted half is read off the table,
-				// with unknown (not `any`) data since nothing declares what it is.
-				expectTypeOf(data).toEqualTypeOf<undefined>()
+			'off -toggle> on': ({ state, input }) => {
+				// The declared half is checked, so `state` is exactly what was
+				// declared for 'off'; the omitted half is read off the table, with
+				// unknown (not `any`) data since nothing declares what it is.
+				expectTypeOf(state).toEqualTypeOf<{ name: 'off' }>()
 				expectTypeOf(input).not.toBeAny()
 				expectTypeOf(input).toEqualTypeOf<unknown>()
 			},
-			// @ts-expect-error - 'bogus' is not a declared state
-			'bogus -toggle> on': () => {},
 		},
 	})
 
 	const host = half.start()
-	expectTypeOf(host.current.state).toEqualTypeOf<'off' | 'on'>()
+	expectTypeOf(host.current.name).toEqualTypeOf<'off' | 'on'>()
 	expectTypeOf(host.send).parameter(0).toEqualTypeOf<'toggle'>()
+
+	// A separate call, kept to a single row beyond the valid one, for the
+	// same reason as the mirroring "declaring inputs" test above: a sibling
+	// row rejection in the same table corrupts this table's own inference
+	// under TS 7.0.2 when the omitted half is self-referentially inferred —
+	// see the note on `machine` in `src/totorobot.ts`.
+	machine({
+		initial: 'off',
+		states: types<States>(),
+		transitions: {
+			'off -toggle> on': () => {},
+			// @ts-expect-error - 'undeclared' is not a declared state
+			'undeclared -toggle> on': () => {},
+		},
+	})
 })
 
 test('`*` in a key position is rejected rather than joining the inferred vocabulary (#22)', () => {
 	// Every row here parses fine at runtime — `*` is a well-formed name to the
 	// grammar `parse` enforces — so nothing throws. The rejection is entirely
-	// the type layer's: `*` never joins `StatesFromKeys`/`InputsFromKeys`, so
-	// `Key` never matches these rows and `Table` poisons each on its own line.
+	// the type layer's: `*` never joins `StatesFromKeys`, so `Key` never
+	// matches these rows and `Table` poisons each on its own line.
+	//
+	// One malformed row per call, each alongside one valid row: several
+	// inferred-vocabulary rejections sharing a table corrupt each other's
+	// inference under TS 7.0.2 — see the note on `machine` in
+	// `src/totorobot.ts`. And where the excluded name is a *state* coordinate
+	// — always, below, except the labelled row — the same bug also moves the
+	// diagnostic off the row and onto the call: `states` is inferred from
+	// the whole table before the row-level rejection can be reported on its
+	// own line, so the tripwire sits on `machine(` rather than on the row.
+	// An excluded *input* name (the labelled row) is unaffected — `Table`
+	// only ever reads the input vocabulary through a plain indexed access —
+	// so that one keeps its usual row-level `@ts-expect-error`.
+	// @ts-expect-error - '*' is the wildcard, not an inferable state name
 	machine({
 		initial: 'off',
 		transitions: {
-			// @ts-expect-error - '*' is the wildcard, not an inferable state name
-			'* -go> on': () => {},
-			// @ts-expect-error - '*' is the wildcard, not an inferable state name
+			'off -go> on': () => {},
+			'* -go> on2': () => {},
+		},
+	})
+	// @ts-expect-error - '*' is the wildcard, not an inferable state name
+	machine({
+		initial: 'off',
+		transitions: {
+			'off -go> on': () => {},
 			'on -back> *': () => {},
+		},
+	})
+	machine({
+		initial: 'off',
+		transitions: {
+			'off -go> on': () => {},
 			// @ts-expect-error - '*' is the wildcard, not an inferable input name
 			'off -*> on': () => {},
 		},
@@ -302,13 +365,22 @@ test('`*` in a key position is rejected rather than joining the inferred vocabul
 })
 
 test('`initial: "*"` is rejected once `*` is excluded from the inferred states (#22)', () => {
+	// Split for the same reason as above: `initial` and the row are checked
+	// in separate calls so one rejection cannot corrupt the other's
+	// diagnosis. Both tripwires sit on `machine(` — see the comment above.
+	// @ts-expect-error - '*' never joins the inferred state vocabulary, even
+	// when a row mentions it
 	machine({
-		// @ts-expect-error - '*' never joins the inferred state vocabulary, even
-		// though it is mentioned in a row — that row is itself rejected below
 		initial: '*',
 		transitions: {
 			'off -go> on': () => {},
-			// @ts-expect-error - '*' is the wildcard, not an inferable state name
+		},
+	})
+	// @ts-expect-error - '*' is the wildcard, not an inferable state name
+	machine({
+		initial: 'off',
+		transitions: {
+			'off -go> on': () => {},
 			'* -back> off': () => {},
 		},
 	})
@@ -317,15 +389,29 @@ test('`initial: "*"` is rejected once `*` is excluded from the inferred states (
 test('a name padded by a leading or trailing space is rejected rather than joining the inferred vocabulary (#22)', () => {
 	// Each of these parses to a well-formed, if oddly spelled, key at runtime —
 	// #16's grammar check only rejects a spelling that collides with ` -`/`> `,
-	// and a padded name does not. The rejection here is the type layer's alone.
+	// and a padded name does not. The rejection here is the type layer's
+	// alone. One malformed row per call, and the tripwire sits on `machine(`
+	// — see the comment on the `*`-in-a-key-position test above.
+	// @ts-expect-error - the doubled space puts a leading space into ' on'
 	machine({
 		initial: 'off',
 		transitions: {
 			'off -go> on': () => {},
-			// @ts-expect-error - the doubled space puts a leading space into ' on'
 			'on -go>  on': () => {},
-			// @ts-expect-error - the trailing space names 'on ', not 'on'
+		},
+	})
+	// @ts-expect-error - the trailing space names 'on ', not 'on'
+	machine({
+		initial: 'off',
+		transitions: {
+			'off -go> on': () => {},
 			'on -go> on ': () => {},
+		},
+	})
+	machine({
+		initial: 'off',
+		transitions: {
+			'off -go> on': () => {},
 			// @ts-expect-error - the space after '-' names input ' go', not 'go'
 			'on - go> off': () => {},
 		},
@@ -341,9 +427,11 @@ test('passing the marker explicitly as undefined behaves as omitting the propert
 		inputs: undefined,
 		states: undefined,
 		transitions: {
-			'off -toggle> on': ({ data, input }) => {
-				expectTypeOf(data).not.toBeAny()
-				expectTypeOf(data).toEqualTypeOf<unknown>()
+			'off -toggle> on': ({ state, input }) => {
+				expectTypeOf(state.name).not.toBeAny()
+				expectTypeOf(state.name).toEqualTypeOf<'off'>()
+				expectTypeOf(state['anything']).not.toBeAny()
+				expectTypeOf(state['anything']).toEqualTypeOf<unknown>()
 				expectTypeOf(input).not.toBeAny()
 				expectTypeOf(input).toEqualTypeOf<unknown>()
 			},
@@ -351,6 +439,6 @@ test('passing the marker explicitly as undefined behaves as omitting the propert
 	})
 
 	const host = half.start()
-	expectTypeOf(host.current.state).toEqualTypeOf<'off' | 'on'>()
+	expectTypeOf(host.current.name).toEqualTypeOf<'off' | 'on'>()
 	expectTypeOf(host.send).parameter(0).toEqualTypeOf<'toggle'>()
 })

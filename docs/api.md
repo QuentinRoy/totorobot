@@ -9,10 +9,11 @@
 > state rather than on an input. `actions` and composition are argued but deferred, and
 > neither is promised — see [Designed, not in v1](#designed-not-in-v1).
 >
-> **Two parts of this document are already decided against.** The vocabulary's shape and
-> the transition record both change before v1 tags, as a consequence of settling the
-> composition boundary. `observe`'s name already reflects that decision — it replaced
-> `.on` for the same reason, argued in
+> **Two parts of this document are already decided against.** The input vocabulary's
+> shape and the transition record both change before v1 tags, as a consequence of
+> settling the composition boundary. The state half of that same reshape has already
+> shipped — states are a tagged union below, not a map — and `observe`'s name reflects
+> an earlier part of the same decision — it replaced `.on`, argued in
 > [rationale §12](api-rationale.md#observation-observe-on-the-host-with-patterns) — and
 > `.on` stays unclaimed for the later output channel below. What is written below is
 > what `src/` implements today; what else replaces it is in
@@ -29,12 +30,11 @@ type Inputs = {
 	submit: { route: 'review' | 'publish'; reviewer?: string }
 	cancel: void
 }
-type States = {
-	empty: void
-	draft: { text: string; revision: number }
-	review: { text: string; revision: number; reviewer: string }
-	published: { text: string; revision: number }
-}
+type States =
+	| { name: 'empty' }
+	| { name: 'draft'; text: string; revision: number }
+	| { name: 'review'; text: string; revision: number; reviewer: string }
+	| { name: 'published'; text: string; revision: number }
 
 export const publication = machine({
 	initial: 'empty',
@@ -43,22 +43,22 @@ export const publication = machine({
 
 	transitions: {
 		'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
-		'draft -revise> draft': ({ data, input, skip }) =>
-			input.text === data.text
+		'draft -revise> draft': ({ state, input, skip }) =>
+			input.text === state.text
 				? skip()
-				: { text: input.text, revision: data.revision + 1 },
-		'draft -submit> review': ({ data, input, skip }) =>
+				: { text: input.text, revision: state.revision + 1 },
+		'draft -submit> review': ({ state, input, skip }) =>
 			input.route === 'review'
-				? { ...data, reviewer: input.reviewer! }
+				? { ...state, reviewer: input.reviewer! }
 				: skip(),
-		'draft -submit> published': ({ data, input, skip }) =>
-			input.route === 'publish' ? { ...data } : skip(),
+		'draft -submit> published': ({ state, input, skip }) =>
+			input.route === 'publish' ? { ...state } : skip(),
 		'draft -cancel> empty': () => {},
 	},
 })
 
 const doc = publication.start()
-doc.observe('* -> published', (e) => notify(e.to.data))
+doc.observe('* -> published', (e) => notify(e.to))
 doc.send('open', { text: 'hello' })
 ```
 
@@ -74,16 +74,16 @@ doc.send('open', { text: 'hello' })
 
 Everything the package exports, and everything a host has:
 
-| name                                                        | is                                                         |
-| ----------------------------------------------------------- | ---------------------------------------------------------- |
-| `machine({ initial, inputs?, states?, transitions })`       | a **definition** — inert data, never mutated               |
-| `types<T>()`                                                | a declaration carrying `T`; returns `undefined` at runtime |
-| `definition.start(data?)`                                   | a **host** — the only mutable object in the design         |
-| `host.current`                                              | `{ state, data }`                                          |
-| `host.send(name, payload?)`                                 | a dispatch; returns nothing                                |
-| `host.observe(pattern, listener)`                           | a subscription; returns an unsubscribe function            |
-| a handler's `{ data, input, skip }`                         | source data, the input payload, and the way to decline     |
-| `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>` | derived types, over `M = typeof publication`               |
+| name                                                        | is                                                          |
+| ----------------------------------------------------------- | ----------------------------------------------------------- |
+| `machine({ initial, inputs?, states?, transitions })`       | a **definition** — inert data, never mutated                |
+| `types<T>()`                                                | a declaration carrying `T`; returns `undefined` at runtime  |
+| `definition.start(data?)`                                   | a **host** — the only mutable object in the design          |
+| `host.current`                                              | the current state, tag included                             |
+| `host.send(name, payload?)`                                 | a dispatch; returns nothing                                 |
+| `host.observe(pattern, listener)`                           | a subscription; returns an unsubscribe function             |
+| a handler's `{ state, input, skip }`                        | the source state, the input payload, and the way to decline |
+| `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>` | derived types, over `M = typeof publication`                |
 
 ---
 
@@ -91,17 +91,23 @@ Everything the package exports, and everything a host has:
 
 ```ts
 inputs: types<{ submit: Submit; cancel: void }>(),
-states: types<{ empty: void; draft: { text: string; revision: number } }>(),
+states: types<{ name: 'empty' } | { name: 'draft'; text: string; revision: number }>(),
 ```
 
-Both maps are **declared**. `types<T>()` exists only to carry `T`; it carries no runtime
-value, and **returns `undefined`** — that is what a caller observes, rather than a
-marker object. Nothing reads it, so the two fields are inert at runtime, and passing
-the return value explicitly is the same as omitting the field.
+Both are **declared**, but they are not the same shape. `inputs` is still a **map** from
+name to payload — `void` spells "carries no data" — until inputs are tagged the same way
+states are ([Changing before v1](#changing-before-v1)). `states` is a **tagged union**:
+one member per state, discriminated by `name`. There is no `void` sentinel on the state
+side at all — a data-free state is a union member with nothing but its `name`, e.g.
+`{ name: 'empty' }`.
 
-- A data-free state, or an input with no payload, is `void`.
-- Each map is an ordinary type, so it can be named, exported, imported, generated, made
-  generic, or built with `Omit`/`&`. **Name them.** Writing `types<Inputs>()` rather
+`types<T>()` exists only to carry `T`; it carries no runtime value, and **returns
+`undefined`** — that is what a caller observes, rather than a marker object. Nothing
+reads it, so both fields are inert at runtime, and passing the return value explicitly is
+the same as omitting the field.
+
+- Each is an ordinary type, so it can be named, exported, imported, generated, made
+  generic, or built with `Omit`/`&`/`|`. **Name them.** Writing `types<Inputs>()` rather
   than `types<{ … }>()` keeps hover text and error messages from inlining the whole
   literal. A single `Publication = { inputs; states }` still works if you want one
   exported name — pass `types<Publication['inputs']>()`.
@@ -111,27 +117,31 @@ the return value explicitly is the same as omitting the field.
 
 **Both are optional, and omitting them infers names — not data — from `transitions`.**
 A JavaScript caller writes `machine({ initial, transitions })` and gets a working
-machine; a TypeScript caller who omits a map gets that half's _names_ as exactly what
-`transitions` mentions rather than widening to `string`, while the _data_ each name
-carries stays `unknown`, since nothing declares it — and **the key grammar still
-enforced**, a malformed key a compile error whether or not a vocabulary was declared.
-Declaring one map and not the other is supported and checks that half while the other's
-names are still read off the table. This is a guarantee, not an accident: see
+machine; a TypeScript caller who omits `inputs` gets its names as exactly what
+`transitions` mentions rather than widening to `string`, while the data each name
+carries stays `unknown`. Omitting `states` does the same for the state names, and each
+inferred member's fields beyond `name` read as `unknown` and accept anything written
+back, rather than being assumed absent — since nothing declares it — and **the key
+grammar still enforced**, a malformed key a compile error whether or not a vocabulary was
+declared. Declaring one and not the other is supported and checks that half while the
+other's names are still read off the table. This is a guarantee, not an accident: see
 [observable behaviour](#observable-behaviour) items 35–38.
 
 **An inferred name has to be one a key can round-trip.** `*` and a name padded by a
-leading or trailing space are excluded from what an omitted map infers — not because
-either is a bad name, but because neither survives being written back into a key:
-`*` is already how a pattern spells "any state," and a leading or trailing space is the
-grammar's own delimiter, so `'a -x>  b'` does not fail to parse, it quietly mints a
+leading or trailing space are excluded from what an omitted `inputs`/`states` infers —
+not because either is a bad name, but because neither survives being written back into a
+key: `*` is already how a pattern spells "any state," and a leading or trailing space is
+the grammar's own delimiter, so `'a -x>  b'` does not fail to parse, it quietly mints a
 state no other key can spell the same way twice. A key that mints one is rejected on its
 own row, `not a transition: '…'`, the same as any other unknown name. **A declared
-vocabulary is untouched** — `types<{ '*': void }>()` or `types<{ ' b': void }>()` still
-work, since declaring an odd name by hand is deliberate in a way a doubled space in a key
-never is.
+vocabulary is untouched** — `types<{ '*': void }>()` or a state tagged `{ name: ' b' }`
+still work, since declaring an odd name by hand is deliberate in a way a doubled space in
+a key never is.
 
 _Why declared, what it closed, and what it costs:_
-[rationale §5](api-rationale.md#5-the-declared-vocabulary).
+[rationale §5](api-rationale.md#5-the-declared-vocabulary). _Why states are a tagged
+union rather than a map, and why the handler's source parameter carries its tag:_
+[rationale §17](api-rationale.md#17-the-shape-of-a-named-thing).
 
 ## `transitions` — the table
 
@@ -169,8 +179,9 @@ _Why this notation, and the spellings it rejects:_
 
 ### The handler decides and projects
 
-It receives the **source** state's data and the input payload, and returns the
-**target** state's data:
+It receives the **source** state whole, tag included, under `state`, and the input
+payload, and returns the **target** state's payload with its tag left off — the library
+adds the tag back:
 
 ```ts
 'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
@@ -189,13 +200,24 @@ declines the input: nothing changes, and no listener fires. That is a normal out
 rather than a fault — the `revise` row above declines an unchanged text on purpose — and
 nothing reports it.
 
-### Self-transitions are ordinary transitions
-
-A row whose target is its source. Its handler receives the old data and returns the new
-one, and it commits and notifies like any other row:
+**Carrying the tag lets a handler shared across several rows tell which state it is
+transitioning from** — `state.name` narrows `state` the same way narrowing `current`
+does. It also means spreading the source into a target payload carries the source's tag
+along for the ride; that is harmless, because the library sets the target's tag by
+spreading it in _last_, so a spread of the source can never leave the wrong tag on the
+committed state:
 
 ```ts
-'draft -revise> draft': ({ data, input }) => ({ …, revision: data.revision + 1 }),
+'draft -touch> draft': ({ state }) => ({ ...state }), // state.name is 'draft' here, and stays 'draft' after commit
+```
+
+### Self-transitions are ordinary transitions
+
+A row whose target is its source. Its handler receives the old state and returns the new
+payload, and it commits and notifies like any other row:
+
+```ts
+'draft -revise> draft': ({ state, input }) => ({ …, revision: state.revision + 1 }),
 ```
 
 ### Immediate transitions: an edge with no input
@@ -204,9 +226,9 @@ A row whose arrow carries no input. It fires on **entering** its source state, t
 in declaration order alongside every other immediate row declared for that state:
 
 ```ts
-'draft -submit> checking': ({ data }) => data,
-'checking -> allowed':     ({ data, skip }) => (data.quota > 0 ? data : skip()),
-'checking -> denied':      ({ data }) => data,
+'draft -submit> checking': ({ state }) => ({ quota: state.quota }),
+'checking -> allowed':     ({ state, skip }) => (state.quota > 0 ? { quota: state.quota } : skip()),
+'checking -> denied':      ({ state }) => ({ quota: state.quota }),
 ```
 
 Sending `submit` from `draft` lands in `checking`, which immediately tries its own
@@ -249,8 +271,8 @@ them:
   `RangeError`, with the same message, from `.start()` rather than from `send`.
 
 What does not change: `.start()`'s argument still follows the **declared** initial
-state's data, not the settled state's — a `void` initial state that settles into a
-data-carrying one still takes no argument.
+state's payload, not the settled state's — an initial state declared with no payload
+that settles into a data-carrying one still takes no argument.
 
 _Why chaining, why a budget instead of forbidding it, and what it costs:_
 [rationale §7](api-rationale.md#7-immediate-transitions).
@@ -272,10 +294,10 @@ text search, exact rather than approximate, and the reverse index is derivable:
 state, dispatches to listeners, and is the only mutable object in the design.
 
 ```ts
-const doc = publication.start() // `empty` is void, so no argument
+const doc = publication.start() // `empty` carries no payload, so no argument
 doc.send('open', { text: 'hello' })
 
-doc.current // { state: 'draft', data: { text: 'hello', revision: 0 } }
+doc.current // { name: 'draft', text: 'hello', revision: 0 }
 ```
 
 One host per independent use — two hosts over one definition share no state and no
@@ -283,11 +305,10 @@ listeners, and neither mutates the definition.
 
 ### Reading
 
-- **`current`** is `{ state, data }`, plain data. `data` is `undefined` for a state
-  declared `void`. **A value read from it stays valid and unchanged across later
-  transitions**, which is what makes it safe to compare, serialise, or hold in
-  component state. Nothing is frozen, though: immutability is `readonly` in the types
-  plus a promise not to mutate, not a runtime guard.
+- **`current`** is the state itself, plain data, tag included. **A value read from it
+  stays valid and unchanged across later transitions**, which is what makes it safe to
+  compare, serialise, or hold in component state. Nothing is frozen, though: immutability
+  is `readonly` in the types plus a promise not to mutate, not a runtime guard.
 
 ### Sending
 
@@ -316,20 +337,20 @@ deliberate drop — the narrow-then-send shape is unsound in TypeScript
 addable later without breaking anything
 ([rationale §11](api-rationale.md#11-sending-inputs)).
 
-**Per-state _data_ is unaffected** — narrow `current` and the data narrows with it,
-which is the half of typestate the project is actually claiming:
+**Per-state _data_ is unaffected** — narrow `current` on its tag and the fields narrow
+with it, which is the half of typestate the project is actually claiming:
 
 ```ts
 const now = doc.current
-if (now.state === 'draft') {
-	now.data.revision // number — no nullable padding
+if (now.name === 'draft') {
+	now.revision // number — no nullable padding
 }
 ```
 
 ### `observe()` — observing transitions
 
 ```ts
-const off = doc.observe('* -> published', (e) => notify(e.to.data))
+const off = doc.observe('* -> published', (e) => notify(e.to))
 doc.observe('draft -cancel> *', () => track('cancelled'))
 ```
 
@@ -337,8 +358,9 @@ doc.observe('draft -cancel> *', () => track('cancelled'))
 an unsubscribe function.
 
 **The handler receives the transition record**, `{ on, input, from, to }`, discriminated
-by `on`, so `e.on === 'submit'` narrows `e.input`, and `e.from` / `e.to` each carry
-their end's `{ state, data }`.
+by `on`, so `e.on === 'submit'` narrows `e.input`, and `e.from` / `e.to` are each their
+end's state, tag included, so narrowing on `e.from.name` / `e.to.name` narrows the rest
+of the fields the same way `current` does.
 
 **Patterns are the key language with coordinates left open.** `*` stands for any state,
 and an unlabelled arrow means any input, or none:
@@ -377,7 +399,7 @@ function residency(doc, state, setup) {
 		teardown = setup(e.to)
 	})
 	// nothing will announce a state we are already in
-	if (doc.current.state === state) teardown = setup(doc.current)
+	if (doc.current.name === state) teardown = setup(doc.current)
 	return () => {
 		offExit()
 		offEnter()
@@ -388,8 +410,8 @@ function residency(doc, state, setup) {
 
 A self-transition matches **both** patterns, so restart-on-re-entry falls out rather
 than being implemented. The policy wrappers come along too: `persistent` is
-`if (e.to.state !== e.from.state)` in the exit handler, `keyed` compares
-`k(e.from.data)` against `k(e.to.data)`.
+`if (e.to.name !== e.from.name)` in the exit handler, `keyed` compares
+`k(e.from)` against `k(e.to)`.
 
 What the host would have to own instead is [`actions`](#designed-not-in-v1) — residency
 declared in the definition ([rationale §12](api-rationale.md#residency-is-derivable-not-a-host-feature)).
@@ -456,11 +478,11 @@ implementation to be driven from.
    reports on the offending row. Well formed means exactly one arrow, with a
    non-empty source and a non-empty target; the label between the two separators may
    be empty, which is the unlabelled arrow (18).
-2. `start(data)` yields a host whose `current` is `{ state: initial, data }` — or, if
-   the initial state's own immediate rows settle it further, whatever state that chain
-   lands in. `start()`'s arity always follows the **declared** initial state: it takes
-   no argument when that state is `void`, even when settling carries it into a state
-   that has data.
+2. `start(data)` yields a host whose `current` is the initial state, tag included, `data`
+   spread in — or, if the initial state's own immediate rows settle it further, whatever
+   state that chain lands in. `start()`'s arity always follows the **declared** initial
+   state: it takes no argument when that state carries no payload, even when settling
+   carries it into a state that has data.
 3. A chain off the initial state settles fully, hop after hop, before `start()`
    returns — exactly as it does after `send` (20).
 4. If the initial state's immediate rows all skip, the host comes back sitting in the
@@ -474,22 +496,23 @@ implementation to be driven from.
 
 **Reading**
 
-9. `current` is `{ state, data }`; `data` is `undefined` for a `void` state.
+9. `current` is the current state, tag included and plain.
 10. A value read from `current` before a transition is unchanged after it.
 
 **Sending**
 
-11. A handled input commits: `current` becomes `{ state: target, data: projection }`,
-    and every listener whose pattern matches that edge fires.
+11. A handled input commits: `current` becomes the target state — its tag, and the
+    handler's returned payload spread in — and every listener whose pattern matches that
+    edge fires.
 12. An input no row matches, and an input whose every candidate row calls `skip()`, both
     change nothing and fire no listener — indistinguishable, without exception.
 13. With several rows for one `(from, input)`, candidates are tried in declaration order
     and the first that does not skip wins.
-14. A self-transition commits and notifies like any other, with
-    `e.from.state === e.to.state`, `e.from.data` the old data and `e.to.data` the new.
-15. A handler receives the source state's data and the input payload; a `void` input's
-    payload is `undefined`.
-16. A handler whose target is `void` returns nothing.
+14. A self-transition commits and notifies like any other, with `e.from.name ===
+e.to.name`, `e.from` the old state and `e.to` the new.
+15. A handler receives the source state, tag included, and the input payload; a `void`
+    input's payload is `undefined`.
+16. A handler whose target carries no payload returns nothing or `{}`.
 17. `send` returns `undefined`, always.
 18. An input name that is not in the vocabulary (reachable from untyped code) changes
     nothing.
@@ -539,8 +562,9 @@ implementation to be driven from.
 **The untyped path**
 
 35. With `inputs` and `states` both omitted, a well-formed table compiles: state and
-    input names are exactly the ones `transitions` mentions, `data` and `input` are
-    `unknown`, and `initial` must name a state that appears somewhere in the table.
+    input names are exactly the ones `transitions` mentions, a state's fields beyond
+    `name` and an input's payload are `unknown`, and `initial` must name a state that
+    appears somewhere in the table.
 36. A malformed key is still rejected with no vocabulary declared, and the error still
     lands on the offending line rather than on the `transitions` block.
 37. Declaring one map and omitting the other checks that half and infers the other from
@@ -554,7 +578,11 @@ implementation to be driven from.
 - **Per-state data.** Narrowing the state narrows its data, with no nullable padding in
   states that logically guarantee a field.
 - Unknown state or input names anywhere in a transition key or a pattern.
-- A handler returning the wrong shape for its target state.
+- **A handler returning the wrong shape for its target state — for every state, without
+  exception.** A target with no payload accepts only nothing or `{}`; a fresh literal
+  carrying extra properties, a wider-typed variable, an interface-typed value, and a
+  spread of a wider state are all rejected the same way an ordinary target's wrong shape
+  is.
 - Reads of source data the source state does not have.
 - Malformed keys — wrong spacing included — reported as `not a transition: '…'` on the
   offending line.
@@ -607,13 +635,14 @@ Not oversights. What to reach for instead, and where the argument is:
 
 Settling the composition boundary
 ([rationale §16](api-rationale.md#16-the-composition-boundary)) reached back into the
-surface above. Two changes are decided and unbuilt. They are breaking, which is why
-they go **before** v1 tags rather than after — spent while nobody holds the API.
+surface above. One change is decided and unbuilt. It is breaking, which is why it goes
+**before** v1 tags rather than after — spent while nobody holds the API.
 
-A third — `.on` becoming `observe` — is decided the same way and **already shipped**:
-same patterns, same two arguments, same record semantics, bare state keys still
-illegal. `.on` is left **unclaimed**, so the output channel below arrives later as
-pure addition and no caller ever sees `.on` change meaning. Residency stays the
+Two others were decided the same way and are **already shipped**: `.on` becoming
+`observe` — same patterns, same two arguments, same record semantics, bare state keys
+still illegal — and the state half of the vocabulary reshape below. `.on` is left
+**unclaimed**, so the output channel below arrives later as pure addition and no caller
+ever sees `.on` change meaning. Residency stays the
 [recipe](#residency-is-a-recipe-not-a-feature).
 
 **1. The transition record loses its fourth field.**
@@ -629,46 +658,43 @@ pure addition and no caller ever sees `.on` change meaning. Residency stays the
 
 `e.on === 'submit'` becomes `e.input?.type === 'submit'`, and an immediate says so with
 one `undefined` field rather than two. The record then has one field per coordinate of
-the key that produced it.
+the key that produced it. Unbuilt: it waits on the input vocabulary below, since `on` is
+still the only place an input's name is readable until inputs carry their own tag.
 
-**2. The vocabulary becomes a tagged union.**
+**2. The input vocabulary becomes a tagged union, matching what states already are.**
 
 ```ts
 // today
 inputs: types<{ submit: Submit; cancel: void }>(),
-states: types<{ empty: void; draft: { text: string; revision: number } }>(),
 
 // decided
 inputs: types<{ type: 'submit'; text: string } | { type: 'cancel' }>(),
-states: types<{ name: 'empty' } | { name: 'draft'; text: string; revision: number }>(),
 ```
 
-Inputs and outputs are tagged `type` and **must share the word**, because at a seam an
-output becomes the next machine's input and `b.send(output)` has to typecheck. States
-are tagged `name` and are free to differ, because states never travel — the whole object
-_is_ the state.
+States made this move already —
+[`inputs` and `states` — the vocabulary](#inputs-and-states--the-vocabulary) above
+describes the shape `inputs` is still catching up to. Inputs are tagged `type` rather
+than `name`, and **must share the word** with outputs once those exist, because at a
+seam an output becomes the next machine's input and `b.send(output)` has to typecheck —
+states are free to differ because states never travel.
 
-Three consequences:
+The consequence still ahead of `inputs`: **`send` takes one argument** —
+`send({ type: 'move', x, y })` — once a dispatch is a value rather than a name and a
+payload passed separately.
 
-- `send` takes one argument: `send({ type: 'move', x, y })`.
-- **`void` leaves the vocabulary.** `{ type: 'up' }` and `{ name: 'empty' }` carry no
-  payload by having no other fields, so there is no sentinel to learn.
-- A handler still **does not** restate its target. It returns the target's payload minus
-  the tag; the library adds it.
-
-**`data` is a convention, not a rule.** A payload that is not a record, or that wants a
-field called `type` or `name`, nests it:
+**`data` is a convention, not a rule** — for both halves of the vocabulary already. A
+payload that is not a record, or that wants a field called `type` or `name`, nests it:
 
 ```ts
-{ type: 'tick', data: 5 }
-{ name: 'editing', data: { name: 'foo' } }
+{ type: 'tick', data: 5 } // an input, once tagged
+{ name: 'editing', data: { name: 'foo' } } // a state, today
 ```
 
 Nothing in the library requires or inspects `data` — it is an ordinary field, and any
 other name works. It is the recommended shape whenever a tag would collide or a payload
-is not an object, and it is worth reaching for deliberately: a state that carries its
-own `name` field is ordinary enough that meeting the collision by accident is the thing
-to avoid.
+is not an object, and it is worth reaching for deliberately: a state or input that
+carries its own `name`/`type` field is ordinary enough that meeting the collision by
+accident is the thing to avoid.
 
 _Why, what was measured, and the rejected alternatives:_
 [rationale §16](api-rationale.md#16-the-composition-boundary) and
@@ -776,9 +802,10 @@ beyond appeal — rival layouts still compile — and the completion payload is 
 with latency fine ([rationale §15](api-rationale.md#15-still-open),
 `pnpm measure:completions`).
 
-**Before v1**, two more breaking changes are decided and unbuilt — the transition
-record and the vocabulary's shape. `.on` becoming `observe` was a third and has
-already shipped. See [Changing before v1](#changing-before-v1).
+**Before v1**, one more breaking change is decided and unbuilt — the transition record,
+which waits on tagging the input vocabulary. `.on` becoming `observe` and tagging the
+state vocabulary were decided the same way and have already shipped. See
+[Changing before v1](#changing-before-v1).
 
 **After v1**, in this order and none of it promised:
 

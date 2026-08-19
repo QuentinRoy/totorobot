@@ -12,7 +12,7 @@
  *     })
  *
  *     const doc = publication.start()
- *     doc.observe('* -> published', (e) => notify(e.to.data))
+ *     doc.observe('* -> published', (e) => notify(e.to))
  *     doc.send('open', { text: 'hello' })
  *
  * The API is specified in `docs/api.md` and argued in `docs/api-rationale.md`.
@@ -26,7 +26,7 @@
  * `Handled` and `Sources`, and `Skip`, which is unavoidably public because it
  * is in every handler's return type.
  *
- * Everything else — `Machine`, `Host`, `Snapshot`, `Transition`, `Listener`,
+ * Everything else — `Machine`, `Host`, `Transition`, `Listener`,
  * `Pattern` and the machinery under them — is module-local **on purpose**. The
  * emitted declarations still carry them, so every public signature resolves and
  * hover text reads normally; they simply cannot be imported, which is what
@@ -125,47 +125,65 @@ const parse = (key: string): [from: string, input: string, to: string] => {
 // ---------------------------------------------------------------------------
 
 /**
- * The constraint both vocabulary maps carry, and the fallback default for the
- * generic utilities below that describe a vocabulary in the abstract (`Host`,
+ * The constraint the input vocabulary carries, and the fallback default for
+ * the generic utilities below that describe it in the abstract (`Host`,
  * `Pattern`, `Listener`, …) rather than one particular call.
  *
- * `machine` itself does not default `I`/`S` to `Vocab`: see
- * `StatesFromKeys`/`InputsFromKeys` above, which it defaults to instead.
+ * `machine` itself does not default `I` to `Vocab`: see `InputsFromKeys<K>`
+ * above, which it defaults to instead.
  */
 type Vocab = Record<string, unknown>
 
 /**
- * Resolves one of `machine`'s two raw vocabulary parameters to the default
- * once it is `undefined` — which a raw parameter is both when its property is
- * omitted and when it is passed the marker's `undefined` explicitly, since
- * `Raw extends Vocab | undefined` (rather than `Raw extends Vocab = Default`)
- * takes `undefined` itself as a legal, non-widening inference target instead
- * of a constraint violation. Constraining to bare `Vocab` was tried first and
- * rejected: a candidate of `undefined` against that narrower constraint is
- * invalid, and TypeScript's fallback for an invalid candidate is the
- * constraint itself — `Vocab`, not the default — so an explicit
- * `inputs: undefined` widened every name to `string` where an omitted
- * property correctly inferred `InputsFromKeys<K>`. Two call sites that were
- * meant to be indistinguishable were not; this is what makes them the same
- * again.
+ * The constraint the state vocabulary carries: a **tagged union**, one member
+ * per state, discriminated by `name` — not a map from name to payload, which
+ * is what `Vocab` describes and what inputs still are. `current`, and both
+ * ends of a transition record, are values of this union directly; there is no
+ * wrapper pairing a name with a separate data bag.
+ *
+ * Inputs are not this shape yet — `machine`'s `I` parameter stays `Vocab` —
+ * because tagging them is a separate, later change:
+ * `docs/api-rationale.md#17-the-shape-of-a-named-thing`.
  */
-type Declared<
-	Raw extends Vocab | undefined,
-	Default extends Vocab,
-> = Raw extends undefined ? Default : Raw
-
-/** The names a vocabulary declares — every name mentioned in `transitions` when it declares none. */
-type Name<V> = keyof V & string
+type StateVocab = { readonly name: string }
 
 /**
- * `void` is how a vocabulary spells "carries no data"; `undefined` is how that
- * data arrives. The tuples stop a union of state data from distributing, which
- * would turn `A | void` into `A | undefined` one member at a time.
+ * Resolves one of `machine`'s raw vocabulary parameters to the default once
+ * it is `undefined` — which a raw parameter is both when its property is
+ * omitted and when it is passed the marker's `undefined` explicitly, since a
+ * constraint of `T | undefined` (rather than `T` with a default) takes
+ * `undefined` itself as a legal, non-widening inference target instead of a
+ * constraint violation. Constraining to bare `T` was tried first and
+ * rejected: a candidate of `undefined` against that narrower constraint is
+ * invalid, and TypeScript's fallback for an invalid candidate is the
+ * constraint itself — `T`, not the default — so an explicit `inputs:
+ * undefined` widened every name to `string` where an omitted property
+ * correctly inferred `InputsFromKeys<K>`. Two call sites that were meant to
+ * be indistinguishable were not; this is what makes them the same again.
  *
- * Applied where data is *read* — `current.data`, a handler's `data` and
- * `input`, the record's two ends — and deliberately **not** to a handler's
- * return type, where `void` itself is what lets `() => {}` satisfy a data-free
- * target.
+ * Generic over `T` rather than fixed to `Vocab`, so the one utility serves
+ * both `I` (`Vocab`-shaped) and `S` (`StateVocab`-shaped).
+ */
+type Declared<Raw, Default> = Raw extends undefined ? Default : Raw
+
+/** The input names a `Vocab` declares — every name mentioned in `transitions` when it declares none. */
+type Name<V> = keyof V & string
+
+/** The state names a `StateVocab` declares, read off the union's own tag rather than `keyof`. */
+type StateName<S extends StateVocab> = S['name']
+
+/**
+ * `void` is how the input vocabulary spells "carries no data"; `undefined` is
+ * how that data arrives. The tuple stops a union of input data from
+ * distributing, which would turn `A | void` into `A | undefined` one member
+ * at a time.
+ *
+ * Applied where input data is *read* — a handler's `input`, the record's own
+ * `input` — and deliberately **not** to a handler's return type, where `void`
+ * itself is what lets `() => {}` satisfy a data-free input. States have no
+ * `void` sentinel at all: a data-free state is a union member with nothing
+ * but its `name`, so nothing here applies to the state half of the
+ * vocabulary any more.
  */
 type Value<T> = [T] extends [void] ? undefined : T
 
@@ -185,8 +203,9 @@ type Value<T> = [T] extends [void] ? undefined : T
  * are all that is left — which is why a malformed key is still a compile error
  * on the untyped path.
  */
-type Key<I extends Vocab, S extends Vocab> =
-	`${Name<S>} -${Name<I>}> ${Name<S>}` | `${Name<S>} -> ${Name<S>}`
+type Key<I extends Vocab, S extends StateVocab> =
+	| `${StateName<S>} -${Name<I>}> ${StateName<S>}`
+	| `${StateName<S>} -> ${StateName<S>}`
 
 /**
  * The three coordinates of a key, read back out of the string.
@@ -221,11 +240,11 @@ type RoundTrips<N extends string> = N extends '*' | ` ${string}` | `${string} `
 	: N
 
 /**
- * The default state and input vocabularies, used when `machine` is called
- * with `states`/`inputs` omitted: every name mentioned anywhere in
- * `transitions`, each mapped to `unknown` — the names narrow to what the
- * table says, but the data each one carries is still unknown rather than
- * assumed absent, since nothing declares it one way or the other.
+ * The default input vocabulary, used when `machine` is called with `inputs`
+ * omitted: every name mentioned anywhere in `transitions`, each mapped to
+ * `unknown` — the names narrow to what the table says, but the data each one
+ * carries is still unknown rather than assumed absent, since nothing declares
+ * it one way or the other.
  *
  * `K` is inferred from `transitions` before either default is applied — `K`
  * precedes `I` and `S` in `machine`'s own parameter list, and a later default
@@ -236,18 +255,34 @@ type RoundTrips<N extends string> = N extends '*' | ` ${string}` | `${string} `
  * and its row is still rejected on its own by `Table` below.
  *
  * The `as RoundTrips<N>` remap drops `*` and any leading/trailing-space name
- * out of the *inferred* vocabulary before either mapped type is built, so a
- * key that mints one fails `Key` and is rejected on its own row, the same as
- * any other unknown name — see `RoundTrips`. A vocabulary declared through
+ * out of the *inferred* vocabulary before the mapped type is built, so a key
+ * that mints one fails `Key` and is rejected on its own row, the same as any
+ * other unknown name — see `RoundTrips`. A vocabulary declared through
  * `types<T>()` is untouched: only what gets inferred from a key is filtered,
  * never `Name` itself.
  */
-type StatesFromKeys<K extends string> = {
-	[N in From<K> | To<K> as RoundTrips<N>]: unknown
-}
 type InputsFromKeys<K extends string> = {
 	[N in Exclude<Label<K>, ''> as RoundTrips<N>]: unknown
 }
+
+/**
+ * The default state vocabulary, used when `machine` is called with `states`
+ * omitted: every name mentioned anywhere in `transitions`, each a union
+ * member carrying its `name` and nothing else known — so, unlike a declared
+ * state, an inferred one's extra fields read as `unknown` and accept
+ * anything written back, rather than being assumed absent. Built the same way
+ * `At` below builds a union from a mapped type: map, then immediately index.
+ *
+ * Same reasoning as `InputsFromKeys` for reading `K` rather than reverse-
+ * inferring from `initial`, and the same `RoundTrips` filter for the same
+ * reason.
+ */
+type StatesFromKeys<K extends string> = {
+	[N in RoundTrips<From<K> | To<K>>]: { readonly name: N } & Record<
+		string,
+		unknown
+	>
+}[RoundTrips<From<K> | To<K>>]
 
 /**
  * Every legal `observe()` pattern: the key grammar with the state coordinates
@@ -255,8 +290,8 @@ type InputsFromKeys<K extends string> = {
  * unlabelled arrow is the broad form — so there is no `-*>`, and a bare key,
  * which names a state, is not a pattern.
  */
-type Wildcard<S extends Vocab> = Name<S> | '*'
-type Pattern<I extends Vocab = Vocab, S extends Vocab = Vocab> =
+type Wildcard<S extends StateVocab> = StateName<S> | '*'
+type Pattern<I extends Vocab = Vocab, S extends StateVocab = StateVocab> =
 	| `${Wildcard<S>} -${Name<I>}> ${Wildcard<S>}`
 	| `${Wildcard<S>} -> ${Wildcard<S>}`
 
@@ -265,30 +300,32 @@ type Pattern<I extends Vocab = Vocab, S extends Vocab = Vocab> =
 // ---------------------------------------------------------------------------
 
 /**
- * A handler, typed from its own row: the **source** state's data and the input
- * named by the arrow's label in, the **target** state's data out.
+ * The tagged empty-object type: an optional property keyed by a module-private
+ * `unique symbol`, never populated. Used only as a handler's return type for a
+ * target that carries no payload, alongside `void` — see `Table` below.
  *
- * `Skip` rides alongside the target's data rather than replacing it, so
- * declining costs no type safety — a wrong-shaped return is still rejected on
- * a row that could also `skip()`.
+ * Chosen over an index-signature form (`Record<string, never>` and kin) on two
+ * measured grounds, both against TS 7.0.2 and both pinned in
+ * `explorations/empty-state-payload.ts`, and argued in
+ * `docs/api-rationale.md#17-the-shape-of-a-named-thing`:
  *
- * One limitation, and it is TypeScript's rather than this notation's: a handler
- * that destructures nothing — `() => ({ … })` — is not context-sensitive, so
- * the compiler types it in the same pass that infers `states:` from the sibling
- * property, before `S` is known. Its return expression therefore has no
- * contextual type and its literals widen, which a target state pinning a
- * literal field then rejects. Reading `data` or `input` defers the handler to
- * the pass after the vocabulary is known and needs no annotation; an
- * argument-free handler returning a pinned literal needs `as const` or a return
- * type. Nothing the library can express moves this: the vocabulary and the
- * table are properties of one object literal, and one is inferred from the
- * other.
+ * - **Error quality.** This form reports the value is not assignable to
+ *   `EmptyObject`. The index-signature form reports a property incompatible
+ *   with the index signature and a string literal not assignable to `never` —
+ *   machinery the caller never wrote, on what is the most common row in a
+ *   table.
+ * - **Read safety.** Reading a foreign property off a `Record`-shaped member
+ *   of a union infers `never` rather than erroring; this form errors. Not
+ *   reachable through this library's own types today, but the tagged form
+ *   does not depend on that continuing to hold.
+ *
+ * Both encodings are equally strict otherwise: both reject a fresh literal
+ * carrying extra properties, a variable of a wider object type, an
+ * interface-typed value, and a spread of a wider state; both accept `{}` and
+ * `undefined`. Costs nothing at runtime either way.
  */
-type Handler<I extends Vocab, S extends Vocab, K> = (args: {
-	readonly data: Value<S[From<K> & Name<S>]>
-	readonly input: Value<I[Label<K> & Name<I>]>
-	readonly skip: () => Skip
-}) => S[To<K> & Name<S>] | Skip
+declare const emptyObjectTag: unique symbol
+type EmptyObject = { readonly [emptyObjectTag]?: never }
 
 /**
  * The transitions table, checked row by row.
@@ -299,10 +336,55 @@ type Handler<I extends Vocab, S extends Vocab, K> = (args: {
  * through an intersected missing property, which is an object-level error and
  * would land on the whole table instead — failing the one promise the notation
  * makes about its own diagnostics.
+ *
+ * Each row's handler is typed **inline** here rather than through a separate
+ * `Handler<I, S, K>` alias parameterized over `S`: a wrong-shaped return
+ * behind such an alias reports against the whole state union
+ * (`… required in type 'Data<{ name: "empty" } | …, "review">'`); resolving
+ * the same computation inline reports against the one state the row actually
+ * targets. See `docs/api-rationale.md#17-the-shape-of-a-named-thing`.
+ *
+ * The **source** state arrives whole, tag included, under `state` — a handler
+ * shared across several rows can branch on `state.name` to tell which one it
+ * is transitioning from. The **target**'s payload is what the handler
+ * returns, with its tag left off: the library adds it back by spreading last
+ * (see `machine`'s `step`), so a handler that spreads `state` into its return
+ * cannot leave the source's tag on the committed state. A target with no
+ * payload accepts nothing or `{}` (`EmptyObject | void`, above) and rejects
+ * everything else, including a spread of a wider state. A target whose data
+ * is unknown — the row's target was never declared, only inferred from the
+ * table — accepts anything object-shaped, nothing included, matching how
+ * `StatesFromKeys` widens it.
+ *
+ * `Skip` rides alongside the target's payload rather than replacing it, so
+ * declining costs no type safety — a wrong-shaped return is still rejected on
+ * a row that could also `skip()`.
+ *
+ * One limitation, and it is TypeScript's rather than this notation's: a handler
+ * that destructures nothing — `() => ({ … })` — is not context-sensitive, so
+ * the compiler types it in the same pass that infers `states:` from the sibling
+ * property, before `S` is known. Its return expression therefore has no
+ * contextual type and its literals widen, which a target state pinning a
+ * literal field then rejects. Reading `state` or `input` defers the handler to
+ * the pass after the vocabulary is known and needs no annotation; an
+ * argument-free handler returning a pinned literal needs `as const` or a return
+ * type. Nothing the library can express moves this: the vocabulary and the
+ * table are properties of one object literal, and one is inferred from the
+ * other.
  */
-type Table<I extends Vocab, S extends Vocab, K extends string> = {
+type Table<I extends Vocab, S extends StateVocab, K extends string> = {
 	readonly [P in K]: P extends Key<I, S>
-		? Handler<I, S, P>
+		? (args: {
+				readonly state: Extract<S, { name: From<P> }>
+				readonly input: Value<I[Label<P> & Name<I>]>
+				readonly skip: () => Skip
+			}) =>
+				| (keyof Omit<Extract<S, { name: To<P> }>, 'name'> extends never
+						? EmptyObject | void
+						: string extends keyof Omit<Extract<S, { name: To<P> }>, 'name'>
+							? Omit<Extract<S, { name: To<P> }>, 'name'> | void
+							: Omit<Extract<S, { name: To<P> }>, 'name'>)
+				| Skip
 		: `not a transition: '${P}'`
 }
 
@@ -311,22 +393,16 @@ type Table<I extends Vocab, S extends Vocab, K extends string> = {
 // ---------------------------------------------------------------------------
 
 /**
- * The states in `N`, each paired with its own data, as a union discriminated by
- * `state`. Mapping and immediately indexing is what builds the union: an
- * interface with both fields could only intersect them.
- */
-type At<S extends Vocab, N extends string> = {
-	[K in N & Name<S>]: { readonly state: K; readonly data: Value<S[K]> }
-}[N & Name<S>]
-
-/**
- * A state and the data it carries. Discriminated by `state`, which is what
- * makes narrowing the state narrow its data, with no nullable padding on the
- * states that guarantee a field.
+ * The members of `S` named `N`, narrowed by `Extract` on the tag `S` is
+ * already discriminated by. `current`, and each end of a transition record,
+ * are values of this — there is no wrapper pairing a name with a separate
+ * data bag, and nothing to keep in sync: narrowing the tag narrows the whole
+ * object, fields included, with no nullable padding on a field every member
+ * of `N` guarantees.
  *
  * Never mutated: a value read from `current` stays valid.
  */
-type Snapshot<S extends Vocab = Vocab> = At<S, Name<S>>
+type At<S extends StateVocab, N extends string> = Extract<S, { name: N }>
 
 /**
  * What a pattern leaves open, resolved against what the vocabulary declares.
@@ -354,29 +430,29 @@ type Select<Coordinate extends string, All extends string> = [
  */
 type Transition<
 	I extends Vocab = Vocab,
-	S extends Vocab = Vocab,
+	S extends StateVocab = StateVocab,
 	P extends string = '* -> *',
 > =
 	| {
 			[N in Select<Label<P>, Name<I>>]: {
 				readonly on: N
 				readonly input: Value<I[N]>
-				readonly from: At<S, Select<From<P>, Name<S>>>
-				readonly to: At<S, Select<To<P>, Name<S>>>
+				readonly from: At<S, Select<From<P>, StateName<S>>>
+				readonly to: At<S, Select<To<P>, StateName<S>>>
 			}
 	  }[Select<Label<P>, Name<I>>]
 	| ([Label<P>] extends ['']
 			? {
 					readonly on: undefined
 					readonly input: undefined
-					readonly from: At<S, Select<From<P>, Name<S>>>
-					readonly to: At<S, Select<To<P>, Name<S>>>
+					readonly from: At<S, Select<From<P>, StateName<S>>>
+					readonly to: At<S, Select<To<P>, StateName<S>>>
 				}
 			: never)
 
 type Listener<
 	I extends Vocab = Vocab,
-	S extends Vocab = Vocab,
+	S extends StateVocab = StateVocab,
 	P extends string = '* -> *',
 > = (transition: Transition<I, S, P>) => void
 
@@ -397,18 +473,25 @@ type Dispatch<I extends Vocab> = {
 			: [name: N, payload: I[N]]
 }[Name<I>]
 
-/** `start`'s arity follows the initial state's data, by the same rule. */
-type Start<S extends Vocab, Init extends string> = [S[Init & Name<S>]] extends [
-	void,
-]
+/**
+ * `start`'s arity follows the initial state's payload, minus its tag, by the
+ * same three-way rule as a handler's return in `Table`: no payload takes no
+ * argument, an inferred (`StatesFromKeys`) payload takes an optional one, a
+ * declared payload requires one. The initial state named in the definition is
+ * the only place that data can come from, so `start` cannot disagree with it.
+ */
+type Start<S extends StateVocab, Init extends string> = keyof Omit<
+	Extract<S, { name: Init }>,
+	'name'
+> extends never
 	? []
-	: unknown extends S[Init & Name<S>]
-		? [data?: S[Init & Name<S>]]
-		: [data: S[Init & Name<S>]]
+	: string extends keyof Omit<Extract<S, { name: Init }>, 'name'>
+		? [data?: Omit<Extract<S, { name: Init }>, 'name'>]
+		: [data: Omit<Extract<S, { name: Init }>, 'name'>]
 
 /** A running machine: the only mutable thing in the design. */
-interface Host<I extends Vocab = Vocab, S extends Vocab = Vocab> {
-	readonly current: Snapshot<S>
+interface Host<I extends Vocab = Vocab, S extends StateVocab = StateVocab> {
+	readonly current: S
 	readonly send: (...args: Dispatch<I>) => void
 	// Generic in the pattern, so the record the listener receives is narrowed by
 	// the pattern that selected it rather than being the whole union every time.
@@ -425,14 +508,14 @@ interface Host<I extends Vocab = Vocab, S extends Vocab = Vocab> {
  * what keeps the three parameters inferable together.
  */
 declare const vocabulary: unique symbol
-interface Vocabulary<I extends Vocab, S extends Vocab, K extends string> {
+interface Vocabulary<I extends Vocab, S extends StateVocab, K extends string> {
 	readonly [vocabulary]?: (declared: readonly [I, S, K]) => void
 }
 
 /** A declared machine. Inert, shareable, and never mutated by running one. */
 interface Machine<
 	I extends Vocab = Vocab,
-	S extends Vocab = Vocab,
+	S extends StateVocab = StateVocab,
 	K extends string = string,
 	Init extends string = string,
 > extends Vocabulary<I, S, K> {
@@ -487,9 +570,9 @@ export type Sources<M, S extends string> = From<
  */
 type Data = any
 
-/** A handler as the runtime calls it: data and payload in, data or the sentinel out. */
+/** A handler as the runtime calls it: source state and input payload in, target payload or the sentinel out. */
 type Call = (args: {
-	readonly data: Data
+	readonly state: Data
 	readonly input: Data
 	readonly skip: () => Skip
 }) => Data | Skip
@@ -503,7 +586,7 @@ type Row = readonly [to: string, handler: Call]
  * handles. The two are reconciled by the single cast in `machine`.
  */
 interface RawHost {
-	readonly current: Snapshot
+	readonly current: Data
 	readonly send: (name: string, payload?: unknown) => void
 	readonly observe: (pattern: string, listener: Listener) => () => void
 }
@@ -594,12 +677,32 @@ let draining = false
  * reopening that inference, which is what lets `start` follow that one
  * state's data.
  *
- * `RawI`/`RawS` are what `inputs`/`states` actually infer to, and `Declared`
- * resolves each to the default the moment it is `undefined`. Kept separate
- * from `I`/`S` — the resolved vocabularies used everywhere else in this
- * signature — because collapsing the two back into one parameter each,
- * constrained to bare `Vocab` with a default, is the version that fails: see
- * `Declared`.
+ * `RawI` is what `inputs` actually infers to, and `Declared` resolves it to
+ * the default the moment it is `undefined`. `I` stays a parameter of its own
+ * — the resolved input vocabulary used everywhere else in this signature —
+ * because collapsing it with `RawI` into one parameter, constrained to bare
+ * `Vocab` with a default, is the version that fails: see `Declared`.
+ *
+ * `S` gets no `RawS`/`Declared` pair at all, and this is **two overloads**
+ * rather than one signature with `states` optional — both load-bearing.
+ * Measured against TS 7.0.2: a defaulted `S` here — `S extends StateVocab =
+ * Declared<RawS, StatesFromKeys<K>>`, or the same formula substituted inline
+ * at each site instead — sitting alongside `Table`'s own `P extends Key<I,
+ * S> ? … : …`, resolves every row's `Extract<S, { name: … }>` against a
+ * stale, prematurely-`never` reading of `S` and poisons every row with `not
+ * a transition: '…'` even though the row is well formed, **exactly when**
+ * `S` is `StatesFromKeys<K>` — a checker bug specific to a state vocabulary
+ * self-referentially derived from the same `K` that indexes `Table`'s own
+ * conditional, not anything this signature does with `S` semantically. A
+ * declared `S`, independent of `K`, never triggers it — see
+ * `docs/api-rationale.md#17-the-shape-of-a-named-thing`. Splitting the two
+ * cases into separate overloads keeps `RawS` out of any signature where `S`
+ * is `StatesFromKeys<K>`, which is what avoids it: the first overload's `S`
+ * is always `StatesFromKeys<K>` and carries no `states` key beyond `undefined`;
+ * the second's `S` is a genuine inferred parameter and `states` is required
+ * (as `S | undefined`, so the marker's return type still satisfies it). `I`
+ * needs no such split: `Table` only ever reads it through a plain indexed
+ * access, not `Extract`.
  *
  * `K` is the table's keys, inferred from the mapped type in `transitions`
  * because a mapped type over a bare type parameter infers its own key set.
@@ -613,11 +716,21 @@ export function machine<
 	Init extends string,
 	K extends string,
 	RawI extends Vocab | undefined = undefined,
-	RawS extends Vocab | undefined = undefined,
 	I extends Vocab = Declared<RawI, InputsFromKeys<K>>,
-	S extends Vocab = Declared<RawS, StatesFromKeys<K>>,
 >(definition: {
-	readonly initial: Init & Name<NoInfer<S>>
+	readonly initial: Init & StateName<NoInfer<StatesFromKeys<K>>>
+	readonly inputs?: RawI | undefined
+	readonly states?: undefined
+	readonly transitions: Table<I, StatesFromKeys<K>, K>
+}): Machine<I, StatesFromKeys<K>, K, Init>
+export function machine<
+	Init extends string,
+	K extends string,
+	S extends StateVocab,
+	RawI extends Vocab | undefined = undefined,
+	I extends Vocab = Declared<RawI, InputsFromKeys<K>>,
+>(definition: {
+	readonly initial: Init & StateName<NoInfer<S>>
 	// `| undefined` is what `types()` returns, and inference subtracts it: the
 	// vocabulary lands as `RawI` rather than `RawI | undefined`, so nothing
 	// downstream carries an undefined it would have to strip again. Spelled
@@ -625,9 +738,17 @@ export function machine<
 	// makes those two different: omitting the key is not the same as writing
 	// `inputs: undefined`, and the marker's return type has to satisfy both.
 	readonly inputs?: RawI | undefined
-	readonly states?: RawS | undefined
+	readonly states: S | undefined
 	readonly transitions: Table<I, S, K>
-}): Machine<I, S, K, Init> {
+}): Machine<I, S, K, Init>
+// The implementation signature, never seen by a caller — only the two
+// overloads above are. `any` rather than a structural type: a row's value in
+// either overload's `Table<I, S, K>` can itself be the poison string literal
+// `not a transition: '…'`, which is not a `Call`, so no non-`any` parameter
+// type is a valid implementation of both overloads at once. Narrowed back
+// immediately below, the same way the rest of this function already treats
+// its own inputs as `Data`.
+export function machine(definition: any): any {
 	const { initial, transitions } = definition as unknown as {
 		readonly initial: string
 		readonly transitions: Readonly<Record<string, Call>>
@@ -654,19 +775,19 @@ export function machine<
 	// two agree on every runtime detail and differ only in what the compiler
 	// will let a caller pass, which is the whole point of the layer above.
 	return {
-		start: (data?: unknown): RawHost => {
-			// Host state lives in closure variables read back through getters,
-			// rather than on a plain object with assigned properties that `send`
+		start: (data?: Data): RawHost => {
+			// Host state lives in a closure variable read back through a getter,
+			// rather than on a plain object with an assigned property that `send`
 			// reaches back into and mutates. Measured against the real toolchain:
-			// assigned properties come out 6 B brotli larger (47 raw, 10 gzip) —
-			// mutating two properties on a bound `host` object costs more than a
-			// getter closing over a local, and the getter needs no extra identifier
-			// for the object itself. `current` is a `state`/`data` pair rather than
-			// two separate variables: a transition record needs both ends as
-			// `{ state, data }`, so keeping the pair already boxed hands `from` and
-			// `to` over as references instead of building two more objects per
-			// commit.
-			let current: Snapshot = { state: initial, data }
+			// an assigned property comes out larger — mutating a bound `host`
+			// object costs more than a getter closing over a local, and the getter
+			// needs no extra identifier for the object itself. `current` is
+			// already the whole tagged state object — the library adds the tag by
+			// spreading it last, so a spread of the source state into a handler's
+			// return cannot leave the wrong tag on the new one — which is what
+			// hands `from` and `to` over as references instead of building two
+			// more objects per commit.
+			let current: Data = { ...data, name: initial }
 
 			// Copy-on-write at registration, plain iteration at dispatch. Rejected:
 			// a mutable list mutated with `.push()`/`.splice()` at registration and
@@ -699,19 +820,21 @@ export function machine<
 			// measured 49 B brotli larger than this.
 			const step = (rows: Row[] = [], on?: string, input?: Data): boolean => {
 				for (const [to, handler] of rows) {
-					const data = handler({ data: current.data, input, skip })
+					const payload = handler({ state: current, input, skip })
 					// Declining is an ordinary, silent outcome: fall through to the
 					// next row declared for the same source and input.
-					if (data === SKIP) continue
+					if (payload === SKIP) continue
 
 					// Commit, then notify — so every listener sees a machine that
-					// agrees with the record it was handed.
+					// agrees with the record it was handed. The tag is spread last,
+					// so a handler that spread the source state into its return
+					// cannot leave the source's tag on the committed state.
 					const from = current
-					current = { state: to, data }
+					current = { ...payload, name: to }
 					const record: Transition = { on, input, from, to: current }
 					for (const [f, l, t, listener] of listeners) {
 						if (
-							(f === '*' || f === from.state) &&
+							(f === '*' || f === from.name) &&
 							(l === '' || l === on) &&
 							(t === '*' || t === to)
 						) {
@@ -733,10 +856,10 @@ export function machine<
 			// carry over into the first `send`.
 			const settle = (): void => {
 				let hops = 0
-				while (step(immediates[current.state])) {
+				while (step(immediates[current.name])) {
 					if (hops++ >= 1e5) {
 						throw new RangeError(
-							`maximum transitions reached in '${current.state}'`,
+							`maximum transitions reached in '${current.name}'`,
 						)
 					}
 				}
@@ -744,7 +867,7 @@ export function machine<
 			settle()
 
 			return {
-				get current(): Snapshot {
+				get current(): Data {
 					return current
 				},
 
@@ -770,7 +893,7 @@ export function machine<
 					queue.push(() => {
 						// Evaluated against the state at drain time, so a queued send may
 						// correctly find no row and do nothing.
-						if (step(index[current.state]?.[name], name, payload)) settle()
+						if (step(index[current.name]?.[name], name, payload)) settle()
 					})
 					// Already inside a dispatch, somewhere: this call was made from a
 					// listener, so it waits its turn rather than running nested. The
@@ -791,7 +914,7 @@ export function machine<
 				},
 			}
 		},
-	} as unknown as Machine<I, S, K, Init>
+	} as unknown
 }
 
 /** A pattern parsed into its three coordinates, with the listener alongside. */

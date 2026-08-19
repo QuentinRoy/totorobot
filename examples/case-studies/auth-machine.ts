@@ -18,11 +18,15 @@ type Inputs = {
 	fail: { reason: string }
 }
 
-type States = {
-	idle: { error: string | null; attempts: number }
-	authenticating: { username: string; password: string; attempts: number }
-	authenticated: { username: string; token: string }
-}
+type States =
+	| { name: 'idle'; error: string | null; attempts: number }
+	| {
+			name: 'authenticating'
+			username: string
+			password: string
+			attempts: number
+	  }
+	| { name: 'authenticated'; username: string; token: string }
 
 export const authMachine = machine({
 	initial: 'idle',
@@ -32,23 +36,23 @@ export const authMachine = machine({
 	transitions: {
 		// A blank username is not an attempt: the row declines, so nothing
 		// changes and no listener fires. Declining is an ordinary outcome.
-		'idle -login> authenticating': ({ data, input, skip }) =>
+		'idle -login> authenticating': ({ state, input, skip }) =>
 			input.username.trim()
 				? {
 						username: input.username,
 						password: input.password,
-						attempts: data.attempts + 1,
+						attempts: state.attempts + 1,
 					}
 				: skip(),
 
-		'authenticating -succeed> authenticated': ({ data, input }) => ({
-			username: data.username,
+		'authenticating -succeed> authenticated': ({ state, input }) => ({
+			username: state.username,
 			token: input.token,
 		}),
 
-		'authenticating -fail> idle': ({ data, input }) => ({
+		'authenticating -fail> idle': ({ state, input }) => ({
 			error: input.reason,
-			attempts: data.attempts,
+			attempts: state.attempts,
 		}),
 	},
 })
@@ -77,7 +81,7 @@ export async function signIn(
 	credentials: Credentials,
 ): Promise<void> {
 	host.send('login', credentials)
-	if (host.current.state !== 'authenticating') return
+	if (host.current.name !== 'authenticating') return
 	try {
 		host.send('succeed', await fakeLogin(credentials))
 	} catch (error) {

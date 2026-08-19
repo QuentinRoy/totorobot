@@ -14,8 +14,9 @@ describe('sending', () => {
 		host.send('open', { text: 'hello' })
 
 		expect(host.current).toEqual({
-			state: 'draft',
-			data: { text: 'hello', revision: 0 },
+			name: 'draft',
+			text: 'hello',
+			revision: 0,
 		})
 		expect(broad).toEqual(['broad'])
 		expect(narrow).toEqual(['narrow'])
@@ -54,7 +55,9 @@ describe('sending', () => {
 		const priority = machine({
 			initial: 'start',
 			inputs: types<{ go: void }>(),
-			states: types<{ start: void; first: void; second: void }>(),
+			states: types<
+				{ name: 'start' } | { name: 'first' } | { name: 'second' }
+			>(),
 			transitions: {
 				// Neither row ever declines, so declaration order alone decides —
 				// 'second' is unreachable.
@@ -66,7 +69,7 @@ describe('sending', () => {
 		const host = priority.start()
 		host.send('go')
 
-		expect(host.current).toEqual({ state: 'first', data: undefined })
+		expect(host.current).toEqual({ name: 'first' })
 	})
 
 	test('a guarded row that declines falls through to the next row for the same input', () => {
@@ -78,8 +81,9 @@ describe('sending', () => {
 		host.send('submit', { route: 'publish' })
 
 		expect(host.current).toEqual({
-			state: 'published',
-			data: { text: 'hello', revision: 0 },
+			name: 'published',
+			text: 'hello',
+			revision: 0,
 		})
 	})
 
@@ -97,12 +101,13 @@ describe('sending', () => {
 		expect(event).toEqual({
 			on: 'revise',
 			input: { text: 'goodbye' },
-			from: { state: 'draft', data: { text: 'hello', revision: 0 } },
-			to: { state: 'draft', data: { text: 'goodbye', revision: 1 } },
+			from: { name: 'draft', text: 'hello', revision: 0 },
+			to: { name: 'draft', text: 'goodbye', revision: 1 },
 		})
 		expect(host.current).toEqual({
-			state: 'draft',
-			data: { text: 'goodbye', revision: 1 },
+			name: 'draft',
+			text: 'goodbye',
+			revision: 1,
 		})
 	})
 
@@ -111,15 +116,15 @@ describe('sending', () => {
 		const probe = machine({
 			initial: 'ready',
 			inputs: types<{ act: { n: number }; ping: void }>(),
-			states: types<{ ready: { count: number } }>(),
+			states: types<{ name: 'ready'; count: number }>(),
 			transitions: {
-				'ready -act> ready': ({ data, input }) => {
-					received.push([data, input])
-					return { count: data.count + input.n }
+				'ready -act> ready': ({ state, input }) => {
+					received.push([state, input])
+					return { count: state.count + input.n }
 				},
-				'ready -ping> ready': ({ data, input }) => {
-					received.push([data, input])
-					return data
+				'ready -ping> ready': ({ state, input }) => {
+					received.push([state, input])
+					return { ...state }
 				},
 			},
 		})
@@ -129,18 +134,18 @@ describe('sending', () => {
 		host.send('ping')
 
 		expect(received).toEqual([
-			[{ count: 1 }, { n: 2 }],
-			[{ count: 3 }, undefined],
+			[{ name: 'ready', count: 1 }, { n: 2 }],
+			[{ name: 'ready', count: 3 }, undefined],
 		])
 	})
 
-	test('a handler whose target is void returns nothing', () => {
+	test('a handler whose target carries no payload returns nothing', () => {
 		const host = editor.start()
 		host.send('open', { text: 'hello' })
 
 		host.send('lock')
 
-		expect(host.current).toEqual({ state: 'locked', data: undefined })
+		expect(host.current).toEqual({ name: 'locked' })
 	})
 
 	test('send returns undefined, always', () => {
@@ -157,11 +162,11 @@ describe('sending', () => {
 			const relay = machine({
 				initial: 'draft',
 				inputs: types<{ submit: void }>(),
-				states: types<{
-					draft: void
-					checking: void
-					settled: { via: string }
-				}>(),
+				states: types<
+					| { name: 'draft' }
+					| { name: 'checking' }
+					| { name: 'settled'; via: string }
+				>(),
 				transitions: {
 					'draft -submit> checking': () => {},
 					'checking -> settled': () => ({ via: 'immediate' }),
@@ -172,8 +177,8 @@ describe('sending', () => {
 			host.send('submit')
 
 			expect(host.current).toEqual({
-				state: 'settled',
-				data: { via: 'immediate' },
+				name: 'settled',
+				via: 'immediate',
 			})
 		})
 
@@ -181,27 +186,27 @@ describe('sending', () => {
 			const allowed = gate.start()
 			allowed.send('submit', { quota: 3 })
 			expect(allowed.current).toEqual({
-				state: 'allowed',
-				data: { quota: 3 },
+				name: 'allowed',
+				quota: 3,
 			})
 
 			const denied = gate.start()
 			denied.send('submit', { quota: 0 })
-			expect(denied.current).toEqual({ state: 'denied', data: { quota: 0 } })
+			expect(denied.current).toEqual({ name: 'denied', quota: 0 })
 		})
 
 		test('a state whose immediate rows all skip stays put', () => {
 			const host = pending.start()
 			host.send('submit', { quota: 0 })
 
-			expect(host.current).toEqual({ state: 'checking', data: { quota: 0 } })
+			expect(host.current).toEqual({ name: 'checking', quota: 0 })
 		})
 
 		test('a chain of several immediate hops settles fully before send returns', () => {
 			const host = chain.start()
 			host.send('go')
 
-			expect(host.current).toEqual({ state: 'd', data: undefined })
+			expect(host.current).toEqual({ name: 'd' })
 		})
 	})
 

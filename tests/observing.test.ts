@@ -47,7 +47,7 @@ describe('observing', () => {
 		const fork = machine({
 			initial: 'a',
 			inputs: types<{ x: void; y: void }>(),
-			states: types<{ a: void; b: void; c: void }>(),
+			states: types<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
 			transitions: {
 				'a -x> b': () => {},
 				'a -y> c': () => {},
@@ -113,20 +113,20 @@ describe('observing', () => {
 			{
 				on: 'submit',
 				input: { quota: 1 },
-				from: { state: 'draft', data: undefined },
-				to: { state: 'checking', data: { quota: 1 } },
+				from: { name: 'draft' },
+				to: { name: 'checking', quota: 1 },
 			},
 			{
 				on: undefined,
 				input: undefined,
-				from: { state: 'checking', data: { quota: 1 } },
-				to: { state: 'allowed', data: { quota: 1 } },
+				from: { name: 'checking', quota: 1 },
+				to: { name: 'allowed', quota: 1 },
 			},
 			{
 				on: 'reset',
 				input: undefined,
-				from: { state: 'allowed', data: { quota: 1 } },
-				to: { state: 'draft', data: undefined },
+				from: { name: 'allowed', quota: 1 },
+				to: { name: 'draft' },
 			},
 		])
 	})
@@ -152,8 +152,8 @@ describe('observing', () => {
 		const seen: { to: string; agreesWithCurrent: boolean }[] = []
 		host.observe('* -> *', (e) => {
 			seen.push({
-				to: e.to.state,
-				agreesWithCurrent: e.to.state === host.current.state,
+				to: e.to.name,
+				agreesWithCurrent: e.to.name === host.current.name,
 			})
 		})
 
@@ -186,7 +186,7 @@ describe('observing', () => {
 		const pinger = machine({
 			initial: 'idle',
 			inputs: types<{ ping: void }>(),
-			states: types<{ idle: void }>(),
+			states: types<{ name: 'idle' }>(),
 			transitions: {
 				'idle -ping> idle': () => {},
 			},
