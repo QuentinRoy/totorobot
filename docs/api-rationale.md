@@ -2899,69 +2899,23 @@ either encoding** — only `{}` accepts one, which is the hole this closes. Spre
 a state that carries nothing is a mistake or a no-op, and the honest spellings — nothing,
 or `{}` — are accepted.
 
-### Why the handler's `state` parameter is wrapped in `NoInfer`
+### Why the handler's `state` parameter uses `NoInfer`
 
-Building the state union produced a failure that looked like a compiler bug and was not
-one. It is recorded here with its false diagnosis intact, because the wrong conclusion
-was expensive and the right one is a single word in the source.
+The initial failure looked like a self-referential `S`/`K` problem: every row was reported as `not a transition`. That diagnosis was wrong.
 
-**The symptom.** Every row of a table is poisoned with `not a transition: '…'` — the
-type layer's own diagnostic for a malformed key — including rows that are perfectly well
-formed. It appears when the state vocabulary is inferred from the table's own keys (the
-untyped path) and at least one handler destructures its arguments.
+The actual issue is that `state: Extract<S, ...>` is an inference site. When a handler destructures its argument, TypeScript infers `S` from the table, competing with the `states` property. `S` becomes incorrect, `Key<I, S>` collapses, and every row fails.
 
-**The false diagnosis.** The obvious reading is that `S` is self-referentially derived
-from the same `K` that indexes `Table`'s own `P extends Key<I, S> ? … : …`, and that the
-checker resolves `Extract<S, { name: … }>` against a premature reading of `S`. That
-story fits the evidence, survives a long list of failed workarounds — the formula
-inlined rather than defaulted, a named alias over the `Extract`s, a precomputed
-`ByName<S>` map, a componentwise key check — and is wrong. Two things should have
-undermined it earlier: the handler's parameters were resolved **correctly** in the very
-error message complaining the row was not a transition (so `Extract` was fine, and only
-the `P extends Key<I, S>` gate had failed), and a declared vocabulary broke too, which
-"self-referential with `K`" does not explain.
+The fix is:
 
-**The actual cause.** `Table` puts `S` in a handler **parameter** — `state: Extract<S, {
-name: From<P> }>` — which is an inference site. A context-sensitive handler (one that
-destructures its argument) makes the compiler infer `S` _contravariantly, from the
-table_, in competition with the `states` property that is supposed to be its only
-source. `S` lands on garbage, `Key<I, S>` collapses, and every row fails the gate. The
-one-word fix is to stop that site from being an inference site:
-
-```ts
+```ts id="j6y5s"
 readonly state: NoInfer<Extract<S, { name: From<P> }>>
 ```
 
-`states` remains the sole inference site, and both paths — declared and inferred —
-resolve correctly. `NoInfer` around the _whole_ vocabulary (`Table<I, NoInfer<…>, K>`)
-is too blunt and turns every declared `state` into `never`; the wrapper belongs on the
-parameter, not on the type argument.
+`states` is then the sole inference site. `NoInfer` belongs on the parameter, not on `S` itself.
 
-**Why this matters beyond the one word: overloads are worse, and this file already said
-so.** The diagnosis-by-symptom led to splitting `machine` into two overloads, one per
-path, which does avoid the failure — neither signature alone contains the combination —
-and costs exactly what ["An overload per combination was tried and is
-worse"](#5-the-declared-vocabulary) already recorded in §5. Overload resolution
-reports `No overload matches this call` against the call expression and elaborates only
-the _last_ overload, so a malformed row is reported on `machine({` rather than on the
-row, a bad `initial` surfaces as a missing `states` property, and a table carrying two
-malformed rows names only one of them — which forced the tests into one-bad-row-per-call
-tables and `@ts-expect-error` directives moved off the lines they describe. With the
-single signature restored, each lands on its own row again, and both of two malformed
-rows are reported separately. The overloads are gone.
+Overloads were considered as a workaround, but produce much worse diagnostics: errors move from individual rows to `machine({` and multiple bad rows collapse into one. The single signature with `NoInfer` preserves per-row errors.
 
-**What closing that site bought.** With the handler parameter no longer competing for
-`S`, the state half takes exactly the same `RawS`/`Declared` pair the input half already
-had — the two are symmetric in the signature, and the extra machinery the wrong
-diagnosis seemed to demand is simply gone. Two alternatives were built and rejected on
-the way, both worth knowing because each looks reasonable until it is run: inferring `S`
-directly from `states` with a plain default cannot tell an explicit `states: undefined`
-from an omitted one, because the explicit write is an _invalid_ inference candidate
-rather than an absent one and TypeScript falls back to the **constraint** rather than to
-the default — the very trap `Declared` exists to spring for `inputs`. And constraining
-`S` to `StatesFromKeys<K>`, so the constraint _is_ the fallback, makes that constraint
-reject a state declared through an `interface` (no implicit index signature) and any
-state declared but never mentioned in a key.
+This also makes the state side symmetric with the existing `RawS`/`Declared` input handling. Other approaches, such as a plain default or constraining `S` to `StatesFromKeys<K>`, fail for `states: undefined`, interface-based vocabularies, or unused declared states.
 
 ## Where the code is
 
