@@ -8,6 +8,15 @@
 > listeners on the host — including immediate transitions, which fire on entering a
 > state rather than on an input. `actions` and composition are argued but deferred, and
 > neither is promised — see [Designed, not in v1](#designed-not-in-v1).
+>
+> **Two parts of this document are already decided against.** The vocabulary's shape and
+> the transition record both change before v1 tags, as a consequence of settling the
+> composition boundary. `observe`'s name already reflects that decision — it replaced
+> `.on` for the same reason, argued in
+> [rationale §12](api-rationale.md#observation-observe-on-the-host-with-patterns) — and
+> `.on` stays unclaimed for the later output channel below. What is written below is
+> what `src/` implements today; what else replaces it is in
+> [Changing before v1](#changing-before-v1).
 
 ## The whole thing at a glance
 
@@ -49,7 +58,7 @@ export const publication = machine({
 })
 
 const doc = publication.start()
-doc.on('* -> published', (e) => notify(e.to.data))
+doc.observe('* -> published', (e) => notify(e.to.data))
 doc.send('open', { text: 'hello' })
 ```
 
@@ -59,7 +68,7 @@ doc.send('open', { text: 'hello' })
 | `inputs`      | what can happen                       |
 | `states`      | what we can be                        |
 | `transitions` | how we move, and what the new data is |
-| `.on()`       | what the outside world does about it  |
+| `observe()`   | what the outside world does about it  |
 
 ## The surface
 
@@ -71,9 +80,8 @@ Everything the package exports, and everything a host has:
 | `types<T>()`                                                | a declaration carrying `T`; returns `undefined` at runtime |
 | `definition.start(data?)`                                   | a **host** — the only mutable object in the design         |
 | `host.current`                                              | `{ state, data }`                                          |
-| `host.available`                                            | the input names the current state handles                  |
 | `host.send(name, payload?)`                                 | a dispatch; returns nothing                                |
-| `host.on(pattern, listener)`                                | a subscription; returns an unsubscribe function            |
+| `host.observe(pattern, listener)`                           | a subscription; returns an unsubscribe function            |
 | a handler's `{ data, input, skip }`                         | source data, the input payload, and the way to decline     |
 | `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>` | derived types, over `M = typeof publication`               |
 
@@ -109,7 +117,18 @@ carries stays `unknown`, since nothing declares it — and **the key grammar sti
 enforced**, a malformed key a compile error whether or not a vocabulary was declared.
 Declaring one map and not the other is supported and checks that half while the other's
 names are still read off the table. This is a guarantee, not an accident: see
-[observable behaviour](#observable-behaviour) items 32–35.
+[observable behaviour](#observable-behaviour) items 35–38.
+
+**An inferred name has to be one a key can round-trip.** `*` and a name padded by a
+leading or trailing space are excluded from what an omitted map infers — not because
+either is a bad name, but because neither survives being written back into a key:
+`*` is already how a pattern spells "any state," and a leading or trailing space is the
+grammar's own delimiter, so `'a -x>  b'` does not fail to parse, it quietly mints a
+state no other key can spell the same way twice. A key that mints one is rejected on its
+own row, `not a transition: '…'`, the same as any other unknown name. **A declared
+vocabulary is untouched** — `types<{ '*': void }>()` or `types<{ ' b': void }>()` still
+work, since declaring an odd name by hand is deliberate in a way a doubled space in a key
+never is.
 
 _Why declared, what it closed, and what it costs:_
 [rationale §5](api-rationale.md#5-the-declared-vocabulary).
@@ -132,12 +151,18 @@ The input is the arrow's **label**. Two rules:
   every row.
 - **A key with no `->` names a state. An edge always contains an arrow.** So the two
   halves of the grammar are decidable from the string alone. A bare key is invalid in
-  `transitions` and in `.on()` — it is reserved for residency, which is what
+  `transitions` and in `observe()` — it is reserved for residency, which is what
   [`actions`](#designed-not-in-v1) would use.
 - **An arrow with no label is an [immediate transition](#immediate-transitions-an-edge-with-no-input)** —
   `'checking -> allowed'` rather than `'checking -input> allowed'`. Declaring one says
   the edge has no input at all, which is different from a pattern's unlabelled arrow,
   where the same absence means the input is unconstrained.
+
+**The grammar is also enforced at runtime.** `machine()` throws `SyntaxError` for a
+malformed key and `observe()` throws the same way for a malformed pattern, naming the
+offending string — see [observable behaviour](#observable-behaviour) items 1 and 22.
+This is what catches a typo in plain JavaScript, where nothing else checks the shape of
+what was written.
 
 _Why this notation, and the spellings it rejects:_
 [rationale §4](api-rationale.md#adopted-the-label-on-the-arrow).
@@ -162,8 +187,7 @@ That is how one input reaches two states —
 — and **declaration order is priority order**. If every candidate skips, the machine
 declines the input: nothing changes, and no listener fires. That is a normal outcome
 rather than a fault — the `revise` row above declines an unchanged text on purpose — and
-nothing reports it. `available` is how you know in advance which inputs a state answers
-to at all.
+nothing reports it.
 
 ### Self-transitions are ordinary transitions
 
@@ -190,7 +214,7 @@ rows and continues on to `allowed` or `denied` without anyone sending anything.
 `skip()` falls through to the next candidate, exactly as on an input-driven row — a
 guarded choice needs no new concept, no `cond`, no junction pseudostate. If every
 candidate skips, the machine stays in `checking`, and `checking`'s input rows stay
-live and advertised: "the condition is not met yet" needs nothing invented.
+live: "the condition is not met yet" needs nothing invented.
 
 **Chains settle before anything else runs.** Landing somewhere that itself has
 immediate rows continues the chain, hop after hop — each one committing and notifying
@@ -252,7 +276,6 @@ const doc = publication.start() // `empty` is void, so no argument
 doc.send('open', { text: 'hello' })
 
 doc.current // { state: 'draft', data: { text: 'hello', revision: 0 } }
-doc.available // readonly ['revise', 'submit', 'cancel']
 ```
 
 One host per independent use — two hosts over one definition share no state and no
@@ -265,15 +288,6 @@ listeners, and neither mutates the definition.
   transitions**, which is what makes it safe to compare, serialise, or hold in
   component state. Nothing is frozen, though: immutability is `readonly` in the types
   plus a promise not to mutate, not a runtime guard.
-- **`available`** is the input names the current state handles, in the table's
-  declaration order, without duplicates — one `'submit'` even though two rows carry it.
-  This is what UI code needs to render buttons, and it is the runtime half of per-state
-  capabilities.
-  **It is derived from the table, not from running handlers**, so an input whose every
-  candidate row would `skip()` is still listed. Deciding otherwise would mean evaluating
-  handlers, which needs a payload `available` does not have — and would run them for
-  their answer without committing it. `available` therefore says which inputs the state
-  has rows for, not which will commit.
 
 ### Sending
 
@@ -293,14 +307,13 @@ the send. This widens a property sending already has within a single host — a 
 from a listener into its own host is exactly as stale — rather than introducing a new
 one.
 
-**`send` returns nothing.** What happened is `doc.current`; what would have been
-accepted is `available`, consulted before sending rather than reported after.
+**`send` returns nothing.** What happened is `doc.current`.
 
 **There is no typed send site**: `doc.send('decide', …)` compiles in `draft` and does
-nothing at runtime. Per-state capabilities are advertised at runtime and not enforced
-by the compiler. This is a deliberate drop — the narrow-then-send shape is unsound in
-TypeScript ([finding 11](api-rationale.md#13-type-system-findings)) — and a sound
-variant stays addable later without breaking anything
+nothing at runtime. Per-state capabilities are not enforced by the compiler. This is a
+deliberate drop — the narrow-then-send shape is unsound in TypeScript
+([finding 11](api-rationale.md#13-type-system-findings)) — and a sound variant stays
+addable later without breaking anything
 ([rationale §11](api-rationale.md#11-sending-inputs)).
 
 **Per-state _data_ is unaffected** — narrow `current` and the data narrows with it,
@@ -313,14 +326,14 @@ if (now.state === 'draft') {
 }
 ```
 
-### `.on()` — observing transitions
+### `observe()` — observing transitions
 
 ```ts
-const off = doc.on('* -> published', (e) => notify(e.to.data))
-doc.on('draft -cancel> *', () => track('cancelled'))
+const off = doc.observe('* -> published', (e) => notify(e.to.data))
+doc.observe('draft -cancel> *', () => track('cancelled'))
 ```
 
-**On the host, never the definition** — an imported definition is inert. `.on()` returns
+**On the host, never the definition** — an imported definition is inert. `observe()` returns
 an unsubscribe function.
 
 **The handler receives the transition record**, `{ on, input, from, to }`, discriminated
@@ -341,11 +354,11 @@ There is no `-*>`: `*` appears only in state positions, so the input coordinate 
 either a name or absent. The unlabelled form is the broad one — it matches
 input-driven edges **and**
 [immediate transitions](#immediate-transitions-an-edge-with-no-input), which have no
-input at all. A bare key is not legal: `doc.on('draft', fn)` names a state, and states
+input at all. A bare key is not legal: `doc.observe('draft', fn)` names a state, and states
 mean residency.
 
 _Why patterns and a record rather than a snapshot:_
-[rationale §12](api-rationale.md#observation-on-on-the-host-with-patterns).
+[rationale §12](api-rationale.md#observation-observe-on-the-host-with-patterns).
 
 ### Residency is a recipe, not a feature
 
@@ -356,11 +369,11 @@ does not already provide:
 function residency(doc, state, setup) {
 	let teardown
 	// exit registered FIRST, so a self-transition tears down before it sets up
-	const offExit = doc.on(`${state} -> *`, () => {
+	const offExit = doc.observe(`${state} -> *`, () => {
 		teardown?.()
 		teardown = undefined
 	})
-	const offEnter = doc.on(`* -> ${state}`, (e) => {
+	const offEnter = doc.observe(`* -> ${state}`, (e) => {
 		teardown = setup(e.to)
 	})
 	// nothing will announce a state we are already in
@@ -438,99 +451,101 @@ implementation to be driven from.
 
 **Construction**
 
-1. `start(data)` yields a host whose `current` is `{ state: initial, data }` — or, if
+1. A transition key that is not well formed throws `SyntaxError` at `machine()`,
+   naming the key — `not a transition: '<key>'`, the same wording the type layer
+   reports on the offending row. Well formed means exactly one arrow, with a
+   non-empty source and a non-empty target; the label between the two separators may
+   be empty, which is the unlabelled arrow (18).
+2. `start(data)` yields a host whose `current` is `{ state: initial, data }` — or, if
    the initial state's own immediate rows settle it further, whatever state that chain
    lands in. `start()`'s arity always follows the **declared** initial state: it takes
    no argument when that state is `void`, even when settling carries it into a state
    that has data.
-2. A chain off the initial state settles fully, hop after hop, before `start()`
-   returns — exactly as it does after `send` (22).
-3. If the initial state's immediate rows all skip, the host comes back sitting in the
+3. A chain off the initial state settles fully, hop after hop, before `start()`
+   returns — exactly as it does after `send` (20).
+4. If the initial state's immediate rows all skip, the host comes back sitting in the
    declared initial state, exactly as plain construction would.
-4. A cycle among the initial state's immediates throws `RangeError` — same message
-   shape as (35) — from `start()` rather than from `send`.
-5. The hops `start()` settles are unobservable: nothing has subscribed yet, so only the
+5. A cycle among the initial state's immediates throws `RangeError` — same message
+   shape as (34) — from `start()` rather than from `send`.
+6. The hops `start()` settles are unobservable: nothing has subscribed yet, so only the
    state the chain lands in is visible, never the hops that got it there.
-6. Two hosts from one definition share no current state and no listeners.
-7. Nothing ever mutates the definition.
+7. Two hosts from one definition share no current state and no listeners.
+8. Nothing ever mutates the definition.
 
 **Reading**
 
-8. `current` is `{ state, data }`; `data` is `undefined` for a `void` state.
-9. A value read from `current` before a transition is unchanged after it.
-10. `available` lists the current state's inputs in table order, deduplicated. It comes
-    from the table alone: an input whose every candidate row would `skip()` is listed
-    like any other.
-11. `available` is `[]` for a state with no outgoing rows.
+9. `current` is `{ state, data }`; `data` is `undefined` for a `void` state.
+10. A value read from `current` before a transition is unchanged after it.
 
 **Sending**
 
-12. A handled input commits: `current` becomes `{ state: target, data: projection }`,
+11. A handled input commits: `current` becomes `{ state: target, data: projection }`,
     and every listener whose pattern matches that edge fires.
-13. An input no row matches changes nothing and fires no listener.
-14. An input whose every candidate row calls `skip()` changes nothing and fires no
-    listener. Externally indistinguishable from 13, deliberately — except that it is in
-    `available` and the input of 13 is not (10).
-15. With several rows for one `(from, input)`, candidates are tried in declaration order
+12. An input no row matches, and an input whose every candidate row calls `skip()`, both
+    change nothing and fire no listener — indistinguishable, without exception.
+13. With several rows for one `(from, input)`, candidates are tried in declaration order
     and the first that does not skip wins.
-16. A self-transition commits and notifies like any other, with
+14. A self-transition commits and notifies like any other, with
     `e.from.state === e.to.state`, `e.from.data` the old data and `e.to.data` the new.
-17. A handler receives the source state's data and the input payload; a `void` input's
+15. A handler receives the source state's data and the input payload; a `void` input's
     payload is `undefined`.
-18. A handler whose target is `void` returns nothing.
-19. `send` returns `undefined`, always.
-20. An input name that is not in the vocabulary (reachable from untyped code) changes
+16. A handler whose target is `void` returns nothing.
+17. `send` returns `undefined`, always.
+18. An input name that is not in the vocabulary (reachable from untyped code) changes
     nothing.
-21. Entering a state by an input runs its immediate rows in declaration order;
+19. Entering a state by an input runs its immediate rows in declaration order;
     `skip()` falls through exactly as it does on an input-driven row, and a state
-    whose candidates all skip stays put, its input rows still live and advertised.
-22. A chain — several immediate hops in a row — settles fully before `send` returns,
+    whose candidates all skip stays put, its input rows still live.
+20. A chain — several immediate hops in a row — settles fully before `send` returns,
     however many hops it takes.
 
 **Observing**
 
-23. `on` returns an unsubscribe function; calling it more than once is harmless.
-24. Listeners fire after the commit, in registration order — on every hop of a chain.
-25. Inside a listener, `e.to` deep-equals `doc.current` — for every listener, on every
+21. `observe` returns an unsubscribe function; calling it more than once is harmless.
+22. A malformed `observe()` pattern throws the same `SyntaxError`, at registration,
+    naming the pattern — so a typo in a subscription cannot become a listener that
+    silently never fires.
+23. Listeners fire after the commit, in registration order — on every hop of a chain.
+24. Inside a listener, `e.to` deep-equals `doc.current` — for every listener, on every
     hop.
-26. `*` matches any state; an unlabelled arrow matches any input, or none — including an
+25. `*` matches any state; an unlabelled arrow matches any input, or none — including an
     immediate transition; a labelled one matches only that input and never an
     immediate.
-27. The listener list is snapshotted before dispatch: a listener unsubscribed by an
+26. The listener list is snapshotted before dispatch: a listener unsubscribed by an
     earlier listener still runs for the current transition, and one registered during a
     dispatch does not.
-28. An immediate transition's record carries `on: undefined` and `input: undefined`; a
+27. An immediate transition's record carries `on: undefined` and `input: undefined`; a
     `void` input's record — `on` its name, `input: undefined` — stays distinguishable
     from it.
 
 **Commit ordering**
 
-29. A `send` from inside a listener does not take effect before the remaining listeners
+28. A `send` from inside a listener does not take effect before the remaining listeners
     for the current transition have run.
-30. The queue drains before the outermost `send` returns — synchronously, not on a
+29. The queue drains before the outermost `send` returns — synchronously, not on a
     microtask.
-31. Several sends from listeners drain first-in-first-out.
-32. A queued send is evaluated against the state at drain time, so it may find no row
+30. Several sends from listeners drain first-in-first-out.
+31. A queued send is evaluated against the state at drain time, so it may find no row
     and do nothing.
-33. A listener that throws propagates out of `send`. The listeners after it do not run
+32. A listener that throws propagates out of `send`. The listeners after it do not run
     and that dispatch's queue is abandoned, but the transition stays committed. **The
     host still works afterwards**: a later `send` transitions and notifies normally.
-34. An input sent from a listener mid-chain is drained only once the whole chain has
+33. An input sent from a listener mid-chain is drained only once the whole chain has
     settled, never mid-hop.
-35. A chain that never settles throws `RangeError`, naming the state it could not
+34. A chain that never settles throws `RangeError`, naming the state it could not
     settle. There is no rollback — every hop up to that point has already committed and
     notified — and **the host stays usable afterward**.
 
 **The untyped path**
 
-36. With `inputs` and `states` both omitted, a well-formed table compiles: state and
+35. With `inputs` and `states` both omitted, a well-formed table compiles: state and
     input names are exactly the ones `transitions` mentions, `data` and `input` are
     `unknown`, and `initial` must name a state that appears somewhere in the table.
-37. A malformed key is still rejected with no vocabulary declared, and the error still
+36. A malformed key is still rejected with no vocabulary declared, and the error still
     lands on the offending line rather than on the `transitions` block.
-38. Declaring one map and omitting the other checks that half and infers the other from
+37. Declaring one map and omitting the other checks that half and infers the other from
     the table, the same as omitting both.
-39. An immediate row works the same with no vocabulary declared: its handler's `input`
+38. An immediate row works the same with no vocabulary declared: its handler's `input`
     is still `undefined`, and it never leaks the empty label into the inferred input
     names.
 
@@ -543,19 +558,22 @@ implementation to be driven from.
 - Reads of source data the source state does not have.
 - Malformed keys — wrong spacing included — reported as `not a transition: '…'` on the
   offending line.
+- `*`, or a name padded by a leading or trailing space, joining an _inferred_
+  vocabulary — [see above](#inputs-and-states--the-vocabulary): neither is a name a key
+  can round-trip, so a row that mints one is rejected the same way a malformed key is.
 
 Errors land on the bad line, from a single declaration site, and no handler needs a type
 annotation.
 
-**What is _not_ checked: the send site.** Per-state capabilities are advertised at
-runtime (`available`) rather than enforced by the compiler.
+**What is _not_ checked: the send site.** Per-state capabilities are not enforced by
+the compiler.
 
 ## What is claimed, and what is not
 
 - **A transition is pure.** Given a state and an input it yields either the next state
   or a refusal, and it neither performs nor schedules anything.
-- **Sending is broad**, and `available` says in advance which inputs the current state
-  has no row for at all — not which ones will commit, since a row may still decline.
+- **Sending is broad**: every declared input is accepted from every state, whether or
+  not it commits.
 - **Big steps terminate**, because one input causes at most one transition.
 - **Stale results are free.** A `loaded` arriving after we left `loading` matches no row
   and does nothing. That is _ignoring a result_, not _cancelling work_; cancelling is
@@ -571,25 +589,102 @@ runtime (`available`) rather than enforced by the compiler.
 
 Not oversights. What to reach for instead, and where the argument is:
 
-| absent                      | instead                                                                                                          |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `enter` / `exit`            | patterns with one end pinned ([§9](api-rationale.md#9-actions))                                                  |
-| residency in the host       | the recipe above ([§12](api-rationale.md#residency-is-derivable-not-a-host-feature))                             |
-| `keep` / `repeat` / `stay`  | an ordinary self-transition row; restart is an action's question ([§6](api-rationale.md#6-self-transitions))     |
-| `emit`                      | the transition record `{ on, input, from, to }` ([§6](api-rationale.md#6-self-transitions))                      |
-| `else`                      | declining is a normal outcome, and silent ([§4](api-rationale.md#two-decisions-that-fell-out-of-the-comparison)) |
-| a `send` return value       | `current` and `available` ([§12](api-rationale.md#send-returns-nothing))                                         |
-| `stop()`                    | unsubscribe, and stop sending ([§12](api-rationale.md#no-disposal-and-a-listener-that-throws))                   |
-| typed `send`                | `available` at runtime; recorded but unbuilt ([§11](api-rationale.md#if-it-comes-back-it-comes-back-as-s12))     |
-| hierarchy, parallel regions | out of scope ([§10](api-rationale.md#what-the-rest-of-the-record-forbids))                                       |
+| absent                      | instead                                                                                                                                       |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enter` / `exit`            | patterns with one end pinned ([§9](api-rationale.md#9-actions))                                                                               |
+| residency in the host       | the recipe above ([§12](api-rationale.md#residency-is-derivable-not-a-host-feature))                                                          |
+| `keep` / `repeat` / `stay`  | an ordinary self-transition row; restart is an action's question ([§6](api-rationale.md#6-self-transitions))                                  |
+| `emit`                      | ~~the transition record~~ — **reopened**, see [Changing before v1](#changing-before-v1) ([§16](api-rationale.md#16-the-composition-boundary)) |
+| `else`                      | declining is a normal outcome, and silent ([§4](api-rationale.md#two-decisions-that-fell-out-of-the-comparison))                              |
+| a `send` return value       | `current` ([§12](api-rationale.md#send-returns-nothing))                                                                                      |
+| `stop()`                    | unsubscribe, and stop sending ([§12](api-rationale.md#no-disposal-and-a-listener-that-throws))                                                |
+| typed `send`                | nothing at runtime either; recorded but unbuilt ([§11](api-rationale.md#if-it-comes-back-it-comes-back-as-s12))                               |
+| hierarchy, parallel regions | out of scope ([§10](api-rationale.md#what-the-rest-of-the-record-forbids))                                                                    |
+
+---
+
+## Changing before v1
+
+Settling the composition boundary
+([rationale §16](api-rationale.md#16-the-composition-boundary)) reached back into the
+surface above. Two changes are decided and unbuilt. They are breaking, which is why
+they go **before** v1 tags rather than after — spent while nobody holds the API.
+
+A third — `.on` becoming `observe` — is decided the same way and **already shipped**:
+same patterns, same two arguments, same record semantics, bare state keys still
+illegal. `.on` is left **unclaimed**, so the output channel below arrives later as
+pure addition and no caller ever sees `.on` change meaning. Residency stays the
+[recipe](#residency-is-a-recipe-not-a-feature).
+
+**1. The transition record loses its fourth field.**
+
+```ts
+{
+	;(on, input, from, to)
+} // today
+{
+	;(input, from, to)
+} //     the input carries its own tag
+```
+
+`e.on === 'submit'` becomes `e.input?.type === 'submit'`, and an immediate says so with
+one `undefined` field rather than two. The record then has one field per coordinate of
+the key that produced it.
+
+**2. The vocabulary becomes a tagged union.**
+
+```ts
+// today
+inputs: types<{ submit: Submit; cancel: void }>(),
+states: types<{ empty: void; draft: { text: string; revision: number } }>(),
+
+// decided
+inputs: types<{ type: 'submit'; text: string } | { type: 'cancel' }>(),
+states: types<{ name: 'empty' } | { name: 'draft'; text: string; revision: number }>(),
+```
+
+Inputs and outputs are tagged `type` and **must share the word**, because at a seam an
+output becomes the next machine's input and `b.send(output)` has to typecheck. States
+are tagged `name` and are free to differ, because states never travel — the whole object
+_is_ the state.
+
+Three consequences:
+
+- `send` takes one argument: `send({ type: 'move', x, y })`.
+- **`void` leaves the vocabulary.** `{ type: 'up' }` and `{ name: 'empty' }` carry no
+  payload by having no other fields, so there is no sentinel to learn.
+- A handler still **does not** restate its target. It returns the target's payload minus
+  the tag; the library adds it.
+
+**`data` is a convention, not a rule.** A payload that is not a record, or that wants a
+field called `type` or `name`, nests it:
+
+```ts
+{ type: 'tick', data: 5 }
+{ name: 'editing', data: { name: 'foo' } }
+```
+
+Nothing in the library requires or inspects `data` — it is an ordinary field, and any
+other name works. It is the recommended shape whenever a tag would collide or a payload
+is not an object, and it is worth reaching for deliberately: a state that carries its
+own `name` field is ordinary enough that meeting the collision by accident is the thing
+to avoid.
+
+_Why, what was measured, and the rejected alternatives:_
+[rationale §16](api-rationale.md#16-the-composition-boundary) and
+[§17](api-rationale.md#17-the-shape-of-a-named-thing).
 
 ---
 
 ## Designed, not in v1
 
-Two directions v1 leaves room for, argued in the rationale and neither built.
-Sketches rather than commitments: whether each ships, in what order, and — for
-composition — in what shape are all open.
+Four directions v1 leaves room for, argued in the rationale and none built. Sketches
+rather than commitments: whether each ships, and — for composition — in what shape, are
+open. **The order is not**, and it is the one thing here that is settled: `actions`
+first, because `emit` has nowhere to live without it. A handler may `skip()`, and
+declaration order is priority order, so a handler that emitted would announce a
+transition that then loses. `emit` needs a post-commit home, and the action bag is the
+only one ([§16](api-rationale.md#emit-cannot-precede-actions)).
 
 ### `actions` — effects owned by the definition
 
@@ -612,6 +707,42 @@ already-declared inputs, so `actions` adds nothing to the vocabulary. One action
 trigger.
 
 _Full argument: [rationale §9](api-rationale.md#9-actions)._
+
+### `emit` — a declared output channel
+
+A machine may declare what it announces, separately from what it _is_. `outputs` names
+the vocabulary, `emit` reaches actions the way `send` does, and the freed `.on`
+subscribes by output name:
+
+```ts
+outputs: types<{ type: 'opened'; center: Point } | { type: 'ended' }>(),
+
+actions: {
+	novice: persistent(({ data, emit }) => emit({ type: 'opened', center: data.origin })),
+},
+```
+
+`observe` still sees every transition — **nothing is hidden**, and this adds a channel
+rather than replacing one. What it buys is that a consumer can subscribe in the
+machine's published words instead of its internal state names, so a topology refactor
+stops breaking it. `emit` is deliberately absent from `observe`: an output has to be a
+claim the _definition_ makes, or it is worth nothing at a seam.
+
+_Why not encapsulation, and what it does not fix:_
+[rationale §16](api-rationale.md#16-the-composition-boundary).
+
+### A shared scheduler — for peers
+
+[Commit ordering](#commit-ordering) rule 4 — a listener is never re-entered while an
+earlier call is still running — holds **per host**. Peer machines wired to each other
+cross hosts, so a send from one machine's listener into another nests instead of
+queueing, which is precisely where composition needs the guarantee. The fix is one queue
+shared by the hosts that talk to each other; whether that is global or passed at
+`start()` is open.
+
+_Why peers rather than hierarchy, and the evidence:_
+[rationale §10](api-rationale.md#10-composition) and
+[§16](api-rationale.md#what-the-prototype-measured).
 
 ### Composition — invoked children
 
@@ -645,7 +776,20 @@ beyond appeal — rival layouts still compile — and the completion payload is 
 with latency fine ([rationale §15](api-rationale.md#15-still-open),
 `pnpm measure:completions`).
 
-**After v1**, likeliest first and none of it promised: `actions`, which is what extends
-commit ordering to effects — teardown, setup and notification within one commit, plus an
-error channel for a throwing action — then composition.
-[Rationale §15](api-rationale.md#15-still-open) has what is still open.
+**Before v1**, two more breaking changes are decided and unbuilt — the transition
+record and the vocabulary's shape. `.on` becoming `observe` was a third and has
+already shipped. See [Changing before v1](#changing-before-v1).
+
+**After v1**, in this order and none of it promised:
+
+1. **`actions`** — which is what extends commit ordering to effects: teardown, setup and
+   notification within one commit, plus an error channel for a throwing action. First,
+   because 2 depends on it.
+2. **`emit`, `outputs`, and the output subscription** on the freed `.on`.
+3. **A shared scheduler** — most of what "horizontal composition" turns out to mean.
+   [Commit ordering](#commit-ordering) rule 4 holds per host, so peer wiring, which
+   crosses hosts, is exactly where it lapses. Not a notation.
+4. **Composition — invoked children**, whose shape is still unresolved.
+
+[Rationale §15](api-rationale.md#15-still-open) has what is still open, including the
+four questions §16 and §17 opened.

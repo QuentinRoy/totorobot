@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { editor, pending } from './fixtures.ts'
+import { editor } from './fixtures.ts'
 import { cloneDeep } from './helpers.ts'
 
 describe('reading', () => {
@@ -31,54 +31,5 @@ describe('reading', () => {
 		expect(before.data).toEqual(beforeDataClone)
 		expect(before.data).toBe(beforeDataRef)
 		expect(host.current.data).not.toBe(beforeDataRef)
-	})
-
-	test('available lists the current state inputs in table declaration order', () => {
-		const host = editor.start()
-		host.send('open', { text: 'hello' })
-
-		expect(host.available).toEqual([
-			'revise',
-			'touch',
-			'submit',
-			'poke',
-			'lock',
-		])
-	})
-
-	test('available lists an input carried by two rows only once', () => {
-		const host = editor.start()
-		host.send('open', { text: 'hello' })
-
-		expect(host.available.filter((name) => name === 'submit')).toHaveLength(1)
-	})
-
-	test('available lists an input whose every candidate row would decline', () => {
-		const host = editor.start()
-		host.send('open', { text: 'hello' })
-
-		// 'draft -poke> draft' always calls skip(), yet it is still advertised —
-		// available is derived from the table, not from running the handler.
-		expect(host.available).toContain('poke')
-	})
-
-	test('available never contains an immediate', () => {
-		const host = pending.start()
-		// the only immediate candidate skips at a non-positive quota, so the
-		// machine stays in 'checking' rather than settling into 'allowed'
-		host.send('submit', { quota: 0 })
-
-		expect(host.current.state).toBe('checking')
-		expect(host.available).toEqual(['cancel'])
-		expect(host.available).not.toContain('')
-	})
-
-	test('available is empty for a state with no outgoing rows', () => {
-		const host = editor.start()
-		host.send('open', { text: 'hello' })
-		host.send('lock')
-
-		expect(host.current.state).toBe('locked')
-		expect(host.available).toEqual([])
 	})
 })

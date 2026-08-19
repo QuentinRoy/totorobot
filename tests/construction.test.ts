@@ -69,22 +69,6 @@ describe('construction', () => {
 		expect(host.current).toEqual({ state: 'c', data: undefined })
 	})
 
-	test('available on the host returned by start() reflects the settled state, not the declared initial one', () => {
-		const relay = machine({
-			initial: 'a',
-			inputs: types<{ go: void }>(),
-			states: types<{ a: void; b: void; c: void }>(),
-			transitions: {
-				'a -> b': () => {},
-				'b -> c': () => {},
-				'c -go> c': () => {},
-			},
-		})
-
-		const host = relay.start()
-		expect(host.available).toEqual(['go'])
-	})
-
 	test("the initial state's immediates all skipping leaves the host in the declared initial state", () => {
 		const stalled = machine({
 			initial: 'checking',
@@ -98,7 +82,6 @@ describe('construction', () => {
 
 		const host = stalled.start()
 		expect(host.current).toEqual({ state: 'checking', data: undefined })
-		expect(host.available).toEqual(['submit'])
 	})
 
 	test("start()'s arity still follows the declared initial state: a void initial that settles into a data-carrying state still takes no argument", () => {
@@ -167,7 +150,7 @@ describe('construction', () => {
 		const hostB = toggle.start()
 
 		const log: string[] = []
-		hostA.on('* -> *', () => log.push('a'))
+		hostA.observe('* -> *', () => log.push('a'))
 
 		hostB.send('toggle')
 
@@ -178,7 +161,7 @@ describe('construction', () => {
 		const before = cloneDeep(toggle)
 
 		const host = toggle.start()
-		host.on('* -> *', () => {})
+		host.observe('* -> *', () => {})
 		host.send('toggle')
 		host.send('toggle')
 

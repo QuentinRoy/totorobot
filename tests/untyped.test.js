@@ -1,6 +1,6 @@
 /**
  * Plain JavaScript, deliberately no `@ts-check` — the runtime half of the
- * untyped path (item 20) needs a caller the type checker never sees.
+ * untyped path (item 21) needs a caller the type checker never sees.
  */
 
 import { describe, expect, test } from 'vitest'
@@ -19,7 +19,7 @@ describe('the untyped path', () => {
 
 		const host = untyped.start()
 		const log = []
-		host.on('* -> *', (e) => log.push(`${e.from.state}->${e.to.state}`))
+		host.observe('* -> *', (e) => log.push(`${e.from.state}->${e.to.state}`))
 
 		expect(host.current).toEqual({ state: 'off', data: undefined })
 
@@ -43,7 +43,7 @@ describe('the untyped path', () => {
 
 		const host = untyped.start()
 		const log = []
-		host.on('* -> *', () => log.push('fired'))
+		host.observe('* -> *', () => log.push('fired'))
 
 		host.send('bogus')
 
@@ -63,7 +63,9 @@ describe('the untyped path', () => {
 		const host = untyped.start()
 		const log = []
 
-		expect(() => host.on('bogus -> *', () => log.push('fired'))).not.toThrow()
+		expect(() =>
+			host.observe('bogus -> *', () => log.push('fired')),
+		).not.toThrow()
 
 		host.send('toggle')
 
@@ -87,36 +89,18 @@ describe('the untyped path', () => {
 				state: 'settled',
 				data: { via: 'immediate' },
 			})
-			expect(host.available).toEqual([])
 		})
 	})
 
 	describe('an unlabelled arrow in the transitions table (#7)', () => {
-		test('available reports only the labelled input name, not the empty string', () => {
-			const untyped = machine({
-				initial: 'draft',
-				transitions: {
-					'draft -submit> published': () => ({ via: 'submit' }),
-					// Guarded to skip so `.start()` settling the initial state's
-					// immediates does not carry `draft` away before either test
-					// below gets to observe it.
-					'draft -> published': ({ skip }) => skip(),
-				},
-			})
-
-			const host = untyped.start()
-
-			expect(host.available).toEqual(['submit'])
-		})
-
 		test("send('') changes nothing and fires no listener", () => {
 			const untyped = machine({
 				initial: 'draft',
 				transitions: {
 					'draft -submit> published': () => ({ via: 'submit' }),
 					// Guarded to skip so `.start()` settling the initial state's
-					// immediates does not carry `draft` away before either test
-					// below gets to observe it.
+					// immediates does not carry `draft` away before the test below
+					// gets to observe it.
 					'draft -> published': ({ skip }) => skip(),
 				},
 			})
@@ -124,7 +108,7 @@ describe('the untyped path', () => {
 			const host = untyped.start()
 			const before = host.current
 			const log = []
-			host.on('* -> *', () => log.push('fired'))
+			host.observe('* -> *', () => log.push('fired'))
 
 			host.send('')
 
@@ -132,23 +116,70 @@ describe('the untyped path', () => {
 			expect(log).toEqual([])
 		})
 
-		test('a key too malformed to carry a label still lands where it lands today', () => {
-			// A bare key parses with an *absent* label (`undefined`), not an empty
-			// one — it must not be swept in with the unlabelled-arrow rows above.
-			// Today it lands under the literal input name `'undefined'`, which is
-			// what this pins down: a fix that splits on falsy rather than on
-			// exactly `''` would instead make it disappear from `available`.
-			const untyped = machine({
-				initial: 'off',
-				transitions: {
-					'off -toggle> on': () => {},
-					off: () => {},
-				},
-			})
+		test('a bare key throws instead of quietly building a live row (#16)', () => {
+			// A bare key parses with an *absent* label, not an empty one — it must
+			// not be swept in with the unlabelled-arrow rows above. It used to land
+			// under the literal input name `'undefined'`, reachable through
+			// `send('undefined')`; now `machine()` rejects it outright.
+			expect(() =>
+				machine({
+					initial: 'off',
+					transitions: {
+						'off -toggle> on': () => {},
+						off: () => {},
+					},
+				}),
+			).toThrow(SyntaxError)
+		})
+	})
 
-			const host = untyped.start()
+	describe('malformed keys and patterns (#16)', () => {
+		// Exhaustive over the grammar's boundary: every shape a key or pattern can
+		// take, legal ones as negative controls sitting next to the illegal ones
+		// they are one character away from.
+		const shapes = [
+			['a -x> b', true],
+			['a -> b', true],
+			['a', false],
+			['a-x>b', false],
+			['a -x>b', false],
+			['a -x> ', false],
+			[' -x> b', false],
+			['a -x> b -y> c', false],
+			['a -x>  b', true],
+		]
 
-			expect(host.available).toEqual(['toggle', 'undefined'])
+		test.each(shapes)('machine(): %s', (key, legal) => {
+			const build = () =>
+				machine({ initial: 'a', transitions: { [key]: () => {} } })
+
+			if (legal) {
+				expect(build).not.toThrow()
+			} else {
+				expect(build).toThrow(SyntaxError)
+				expect(build).toThrow(`not a transition: '${key}'`)
+			}
+		})
+
+		test.each([
+			...shapes,
+			// `*` stays legal in a pattern's state positions, unlike in a key.
+			['* -> *', true],
+			['* -go> b', true],
+			['a -> *', true],
+		])('.observe(): %s', (pattern, legal) => {
+			const host = machine({
+				initial: 'a',
+				transitions: { 'a -x> b': () => {} },
+			}).start()
+			const subscribe = () => host.observe(pattern, () => {})
+
+			if (legal) {
+				expect(subscribe).not.toThrow()
+			} else {
+				expect(subscribe).toThrow(SyntaxError)
+				expect(subscribe).toThrow(`not a transition: '${pattern}'`)
+			}
 		})
 	})
 })

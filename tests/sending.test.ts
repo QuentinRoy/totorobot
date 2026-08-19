@@ -8,8 +8,8 @@ describe('sending', () => {
 		const host = editor.start()
 		const broad: string[] = []
 		const narrow: string[] = []
-		host.on('* -> *', () => broad.push('broad'))
-		host.on('idle -open> draft', () => narrow.push('narrow'))
+		host.observe('* -> *', () => broad.push('broad'))
+		host.observe('idle -open> draft', () => narrow.push('narrow'))
 
 		host.send('open', { text: 'hello' })
 
@@ -25,7 +25,7 @@ describe('sending', () => {
 		const host = editor.start()
 		const before = host.current
 		const log: string[] = []
-		host.on('* -> *', () => log.push('fired'))
+		host.observe('* -> *', () => log.push('fired'))
 
 		// 'idle' has no row for 'lock'.
 		host.send('lock')
@@ -41,7 +41,7 @@ describe('sending', () => {
 		host.send('open', { text: 'hello' })
 		const before = host.current
 		const log: string[] = []
-		host.on('* -> *', () => log.push('fired'))
+		host.observe('* -> *', () => log.push('fired'))
 
 		// 'draft -poke> draft' is the only row for 'poke', and it always declines.
 		host.send('poke')
@@ -88,7 +88,7 @@ describe('sending', () => {
 		host.send('open', { text: 'hello' })
 
 		let event: unknown
-		host.on('draft -revise> draft', (e) => {
+		host.observe('draft -revise> draft', (e) => {
 			event = e
 		})
 
@@ -190,12 +190,11 @@ describe('sending', () => {
 			expect(denied.current).toEqual({ state: 'denied', data: { quota: 0 } })
 		})
 
-		test('a state whose immediate rows all skip stays put, with its input rows still live', () => {
+		test('a state whose immediate rows all skip stays put', () => {
 			const host = pending.start()
 			host.send('submit', { quota: 0 })
 
 			expect(host.current).toEqual({ state: 'checking', data: { quota: 0 } })
-			expect(host.available).toEqual(['cancel'])
 		})
 
 		test('a chain of several immediate hops settles fully before send returns', () => {
@@ -210,7 +209,7 @@ describe('sending', () => {
 		const host = editor.start()
 
 		let queued: unknown = 'unset'
-		const off = host.on('idle -> draft', () => {
+		const off = host.observe('idle -> draft', () => {
 			// A send from inside a listener is queued rather than run nested;
 			// it still returns nothing to its caller.
 			queued = host.send('touch')

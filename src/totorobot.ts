@@ -12,7 +12,7 @@
  *     })
  *
  *     const doc = publication.start()
- *     doc.on('* -> published', (e) => notify(e.to.data))
+ *     doc.observe('* -> published', (e) => notify(e.to.data))
  *     doc.send('open', { text: 'hello' })
  *
  * The API is specified in `docs/api.md` and argued in `docs/api-rationale.md`.
@@ -50,16 +50,21 @@
  *
  * ## On validation
  *
- * Almost none, anywhere. A malformed input is still a silent no-op rather than
- * a checked argument: an input name outside the table finds no row, and a
- * pattern naming a state that does not exist parses fine and never matches.
+ * No validation of *data*, anywhere. A malformed input is still a silent no-op
+ * rather than a checked argument: an input name outside the table finds no
+ * row, and a pattern naming a state that does not exist parses fine and never
+ * matches.
  *
- * One exception. A chain of immediate transitions that never settles — `'a ->
- * b'` declared alongside `'b -> a'` — throws a `RangeError` after 1e5
- * consecutive hops, naming the state it could not settle in. This is not
- * argument validation; it is the one place the library cannot make an
- * unbounded loop a silent no-op, because a hang is worse than a loud failure.
- * Everything else keeps the no-validation rule.
+ * Two throws, for the two things that cannot be silent. A chain of immediate
+ * transitions that never settles — `'a -> b'` declared alongside `'b -> a'` —
+ * throws a `RangeError` after 1e5 consecutive hops, naming the state it could
+ * not settle in: a hang is worse than a loud failure. And a transition key or
+ * `observe()` pattern that is not well formed — anything but exactly one
+ * arrow with a non-empty source and target — throws a `SyntaxError` naming
+ * the string, the same wording the type layer uses for the same mistake: a
+ * mis-typed key is a spelling error in a declaration, not user data, so it is
+ * caught rather than silently building a dead or wrong row. Everything else
+ * keeps the no-validation rule.
  */
 
 // ---------------------------------------------------------------------------
@@ -98,13 +103,22 @@ const skip = (): Skip => SKIP
  *
  * Splitting on the two separators leaves the label as the empty string in an
  * unlabelled arrow (`'* -> *'`), which is what makes the empty string the
- * wildcard in the label position for free. A bare key contains neither
- * separator and parses to a single coordinate whose `undefined` label fails
- * every comparison — so a state name registered as a pattern never matches,
- * and never throws.
+ * wildcard in the label position for free. Anything else — no separator, one
+ * separator without the other, a second arrow, an empty source or target —
+ * throws: a key or pattern this malformed is not a coordinate that merely
+ * fails to match, it is not a transition at all, so it is caught here rather
+ * than registered as one. Both `machine()`'s key loop and `observe()`'s
+ * pattern registration call this one function, so they cannot drift apart on
+ * what they accept.
  */
-const parse = (key: string) =>
-	key.split(/ -|> /) as [from: string, input?: string, to?: string]
+const parse = (key: string): [from: string, input: string, to: string] => {
+	const parts = key.split(/ -|> /)
+	const [from, input, to] = parts
+	if (parts.length !== 3 || !from || !to) {
+		throw new SyntaxError(`not a transition: '${key}'`)
+	}
+	return [from, input as string, to]
+}
 
 // ---------------------------------------------------------------------------
 // The vocabulary
@@ -187,6 +201,26 @@ type Label<K> = K extends `${string} -${infer L}> ${string}` ? L : never
 type To<K> = K extends `${string} -${string}> ${infer T}` ? T : never
 
 /**
+ * A name a key can round-trip, kept as itself; anything else, dropped to
+ * `never` so the mapped types below drop the property entirely.
+ *
+ * `*` is excluded because it is the wildcard, not a name: every `Pattern`
+ * already reads a state coordinate of `*` as "any state," so a key that
+ * *means* the literal state `*` could never be addressed by one — `'b -back>
+ * *'` would commit into a state no pattern can single out again. A name
+ * padded by a leading or trailing space is excluded because the space is the
+ * grammar's own delimiter (` -` and `> `): `'a -x>  b'` does not fail to
+ * parse, it quietly moves the extra space into the target, minting a state
+ * that only that one spelling can ever name again. A tab or newline is left
+ * alone — it collides with nothing in the grammar, so rejecting it would be
+ * this library having opinions about naming rather than protecting its own
+ * syntax.
+ */
+type RoundTrips<N extends string> = N extends '*' | ` ${string}` | `${string} `
+	? never
+	: N
+
+/**
  * The default state and input vocabularies, used when `machine` is called
  * with `states`/`inputs` omitted: every name mentioned anywhere in
  * `transitions`, each mapped to `unknown` — the names narrow to what the
@@ -200,17 +234,26 @@ type To<K> = K extends `${string} -${string}> ${infer T}` ? T : never
  * once did. A malformed key drops out silently: `From`/`Label`/`To` only
  * match the well-formed template, so a key that fails it contributes no name,
  * and its row is still rejected on its own by `Table` below.
+ *
+ * The `as RoundTrips<N>` remap drops `*` and any leading/trailing-space name
+ * out of the *inferred* vocabulary before either mapped type is built, so a
+ * key that mints one fails `Key` and is rejected on its own row, the same as
+ * any other unknown name — see `RoundTrips`. A vocabulary declared through
+ * `types<T>()` is untouched: only what gets inferred from a key is filtered,
+ * never `Name` itself.
  */
-type StatesFromKeys<K extends string> = { [N in From<K> | To<K>]: unknown }
+type StatesFromKeys<K extends string> = {
+	[N in From<K> | To<K> as RoundTrips<N>]: unknown
+}
 type InputsFromKeys<K extends string> = {
-	[N in Exclude<Label<K>, ''>]: unknown
+	[N in Exclude<Label<K>, ''> as RoundTrips<N>]: unknown
 }
 
 /**
- * Every legal `.on()` pattern: the key grammar with the state coordinates left
- * open. `*` is a state name that no vocabulary can shadow, and the unlabelled
- * arrow is the broad form — so there is no `-*>`, and a bare key, which names a
- * state, is not a pattern.
+ * Every legal `observe()` pattern: the key grammar with the state coordinates
+ * left open. `*` is a state name that no vocabulary can shadow, and the
+ * unlabelled arrow is the broad form — so there is no `-*>`, and a bare key,
+ * which names a state, is not a pattern.
  */
 type Wildcard<S extends Vocab> = Name<S> | '*'
 type Pattern<I extends Vocab = Vocab, S extends Vocab = Vocab> =
@@ -366,11 +409,10 @@ type Start<S extends Vocab, Init extends string> = [S[Init & Name<S>]] extends [
 /** A running machine: the only mutable thing in the design. */
 interface Host<I extends Vocab = Vocab, S extends Vocab = Vocab> {
 	readonly current: Snapshot<S>
-	readonly available: readonly Name<I>[]
 	readonly send: (...args: Dispatch<I>) => void
 	// Generic in the pattern, so the record the listener receives is narrowed by
 	// the pattern that selected it rather than being the whole union every time.
-	readonly on: <P extends Pattern<I, S>>(
+	readonly observe: <P extends Pattern<I, S>>(
 		pattern: P,
 		listener: Listener<I, S, P>,
 	) => () => void
@@ -419,9 +461,9 @@ export type InputsOf<M> = Carried<M>['inputs']
 export type StatesOf<M> = Carried<M>['states']
 
 /**
- * The inputs state `S` has rows for — `available`, at the type level, and the
- * `'draft -'` text search made derivable. `Exclude<…, ''>` drops an immediate
- * row's empty label, the same way `available` never lists one at runtime.
+ * The inputs state `S` has rows for, derived from the `'draft -'` text search
+ * over the table's keys. `Exclude<…, ''>` drops an immediate row's empty
+ * label.
  */
 export type Handled<M, S extends string> = Exclude<
 	Label<Extract<Carried<M>['keys'], `${S} -${string}> ${string}`>>,
@@ -462,9 +504,8 @@ type Row = readonly [to: string, handler: Call]
  */
 interface RawHost {
 	readonly current: Snapshot
-	readonly available: readonly string[]
 	readonly send: (name: string, payload?: unknown) => void
-	readonly on: (pattern: string, listener: Listener) => () => void
+	readonly observe: (pattern: string, listener: Listener) => () => void
 }
 
 /**
@@ -481,9 +522,8 @@ type Index = Record<string, Record<string, Row[] | undefined> | undefined>
 /**
  * Source state to the unlabelled rows declared out of it, in declaration
  * order. Kept apart from `Index` rather than filtered out of it at read
- * time: `available` and `send` read `Index` directly, so a row stored here
- * is structurally unreachable from either rather than merely absent by
- * convention.
+ * time: `send` reads `Index` directly, so a row stored here is structurally
+ * unreachable from it rather than merely absent by convention.
  */
 type Immediates = Record<string, Row[] | undefined>
 
@@ -535,10 +575,8 @@ let draining = false
  * Every key is parsed **once**, here. Rejected: storing nothing and
  * prefix-scanning the raw keys on every dispatch, which came within 1.6% in the
  * pre-implementation prototypes — not a basis for choosing. The index wins on
- * behaviour: dispatch is a lookup rather than a scan, `available` falls out of
- * key insertion order (declaration order and de-duplication for free, deleting
- * the `Set` a scan needs), and a malformed key arriving from untyped code
- * cannot accidentally prefix-match.
+ * behaviour: dispatch is a lookup rather than a scan, and a malformed key
+ * arriving from untyped code cannot accidentally prefix-match.
  *
  * `inputs` and `states` are the only inference sites for the vocabulary, and
  * both are optional: omitting one — or passing the marker's `undefined`
@@ -599,13 +637,11 @@ export function machine<
 
 	for (const key in transitions) {
 		const [from, input, to] = parse(key)
-		const row: Row = [to as string, transitions[key]!]
-		// The label is the empty string only for an unlabelled arrow — `parse`
-		// gives a key too malformed to carry a label an *absent* (`undefined`)
-		// one instead, which keeps landing in `index`, under the literal name
-		// `'undefined'`, exactly as it does without this branch: simply
-		// unreachable, no row, no complaint. Splitting on falsy rather than on
-		// exactly `''` would sweep it into `immediates` too.
+		const row: Row = [to, transitions[key]!]
+		// `parse` has already rejected anything that is not `from`, a label, and
+		// `to` — so the label is the empty string exactly for an unlabelled
+		// arrow, and nothing else reaches this branch. Splitting on falsy rather
+		// than on exactly `''` would sweep a labelled row into `immediates` too.
 		if (input === '') {
 			;(immediates[from] ??= []).push(row)
 		} else {
@@ -712,14 +748,7 @@ export function machine<
 					return current
 				},
 
-				// Straight off the index, so the answer is the table's rather than
-				// the handlers': an input whose every row would decline is still
-				// advertised, and no handler runs to produce this list.
-				get available(): readonly string[] {
-					return Object.keys(index[current.state] ?? {})
-				},
-
-				on: (pattern: string, listener: Listener): (() => void) => {
+				observe: (pattern: string, listener: Listener): (() => void) => {
 					// Parsed once, here, rather than kept as an opaque string and
 					// matched by generating the eight patterns each transition could
 					// answer to — 4.8% larger in the pre-implementation prototypes, and
@@ -768,7 +797,7 @@ export function machine<
 /** A pattern parsed into its three coordinates, with the listener alongside. */
 type Registration = readonly [
 	from: string,
-	input: string | undefined,
-	to: string | undefined,
+	input: string,
+	to: string,
 	listener: Listener,
 ]

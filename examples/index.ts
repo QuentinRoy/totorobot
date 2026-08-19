@@ -7,21 +7,19 @@ const traffic = trafficLight.start({ changes: 0 })
 
 // Observation is on the host, never the definition: an imported definition
 // stays inert. `*` matches any state, and the unlabelled arrow any input.
-traffic.on('* -> *', (e) => {
+traffic.observe('* -> *', (e) => {
 	console.log(`  ${e.from.state} -${e.on}> ${e.to.state}`, e.to.data)
 })
-traffic.on('* -> yellow', () => console.log('    (blinking)'))
+traffic.observe('* -> yellow', () => console.log('    (blinking)'))
 
 traffic.send('next')
 traffic.send('next')
 traffic.send('next')
-
-console.log('  available in red:', traffic.available)
 
 console.log('\n--- Auth machine (declining rows + an asynchronous result) ---')
 
 const auth = authMachine.start({ error: null, attempts: 0 })
-auth.on('* -> *', (e) => console.log(`  -> ${e.to.state}`, e.to.data))
+auth.observe('* -> *', (e) => console.log(`  -> ${e.to.state}`, e.to.data))
 
 // A blank username: the only row for `login` declines, so nothing happens.
 await signIn(auth, { username: '  ', password: 'hunter2' })

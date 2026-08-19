@@ -27,35 +27,39 @@
 13. [Type-system findings](#13-type-system-findings)
 14. [The graveyard](#14-the-graveyard)
 15. [Still open](#15-still-open)
+16. [The composition boundary](#16-the-composition-boundary)
+17. [The shape of a named thing](#17-the-shape-of-a-named-thing)
 
 ---
 
 ## 1. The ledger
 
-Twenty axes. All twenty are closed.
+Twenty axes. All twenty were closed. **§16 and §17 then reopened two of them (7, 2),
+renamed one (16) and reshaped one without changing its answer (6)** — decided after the
+rest of this record, and none of it built.
 
-| #   | Axis                       | Answer                                                          | §   |
-| --- | -------------------------- | --------------------------------------------------------------- | --- |
-| 1   | Overall layout             | string keys, input as arrow label — `'draft -submit> review'`   | 4   |
-| 2   | Data-free states           | `void` in the declared vocabulary                               | 5   |
-| 3   | Entry / exit actions       | edge patterns with one end pinned; no keyword                   | 9   |
-| 4   | Re-entry vs stay           | dissolved — it is an action's restart policy                    | 9   |
-| 5   | Self-transition spelling   | `'draft -revise> draft'`, an ordinary row                       | 5   |
-| 6   | Input vocabulary           | declared: `types<{ inputs, states }>()`                         | 5   |
-| 7   | Returned commands (`emit`) | out — a listener recovers it from the transition                | 6   |
-| 8   | Fall-through refusal       | no `else` and no warning — a decline is silent                  | 4   |
-| 9   | Async / work-in-flight     | subsumed by axis 10                                             | 8   |
-| 10  | Actions in the machine     | `actions:`, keyed by trigger, wrappers for policy               | 9   |
-| 11  | The word for what you send | `inputs`, not `events` — the core is not a mailbox              | 5   |
-| 12  | Typed send site            | **dropped** — broad `send` only; reversible later               | 11  |
-| 13  | Composition                | **deferred from v1** — shape unsettled; a design to return to   | 10  |
-| 14  | Actions in v1              | **deferred** — v1 has no effect mechanism at all                | 9   |
-| 15  | Immediate transitions      | `'from -> to'`, no input — **shipped**, chained, budget-guarded | 7   |
-| 16  | Observation                | `.on(pattern, fn)` on the host; no residency key                | 12  |
-| 17  | Commit ordering            | a chain per input, FIFO; commit, notify in order, queue         | 12  |
-| 18  | Definition and instance    | **split kept** — `publication.start(data)`                      | 12  |
-| 19  | Disposal and errors        | no `stop()` — the host owns nothing; a throw propagates         | 12  |
-| 20  | What `send` returns        | **nothing** — additive to add later, breaking to remove         | 12  |
+| #   | Axis                       | Answer                                                             | §      |
+| --- | -------------------------- | ------------------------------------------------------------------ | ------ |
+| 1   | Overall layout             | string keys, input as arrow label — `'draft -submit> review'`      | 4      |
+| 2   | Data-free states           | ~~`void` in the vocabulary~~ — **reopened**, §17 deletes `void`    | 5, 17  |
+| 3   | Entry / exit actions       | edge patterns with one end pinned; no keyword                      | 9      |
+| 4   | Re-entry vs stay           | dissolved — it is an action's restart policy                       | 9      |
+| 5   | Self-transition spelling   | `'draft -revise> draft'`, an ordinary row                          | 5      |
+| 6   | Input vocabulary           | declared — **answer stands, shape changed** to unions by §17       | 5, 17  |
+| 7   | Returned commands (`emit`) | ~~out~~ — **reopened** as `emit` in `actions`, §16                 | 6, 16  |
+| 8   | Fall-through refusal       | no `else` and no warning — a decline is silent                     | 4      |
+| 9   | Async / work-in-flight     | subsumed by axis 10                                                | 8      |
+| 10  | Actions in the machine     | `actions:`, keyed by trigger, wrappers for policy                  | 9      |
+| 11  | The word for what you send | `inputs`, not `events` — the core is not a mailbox                 | 5      |
+| 12  | Typed send site            | **dropped** — broad `send` only; reversible later                  | 11     |
+| 13  | Composition                | **deferred from v1** — shape unsettled; a design to return to      | 10     |
+| 14  | Actions in v1              | **deferred** — v1 has no effect mechanism at all                   | 9      |
+| 15  | Immediate transitions      | `'from -> to'`, no input — **shipped**, chained, budget-guarded    | 7      |
+| 16  | Observation                | on the host, patterns, no residency key — **shipped as** `observe` | 12, 16 |
+| 17  | Commit ordering            | a chain per input, FIFO; commit, notify in order, queue            | 12     |
+| 18  | Definition and instance    | **split kept** — `publication.start(data)`                         | 12     |
+| 19  | Disposal and errors        | no `stop()` — the host owns nothing; a throw propagates            | 12     |
+| 20  | What `send` returns        | **nothing** — additive to add later, breaking to remove            | 12     |
 
 The axes are not independent. Declaring the vocabulary (§5) settles 2, 5 and 6 in
 one move. Removing entry/exit settles 3, which makes 4 and 5 unobservable and
@@ -405,8 +409,7 @@ example — so it would fire on correct code, and the machine has no way to tell
 protocol working from a mistake. And it is not free. "Dev mode" in a no-build
 browser library (P0.11) means either a build-condition split with two artifacts or
 API surface for the caller to opt in, and _no API surface_ was the whole selling
-point. So a decline is **silent**, which is the intended meaning of a refusal
-anyway; `available` answers the question that can be answered, in advance.
+point. So a decline is **silent**, which is the intended meaning of a refusal.
 
 What that loses is the author's per-edge assertion that fall-through is impossible —
 the one thing `else` genuinely buys. Still not worth a line on every multi-branch
@@ -429,6 +432,11 @@ used and that was verified to work. The keys happen to be compound strings, and
 **DX, not feasibility**, which is a different and more tractable problem.
 
 ## 5. The declared vocabulary
+
+> **Declaring is upheld; the shape below is superseded by [§17](#17-the-shape-of-a-named-thing).**
+> The vocabulary becomes a tagged union rather than a map, and `void` leaves it. The
+> argument for declaring at all — what it closed, and what it costs — is unaffected
+> and is why it is kept here as written.
 
 ```ts
 inputs: types<{ submit: Submit; cancel: void }>(),
@@ -590,6 +598,28 @@ data is, so assuming it absent would be a claim the table never made. Point 1 ab
 and 3 — `NoInfer` on `initial`, and a bad key poisoning its own value type — are
 unchanged and still what keep this safe.
 
+**Revision (#22): the inferred vocabulary excludes a name a key cannot round-trip.**
+`From<K> | To<K>` and `Label<K>` read every name a key mentions, including two a key
+should never have been able to mint: `*`, which is already how a pattern spells "any
+state" in the same coordinate, and a name padded by a leading or trailing space, which
+the grammar's own delimiters (` -`, `> `) quietly absorb rather than reject — `'a -x>
+b'` and `'a -x>  b'` differ only in a doubled space that reads as invisible in a diff,
+yet mint two different states. Both are excluded by remapping `From<K> | To<K>` and
+`Exclude<Label<K>, ''>` through a `RoundTrips<N>` filter before either mapped type is
+built (`src/totorobot.ts`), so a key that mints one fails `Key` and is rejected on its
+own row — no new diagnostic, the existing `not a transition: '…'` poisoning already
+built for a malformed key. **Declared vocabularies are left alone**: filtering `Name`
+itself was considered and rejected, because it would reach every type in the module and
+make the name simply not exist, moving the diagnostic away from its cause — onto a
+rejected `initial`, a rejected row, or a rejected `send`, whichever happened to reference
+it, rather than the row that minted it. A hand-written `types<{ ' b': void }>()` keeps
+working, the same way it did before this revision: declaring an odd name is deliberate
+in a way a doubled space in a key never is. **No runtime check accompanies this**: it is
+a compile-time-only guarantee, costing nothing in the shipped artifact because the type
+layer is erased, and plain JavaScript with no typechecking stays uncovered — the same
+trade-off #16's `parse` throw made for a malformed key, scoped to what a _typo in the
+grammar_ produces rather than what an _odd but intentional_ name produces.
+
 **The alternative shape** — `machine<Publication>()({ … })` — removes the `types:`
 property but needs the double call, because TypeScript has no partial
 type-argument inference (microsoft/TypeScript#53999). `()()` reads worse than one
@@ -650,6 +680,11 @@ This is a naming decision only. The keys are `'draft -submit> review'` either
 way, and the context member is `input` rather than `event`.
 
 ## 6. Self-transitions
+
+> **Axis 7 was closed here, and is reopened in [§16](#16-the-composition-boundary).**
+> One of its three grounds — that a listener recovers everything from the transition
+> record — did not survive the composition question. The other two stand. The
+> self-transition argument itself is untouched.
 
 When a transition targets the state you are already in, does residency re-run?
 Ten spellings were proposed:
@@ -768,7 +803,7 @@ Two findings are already recorded in that wrapper and carry over:
 
 - **An immediate contributes nothing to what a state _handles_.** It is typed
   `handles: never`, because it is not sendable — so it must not appear in
-  `Handled<T, S>` or in `doc.available`.
+  `Handled<T, S>`.
 - **robot3 reuses whatever event caused entry** as the immediate's event, which the
   wrapper calls "untyped rather than mistyped". This design avoids the question
   entirely: there is no input, so the handler has **no `input` binding**. Reading
@@ -789,14 +824,14 @@ There is **one** key language. What differs is what a key is being used _for_:
 - **Declaring**, in `transitions` — the key _names_ an edge that exists. Every
   coordinate must be concrete; `*` is meaningless, because "some edge with an
   unspecified input" is not a thing you can declare.
-- **Matching**, in `.on()` — the key _selects_ edges. A coordinate may be left
+- **Matching**, in `observe()` — the key _selects_ edges. A coordinate may be left
   unconstrained.
 
 An omitted input position reads identically in both: **no input is named.** A
 declaration has to be complete, so that means the edge has none — it is immediate. A
 pattern does not, so it means the input is unconstrained — and an immediate
 transition, having no input, is matched by it. The pattern reading is the superset
-that contains the declaration reading. `.on('a -> b')` therefore fires for every
+that contains the declaration reading. `observe('a -> b')` therefore fires for every
 transition from `a` to `b`, **immediate or not**, which is the useful answer as well
 as the consistent one.
 
@@ -877,11 +912,12 @@ input edges out of that state (`'loading.ok -cancel> empty'`) become meaningful.
   the same settle loop `send` does before handing the host back, so "on entering"
   needed no exception for the first entering. Leaving it unsettled — the other
   option floated here — was rejected: it parks the machine in the one state its
-  author declared transient, where `available` for a pure junction is empty.
+  author declared transient, where a pure junction has no input-driven rows to
+  move it again.
 - **The listener event has `on: undefined`, not a separate arm or a `null`
   discriminant.** `on` stays the discriminant an input carrying no data already
   needed to be distinguishable by (`on: 'cancel'`, `input: undefined`); the empty
-  string was rejected as a value for it, since `.on()` already uses it as the
+  string was rejected as a value for it, since `observe()` already uses it as the
   wildcard and one spelling meaning two things is exactly what issue #7 was about.
 
 **One thing it improves**: the arrow test. There is no fictional input on the line,
@@ -1109,8 +1145,8 @@ is already built. Three things decided it:
    be applied conditionally, and can be spread across modules. A block cannot.
 3. **Symmetry.** Everything else is a block.
 
-**`.on()` survives with a different job**: `actions` is the machine's own
-behaviour and ships with the definition; `.on()` is a subscription attached by
+**`observe()` survives with a different job**: `actions` is the machine's own
+behaviour and ships with the definition; `observe()` is a subscription attached by
 whoever instantiates it. That is also why axis 7 settled where it did.
 
 ### The block is `actions`, not `states`
@@ -1237,9 +1273,9 @@ are in. The competing fix — rejecting bare keys in `StateName & InputName`, wh
 is computable since both vocabularies are declared — only patches the silent case
 and leaves two meanings standing.
 
-A consequence worth noticing: under one shared key language, `.on()` can also
+A consequence worth noticing: under one shared key language, `observe()` can also
 accept a bare state key and mean residency, with the same setup-and-teardown
-shape, making `.on` and `actions` structurally identical and differing only in who
+shape, making `observe` and `actions` structurally identical and differing only in who
 owns them. That is what v1 uses.
 
 ### Not in v1
@@ -1272,7 +1308,7 @@ scoping.
 
 **So `actions` is deferred, and v1 ships no effect mechanism at all** — not a block,
 and not the residency-keyed listener that was briefly going to stand in for one. An
-intermediate plan had `.on()` carry residency in v1 and `actions` arrive beside it in
+intermediate plan had `observe()` carry residency in v1 and `actions` arrive beside it in
 v1.1. That plan died with the listener registry (§12): the two would have been the
 same shape with two owners, and §9's own open question — "if both attach to `draft`,
 what is the run and teardown order?" — is a question worth never having.
@@ -1402,7 +1438,7 @@ const menu = runAll({
 	highlight: highlighter,
 })
 
-menu.marking.on('* -> recognized', (e) => menu.highlight.send('clear'))
+menu.marking.observe('* -> recognized', (e) => menu.highlight.send('clear'))
 ```
 
 ```ts
@@ -1423,7 +1459,7 @@ lifetime, no cancellation semantics, no vocabulary growth. It is also exactly wh
 two independent labs converged on.
 
 **Its real weakness** is not the obvious one. The peer wiring lives _outside_ the
-definition, as imperative `.on()` calls a caller must remember to make. That is
+definition, as imperative `observe()` calls a caller must remember to make. That is
 precisely the shape §9 rejected for actions: _"the exported thing is not the
 machine — it is half a machine plus a convention."_ This design accepts that
 argument for actions and then violates it one level up.
@@ -1452,9 +1488,9 @@ to answer "what happens when the fetch succeeds".
 
 **So the child is declared, and its outcome is a _state_, not an input.** An
 intermediate draft made the outcome an input — `'fetch.ok: loading -> ready'` —
-which is a lie, and a small one that matters: nothing sends `fetch.ok`, no caller
-can, and it would appear in `available` as though a user could pick it. The child
-reaching `ok` is **a condition that became true**, which is what a state is.
+which is a lie, and a small one that matters: nothing sends `fetch.ok`, and no
+caller can, as though a user could pick it. The child reaching `ok` is **a
+condition that became true**, which is what a state is.
 
 Spelling it as a state requires a way to leave a state with no input — an
 **immediate transition** (§7), which is wanted on its own account anyway, so one
@@ -1579,8 +1615,8 @@ type Publication = {
 
 actions: {
 	loading: invoke(userFetch, ({ child, send }) => {
-		child.on('ok', (s) => send('userLoaded', s.data))
-		child.on('err', (s) => send('userFailed', s.data))
+		child.observe('ok', (s) => send('userLoaded', s.data))
+		child.observe('err', (s) => send('userFailed', s.data))
 	}),
 }
 ```
@@ -1755,8 +1791,8 @@ mutation.
 | **S4**  | capabilities **on** the snapshot                 | **4**    | the guarantee is free — you get it by narrowing, which you were doing anyway to read `data`. Stale after the first `await`, and the snapshot stops being plain data. Prior art: `@doeixd/machine` (note 07 F19) |
 | **S5**  | pure snapshot chaining, `b = a.open({…})`        | 1        | pure, typed and ergonomic at once — but cannot host actions                                                                                                                                                     |
 | **S6**  | S5's methods on both detached and live snapshots | 1 + 4    | the two read identically at the call site; nothing says whether anything was mutated                                                                                                                            |
-| **S7**  | a scoped handle — `when` / `visit`               | 2        | sound and revocable; reads as a subscription next to `.on()`, and inverts control                                                                                                                               |
-| **S8**  | `doc.available`                                  | n/a      | **not a rival** — a runtime array for rendering buttons; kept                                                                                                                                                   |
+| **S7**  | a scoped handle — `when` / `visit`               | 2        | sound and revocable; reads as a subscription next to `observe()`, and inverts control                                                                                                                           |
+| **S8**  | `doc.available`                                  | n/a      | **not a rival** — a runtime array for rendering buttons; kept at the time, later removed                                                                                                                        |
 | **S9**  | `doc.from('draft').submit(…)`                    | 3        | the assumption is written down and greps; a handle that can still be stored                                                                                                                                     |
 | **S10** | `doc.send('draft -submit>', …)`                  | 3        | most consistent with the notation, least obvious to a newcomer; reads as half a key                                                                                                                             |
 | **S11** | `doc.sendIf('draft', 'submit', …)`               | 3        | cheapest of category 3 — one method, no handle at all; a three-argument call, a second verb                                                                                                                     |
@@ -1799,8 +1835,12 @@ differentiator. The honest statement is now narrower:
 - **Per-state _data_ still works and is untouched.** Narrowing `doc.current` gives
   typed data with no nullable padding — the half XState's global `context` gets
   wrong, and reason enough for the project to exist.
-- **Per-state _capabilities_ are advertised, not enforced** — `doc.available` at
-  runtime. That is exactly where `useStateMachine` landed.
+- **Per-state _capabilities_ are not surfaced at all.** An earlier revision advertised
+  them at runtime as `doc.available` — exactly where `useStateMachine` landed — but
+  that value answered a different question than the one a caller reads it for: which
+  inputs the state has rows for, not which will commit, since a guarded row can still
+  decline. It was removed rather than kept with a caveat; see
+  [If `available` comes back, it comes back as `accepts`](#if-available-comes-back-it-comes-back-as-accepts).
 - **The definition site keeps its checking.** Illegal transitions still cannot be
   written; what is unenforced is only the _call_.
 
@@ -1864,15 +1904,15 @@ _not_ fall foul of this project's finding against fluent type accumulation, whic
 is about accumulating while building a definition. Here the accumulator is consumed
 immediately and feeds nothing.)
 
-|                                     | chain                                 | object                           |
-| ----------------------------------- | ------------------------------------- | -------------------------------- |
-| picks exactly one branch            | ✓                                     | ✓                                |
-| a state cannot repeat               | needs an accumulator                  | **free — duplicate key**         |
-| exhaustiveness in the return type   | ✓                                     | ✓                                |
-| error names the remaining states    | **✓ better**                          | generic `TS1117`                 |
-| **Prettier**                        | **indents the whole chain**           | **fine**                         |
-| order is                            | line order                            | key order — as in `transitions`  |
-| consistent with the rest of the API | the only fluent thing besides `.on()` | keyed maps, like everything else |
+|                                     | chain                                     | object                           |
+| ----------------------------------- | ----------------------------------------- | -------------------------------- |
+| picks exactly one branch            | ✓                                         | ✓                                |
+| a state cannot repeat               | needs an accumulator                      | **free — duplicate key**         |
+| exhaustiveness in the return type   | ✓                                         | ✓                                |
+| error names the remaining states    | **✓ better**                              | generic `TS1117`                 |
+| **Prettier**                        | **indents the whole chain**               | **fine**                         |
+| order is                            | line order                                | key order — as in `transitions`  |
+| consistent with the rest of the API | the only fluent thing besides `observe()` | keyed maps, like everything else |
 
 The object wins. The chain's one real advantage is a better diagnostic, which does
 not pay for the rest.
@@ -1889,6 +1929,27 @@ region earns its keep in everyday code.
 
 **Recorded as cheaper ways back in**: `sendIf` adds one method and no concepts;
 `from` if a handle turns out to be wanted for reading as well as sending.
+
+### If `available` comes back, it comes back as `accepts`
+
+**Removed, not renamed, and not kept with a caveat.** S8 above records `doc.available`
+as it stood: a runtime array of the current state's input names, judged "not a rival"
+to the typed-send question and kept on that basis. That basis did not hold up: the
+value UI code actually needs is "which inputs will commit", and `available` answers a
+different question — which inputs the state has _rows_ for. A guarded row can still
+decline, so an input can sit in `available` and still do nothing when sent. Nobody can
+build a disabled-control UI on that distinction, because the value does not carry it.
+
+The host's surface is `current`, `send`, and the subscription method — three members,
+each answering a question the library can actually answer.
+
+**If the capability returns, its name is `accepts`.** That name states the true thing;
+`available` did not. Answering it for real means evaluating every candidate row's
+handler against a payload the read site does not have, which is a different and larger
+feature than a table lookup — not a fix to `available`, a new one. Nothing here is
+designed or scheduled. Re-adding it later is pure addition: no existing member changes
+shape, so nothing today is written against its absence in a way that removal would
+break.
 
 ## 12. The host
 
@@ -1977,7 +2038,7 @@ is otherwise inert data. Also settled: the initial data is an argument to `start
 not a field beside `initial:`, so the definition stays free of instance state.
 
 **And observation belongs to the host** regardless of how this resolves. The
-prototype attaches `.on()` to the definition, which contradicts the ownership split
+prototype attaches `observe()` to the definition, which contradicts the ownership split
 §9 relies on: two hosts running one definition would **share** listeners, and a
 value documented as inert is quietly mutated. Putting observation on the host makes
 the split structural rather than conventional and leaves the definition genuinely
@@ -1986,9 +2047,19 @@ immutable — which is what lets it be exported, imported, diffed and visualised
 Still open: what the host is called (`run` / `interpret` / `start`), and whether
 the initial data is an argument or lives in the definition beside `initial:`.
 
-### Observation: `.on()`, on the host, with patterns
+### Observation: `observe()`, on the host, with patterns
 
-`doc.on(pattern, fn)` returns an unsubscribe function. Many listeners, edge patterns
+> **Renamed from `.on` before v1 tags** ([issue #29](https://github.com/QuentinRoy/totorobot/issues/29)),
+> **and split in two by [§16](#16-the-composition-boundary).** The rename is justified
+> by the name alone, nothing else: `observe` says what the method does — it reports
+> transitions — where `.on` read as registering a handler for a string-named event, the
+> mailbox connotation axis 11 already rejected for `inputs`. Same patterns, same two
+> arguments, same record, same unsubscribe function, bare state keys still illegal.
+> `.on` is left unclaimed for the later output channel, so that channel is pure
+> addition. The transition record this method delivers is reshaped by
+> [§17](#17-the-shape-of-a-named-thing).
+
+`doc.observe(pattern, fn)` returns an unsubscribe function. Many listeners, edge patterns
 in the transition key language, and **no bare-state key** — a key with no arrow
 means residency, which the host does not implement.
 
@@ -2036,18 +2107,18 @@ against it.
 
 ### Residency is derivable, not a host feature
 
-The remaining question was whether `.on()` should also accept a bare state key and
+The remaining question was whether `observe()` should also accept a bare state key and
 scope a setup/teardown pair to residency. It should not — and the reason is not cost
 but that **the host does not need to own it**:
 
 ```js
 function residency(doc, state, setup) {
 	let teardown
-	const off1 = doc.on(`${state} -> *`, () => {
+	const off1 = doc.observe(`${state} -> *`, () => {
 		teardown?.()
 		teardown = undefined
 	})
-	const off2 = doc.on(`* -> ${state}`, (e) => {
+	const off2 = doc.observe(`* -> ${state}`, (e) => {
 		teardown = setup(e.to)
 	})
 	if (doc.current.state === state) teardown = setup(doc.current)
@@ -2242,8 +2313,11 @@ in the same state" from "a move". That is a requirement on the **model**, and th
 transition function does distinguish them; whether the host hands the tag back to the
 caller is a separate question, and the answer is no.
 
-- **Two of the four are recoverable without it.** `moved` is `doc.current`, and
-  `unavailable` is `doc.available` consulted _before_ sending rather than after.
+- **One of the four is recoverable without it.** `moved` is `doc.current`.
+  `unavailable` was, for a time, `doc.available` consulted _before_ sending rather
+  than after; `available` itself was later removed for reporting the wrong thing —
+  see [If `available` comes back, it comes back as `accepts`](#if-available-comes-back-it-comes-back-as-accepts)
+  — so nothing today answers that question in advance at all.
 - **`queued` is not information the caller can use.** It is inside a listener, it
   queued something, it will happen.
 - **Only a `skip()` refusal is genuinely unobservable** — nothing commits, so no
@@ -2358,7 +2432,7 @@ subscribe/unsubscribe contract; every framework consumer writes a fan-out) ·
 listeners on the definition (two hosts would share them) · handing a listener a
 snapshot or the live host instead of the transition record (loses the cause,
 reopens `emit`) · nesting a reaction's send instead of queueing it (robot3 does
-this; P0.7 forbids it) · a bare state key on `.on()` for residency (derivable in
+this; P0.7 forbids it) · a bare state key on `observe()` for residency (derivable in
 ten lines; the host owning a lifetime is what `actions` is for)
 
 **Composition.** Peers (wiring lives outside the definition) · inlining (cannot
@@ -2396,6 +2470,281 @@ pinned) · a class or `new` for instantiation.
   observable.** Under this design handlers only project, so the order in which
   candidate rows are tried is invisible. It stops being invisible the moment
   anything puts effects back in a handler — true of all three layouts.
+
+Opened by §16 and §17, which are decided but unbuilt:
+
+- **The untyped path is the one place the map had the easier job.** Omitting
+  `inputs`/`states` today infers _names_ from `transitions` while data stays
+  `unknown` — a guarantee, held by `tests/untyped.test.js` and observable behaviour
+  38–41. With a map that synthesis is `Record<N, unknown>`; with a union (§17) it has
+  to synthesise arms, and it is not known to land as cleanly. Candidate-sized, and
+  `scripts/check-candidates.ts` is where it goes, with the negative result pinned as
+  `MUST_FAIL`.
+- **How policy is spelled**, for `observe` and `actions` alike: a wrapper
+  (`persistent(fn)`, §9's answer) or a third argument of options in the
+  `addEventListener` shape. Options uniquely admit `signal: AbortSignal`, which is not
+  expressible as a wrapper. The two will be nearly the same API — differing only in
+  that `observe` gets no `emit` and lives on the host — so the spelling wants choosing
+  once, with both call sites in view. That is why the rename ships without it.
+- **Whether `persistent` survives inference in the action bag.** In the prototype's
+  shim, wrapping a context-sensitive action collapsed every argument bag to `never` —
+  §13's findings 3 and 6, where a type parameter appearing in a closure parameter is
+  fixed to its constraint before inference runs. The fix was to key `actions` off the states and transitions already
+  declared rather than off the block, and it cost wildcard triggers like
+  `'draft -cancel> *'`, which §9's own sketch uses. **Not settled**: comparable APIs
+  have been made to work before, and it has not been re-run against the real
+  `machine()`.
+- **The scheduler's scope** — one queue for every host, or a scheduler passed at
+  `start()`. Global is a large hammer for machines that never meet. §16 has why one is
+  needed at all.
+
+## 16. The composition boundary
+
+> **Decided after v1's surface was written, and it changes that surface.** None of it
+> is built. Axis 7 is reopened, axis 16 is renamed, and §17 carries the shape changes
+> that fell out of this one. Recorded here rather than edited into the sections that
+> concluded otherwise.
+
+[Issue #24](https://github.com/QuentinRoy/totorobot/issues/24) asked where the
+boundary of a machine goes, and offered two answers:
+
+- **A — the open transition host.** What v1 has. `current` is readable, `observe(pattern)`
+  is the composition seam, and a pattern names states, so anything holding a host can
+  read the topology.
+- **B — the encapsulated transducer.** Declared `outputs`, `emit` in `actions`, no
+  transition feed and no `current`. A consumer sees a vocabulary, never a machine.
+
+### What the prototype measured
+
+`explorations/composition/` — three examples written twice, a TUI running both against
+one scenario, and a size harness.
+
+**Bytes are not the axis.** Shipped, brotli: core 584 B, A 776 B, B 888 B. **B costs
+112 B over A.** Authored: whole files +11–18%, `machine({…})` blocks +55–72%
+(`pnpm exec node explorations/composition/size.ts`).
+
+**B's real cost is views.** A view belongs to the app under both models — a machine
+emits what happened, the view decides what to draw — and B's app cannot see states. So
+every view lifetime becomes a declared _pair_ of outputs plus a variable the app keeps
+in step by hand:
+
+```ts
+fb.observe('trail', (s) => widget.trail(s.data.points)) // A: one line, residency
+// B: trailShown + trailHidden + `let trail` + two handlers, per lifetime
+```
+
+**What `actions` buys is the timer, not the emitting.** The marking menu's dwell is
+scheduled on entering `startup`, and `clock.after`'s cancel _is_ the residency
+teardown — §9's kind 3, the socket test. Under B the machine is self-contained; under
+A the identical code sits in the app, and an app that forgets it gets a machine that
+silently never reaches `novice`. This is the argument `emit` alone does not make.
+
+Two results fell out of owning the timer:
+
+- **It deletes the token.** A stale `dwell` cannot arrive once the timer is cancelled
+  on exit, so `dwell` carries no payload and `startup` stores none — note 08's F7 as
+  corrected by note 02, demonstrated rather than argued.
+- **Two residents of one state wanted opposite restart policies** — the dwell must
+  survive a wiggle, the trail must restart on every track. That is §9's argument for
+  policy-as-wrapper, and both models need it identically. Forgetting `persistent` on
+  an announce-once action duplicates the output silently.
+
+**Cross-machine dispatch nests, under both models.** [Commit
+ordering](#commit-ordering) rule 4 — a listener is never re-entered while an earlier
+call is still running — holds _per host_. Peer wiring crosses hosts, so the guarantee
+lapses exactly where composition needs it. ~15 lines to fix, and unrelated to A/B.
+
+### What the field does
+
+Re-read across notes 03, 04, 07 and 08. **The corpus was never asked this question** —
+no note carries an observability column — so this is a re-reading of findings gathered
+for other purposes, not a survey with its own method.
+
+**No tool in the record does B deliberately**, in the sense of withholding a feed from
+an author who wrote the machine. Kingly returns commands as data and argues it from
+testing without mocks [07 F24]; `gen_statem` hides state behind a process, which is the
+language's isolation model rather than an FSM decision [08 F5].
+
+**The split tracks who writes the definition.** Where the machine is an implementation
+detail of a shipped component — Garnet's Interactors [04 F30], Radix [07 F17], Zag
+[07 F14–F16], Proton [04 F10] — it is fully hidden, and none of them removed a feed:
+they have no machine in the API. Where the developer authors the machine —
+SwingStates, ConstraintJS, XState, Robot3 — it stays open, and nobody argues for
+closing it.
+
+**SwingStates is B's seam without B's restriction.** Its stacking pattern has each
+level emit what the next consumes [04 F7] — an output alphabet — while state stayed
+reachable through lexical scoping [03 F10]. Evidence that the seam is right; not
+evidence that the restriction is needed.
+
+**Zag is the closest production analogue to B** and pays the measured price, which is
+why it ships `onOpenChange`-style callback props: one declared name per thing the
+outside needs.
+
+### Decided: neither, and it is not a compromise
+
+**Keep state and data observable; add `emit` as a declared secondary channel.** Nothing
+is hidden.
+
+The asymmetry decides it: **openness is recoverable, encapsulation is not.** An open
+host wraps into a closed one in userland; nothing recovers a feed that was never
+exposed. No source in the record contradicts this and none argues the other way.
+
+What B was really buying, and what survives: under A you cannot tell a debugging
+subscription from a structural one — they are the same call. **Splitting the two
+channels by name recovers that distinction without hiding anything**, which is why
+observation and outputs get separate methods rather than one overloaded one.
+
+### `emit` cannot precede `actions`
+
+Handlers may `skip()`, and declaration order is priority order ([§4](#4-layout)). A
+handler that emitted would announce a transition that then loses. `emit` therefore
+needs a post-commit home, and there is exactly one: the action bag. Buffering emits and
+discarding them on skip is real machinery plus an impure handler, for a channel that
+wants to fire post-commit anyway.
+
+So **`actions` is the prerequisite, not the follow-on** — which sets the order in
+api.md's scope note.
+
+### Axis 7 is reopened, not reversed
+
+Axis 7 was _returned commands_ — `transitionTo(State, SideEffect)`, the Tinder shape
+[08 F4]. `emit` in an action bag is a different mechanism that the axis-7 argument
+never evaluated. Of its three grounds, "another concept to learn" and "the direction is
+asymmetric" stand; **the "strictly redundant" ground does not.**
+
+The replacement argument is not ability — a consumer can still tell `down -release> up`
+from `dragging -release> up`. It is **coupling**: doing so requires knowing states that
+are not its business, and a level seam is exactly where that coupling should break.
+
+### What `emit` does not fix
+
+Peer wiring still lives outside the definition, as imperative calls a caller must
+remember to make — [§10's own objection](#10-composition), "half a machine plus a
+convention". `emit` improves its grade, because the convention becomes the machine's
+declared outputs rather than its internal states, so a topology refactor stops breaking
+consumers. It does not close it.
+
+## 17. The shape of a named thing
+
+> **Decided with §16 and unbuilt like it.** Reopens axis 2 — `void` leaves the
+> vocabulary entirely — and changes the shape axis 6 settled, though not its answer:
+> the vocabulary is still declared.
+
+### The collision that started it
+
+Splitting observation from outputs (§16) put `on` in two places at once: the record's
+`on` names an **input** (`e.on === 'submit'`), while an output subscription names an
+**output**. Opposite directions, one word — and at a seam they are literally the same
+string, since an output becomes the next machine's input.
+
+Four fixes were weighed: nest the record so `on` is freed; rename the discriminant to
+`via`; give outputs a different method name; namespace them. **Nesting won because it
+is justified independently of the collision** — the record becomes isomorphic to the
+key. `'draft -submit> review'` has three coordinates; the record spent four fields on
+them.
+
+Pulling that thread produced a ladder, from "nest the record only" to "every named
+thing is a flat tagged object", and the far end won.
+
+### Decided: tagged unions for inputs, outputs and states
+
+The vocabulary stops being a map of name → payload and becomes a discriminated union.
+
+```ts
+inputs: types<{ type: 'submit'; text: string } | { type: 'cancel' }>(),
+states: types<{ name: 'empty' } | { name: 'draft'; text: string; revision: number }>(),
+```
+
+- **Inputs and outputs are tagged `type`, and must share the word** — at a seam an
+  output _becomes_ an input, so `b.send(output)` has to typecheck. That forwarding
+  property is the concrete gain, and it is what makes a `pipe(a, b)` writable.
+- **States are tagged `name`, and are free to differ, because states never travel.**
+  The whole object is the state, so it has a name; once `to` _is_ a state,
+  `e.to.state` reads as "the state's state".
+- **`send` takes one argument**: `send({ type: 'move', x, y })`.
+- **A handler still does not restate its target.** It returns the target's payload
+  minus the tag, which the library injects. The arrow test is untouched.
+
+### `data` is a convention, not a rule
+
+A payload that is not a record, or that wants a field named `type` or `name`, nests it:
+
+```ts
+{ type: 'tick', data: 5 }
+{ name: 'editing', data: { name: 'foo' } }
+```
+
+The library neither requires nor knows about `data` — it is an ordinary field. But it
+is the recommended shape whenever a tag would collide or a payload is not an object,
+and it belongs in the docs **at the point of declaration**: a state carrying its own
+`name` field is ordinary enough that discovering the collision by accident is the
+failure mode worth designing against.
+
+### What it deletes, and what survives
+
+**Deleted.** `Dispatch<I>` goes entirely — `send` becomes `(input: I) => void`, because
+arity no longer follows the payload. `Snapshot`/`At<S, N>` go — `current` is `S`, and a
+narrowed end is `Extract<S, { name: N }>`. And **`void` leaves the vocabulary**:
+`{ type: 'up' }` and `{ name: 'empty' }` need no sentinel, so axis 2's answer is
+deleted rather than reworded.
+
+**Survives.** `Start<S, Init>` still needs "no payload, no argument", with its condition
+changing from `[S[Init]] extends [void]` to `keyof Payload extends never`. Same
+complexity, different test.
+
+### Measured, not assumed
+
+TS 7.0.2, each probe carrying a tripwire that must fail. All of it is pinned in
+[`explorations/tagged-vocabulary.ts`](../explorations/tagged-vocabulary.ts) — covered
+by `pnpm typecheck`, so a compiler release that changes any of these turns the build
+red rather than quietly invalidating this section.
+
+**The shape is not new to this repository.** `config-object-kit.ts` already carries
+states as `{ name: … }` unions and derives a source context with
+`Omit<Extract<S, { name: K }>, 'name'>`, for the generation-1 config-object family.
+What killed options D/E/F was sibling inference (§5), not the union — and §13's last
+finding records the one hazard of that construction: deriving the context from the
+state name inside a conditional forces the target to resolve before it is read. §17's
+spelling keeps the target a parsed string rather than a parameter to infer, which is
+why it does not bite.
+
+- **Nested discriminant narrowing works.** `e.input.type === 'submit'` narrows
+  `e.input.data`; unnarrowed access still errors.
+- **The immediate arm survives it.** With `{ input: undefined }` in the union, all three
+  access styles narrow: `e.input?.type === 'x'`, `switch (e.input?.type)` including
+  `case undefined`, and `if (e.input)` splitting immediate from input-driven.
+- **Nesting costs no narrowing**, because `from`/`to` never depended on the
+  discriminant — they are narrowed by the _pattern_, through `Select<From<P>>`.
+- **The error-message hazard is real, and is not the union's fault.** A wrong handler
+  return, under a named alias parameterized over `S`, produces an error naming the whole
+  vocabulary:
+
+  ```
+  … but required in type 'Data<{ name: "empty"; } | { name: "draft"; text: string; } |
+  { name: "review"; text: string; by: string; }, "review">'
+  ```
+
+  Inlining the same computation resolves it to
+  `Omit<{ name: "review"; text: string; by: string; }, "name">`, and this holds with `S`
+  as a real type parameter. **The rule is therefore: never put the handler's return type
+  behind an alias that takes `S`.** The residual cost is the `Omit<…, "name">` wrapper,
+  against today's bare object. This is the highest-traffic error in the library, so the
+  rule is load-bearing.
+
+- **The variant with perfect messages was rejected.** Keeping the tag in the handler's
+  return gives an error identical to today's — bare, resolved, no wrapper — and costs
+  the arrow test, since the target migrates back inside the lambda. That is [08 F3]'s
+  criticism of Tinder, declined deliberately here rather than stumbled into.
+- **Negative result: for a payload-free target the tag is _not required_ but is also
+  _not rejected_.** `Omit<{ name: 'empty' }, 'name'>` is `{}`, and `{}` accepts any
+  object literal — both the weak-type check and excess-property checking need the
+  target to have at least one property. So a handler may restate `{ name: 'empty' }`
+  and nothing objects. Harmless in itself, but it means the type upholds the arrow
+  test only where the state carries data; everywhere else it is convention.
+- **`typeof` queries do not see control-flow narrowing**, which is a trap for the
+  assertions rather than for the design: a narrowed value has to be bound before it
+  can be asserted about. Worth knowing before writing the real type tests.
 
 ## Where the code is
 

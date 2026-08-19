@@ -10,14 +10,14 @@ describe('commit ordering', () => {
 		let queued = false
 		let stateWhenSecondRan: string | undefined
 
-		doc.on('* -> *', () => {
+		doc.observe('* -> *', () => {
 			log.push('first')
 			if (!queued) {
 				queued = true
 				doc.send('toggle') // must not take effect before the listener below runs
 			}
 		})
-		doc.on('* -> *', () => {
+		doc.observe('* -> *', () => {
 			log.push('second')
 			if (stateWhenSecondRan === undefined)
 				stateWhenSecondRan = doc.current.state
@@ -32,7 +32,7 @@ describe('commit ordering', () => {
 		const doc = toggle.start()
 		let queued = false
 
-		doc.on('* -> *', () => {
+		doc.observe('* -> *', () => {
 			if (!queued) {
 				queued = true
 				doc.send('toggle')
@@ -58,7 +58,7 @@ describe('commit ordering', () => {
 
 		const doc = counter.start({ order: [] })
 		let queued = false
-		doc.on('* -> *', () => {
+		doc.observe('* -> *', () => {
 			if (!queued) {
 				queued = true
 				doc.send('push', { value: 1 })
@@ -84,7 +84,7 @@ describe('commit ordering', () => {
 		const doc = stepper.start()
 		const log: string[] = []
 		let queued = false
-		doc.on('* -> *', (e) => {
+		doc.observe('* -> *', (e) => {
 			log.push(e.to.state)
 			if (!queued) {
 				queued = true
@@ -104,21 +104,21 @@ describe('commit ordering', () => {
 		let queued = false
 		let thrown = false
 
-		doc.on('* -> *', () => {
+		doc.observe('* -> *', () => {
 			log.push('first')
 			if (!queued) {
 				queued = true
 				doc.send('toggle') // queued; must never drain
 			}
 		})
-		doc.on('* -> *', () => {
+		doc.observe('* -> *', () => {
 			log.push('second')
 			if (!thrown) {
 				thrown = true
 				throw new Error('boom')
 			}
 		})
-		doc.on('* -> *', () => log.push('third'))
+		doc.observe('* -> *', () => log.push('third'))
 
 		expect(() => doc.send('toggle')).toThrow('boom')
 		expect(log).toEqual(['first', 'second'])
@@ -133,7 +133,7 @@ describe('commit ordering', () => {
 
 	test('the drain flag resets after a throw, so a send from inside a listener still queues and drains afterwards', () => {
 		const doc = toggle.start()
-		const offThrow = doc.on('* -> *', () => {
+		const offThrow = doc.observe('* -> *', () => {
 			throw new Error('boom')
 		})
 		expect(() => doc.send('toggle')).toThrow('boom')
@@ -141,14 +141,14 @@ describe('commit ordering', () => {
 
 		const log: string[] = []
 		let queued = false
-		doc.on('* -> *', () => {
+		doc.observe('* -> *', () => {
 			log.push('first')
 			if (!queued) {
 				queued = true
 				doc.send('toggle') // sent from inside a listener, not top-level
 			}
 		})
-		doc.on('* -> *', () => log.push('second'))
+		doc.observe('* -> *', () => log.push('second'))
 
 		doc.send('toggle')
 		expect(log).toEqual(['first', 'second', 'first', 'second'])
@@ -160,7 +160,7 @@ describe('commit ordering', () => {
 		let reentered = false
 		let queued = false
 
-		doc.on('* -> *', () => {
+		doc.observe('* -> *', () => {
 			active++
 			if (active > 1) reentered = true
 			if (!queued) {
@@ -191,11 +191,11 @@ describe('commit ordering', () => {
 
 		const doc = relay.start()
 		const log: string[] = []
-		doc.on('* -> b', () => {
+		doc.observe('* -> b', () => {
 			log.push('entered b')
 			doc.send('peek') // must not be drained until the chain is fully settled
 		})
-		doc.on('* -> *', (e) => log.push(`-> ${e.to.state}`))
+		doc.observe('* -> *', (e) => log.push(`-> ${e.to.state}`))
 
 		doc.send('go')
 
@@ -244,7 +244,7 @@ describe('commit ordering', () => {
 		const log: string[] = []
 		let queued = false
 
-		doc.on('* -> *', (e) => {
+		doc.observe('* -> *', (e) => {
 			log.push(e.to.state)
 			if (!queued) {
 				queued = true
@@ -271,15 +271,15 @@ describe('commit ordering across hosts', () => {
 		const log: string[] = []
 		let queued = false
 
-		hostA.on('* -> *', () => {
+		hostA.observe('* -> *', () => {
 			log.push('A-first')
 			if (!queued) {
 				queued = true
 				hostB.send('toggle') // must queue, not nest
 			}
 		})
-		hostA.on('* -> *', () => log.push('A-second'))
-		hostB.on('* -> *', () => log.push('B'))
+		hostA.observe('* -> *', () => log.push('A-second'))
+		hostB.observe('* -> *', () => log.push('B'))
 
 		hostA.send('toggle')
 		expect(log).toEqual(['A-first', 'A-second', 'B'])
@@ -290,7 +290,7 @@ describe('commit ordering across hosts', () => {
 		const hostB = toggle.start()
 		let queued = false
 
-		hostA.on('* -> *', () => {
+		hostA.observe('* -> *', () => {
 			if (!queued) {
 				queued = true
 				hostB.send('toggle')
@@ -319,7 +319,7 @@ describe('commit ordering across hosts', () => {
 		const log: string[] = []
 		let queued = false
 
-		hostA.on('* -> *', (e) => {
+		hostA.observe('* -> *', (e) => {
 			log.push(`A${e.to.data.order.at(-1)}`)
 			if (!queued) {
 				queued = true
@@ -327,7 +327,7 @@ describe('commit ordering across hosts', () => {
 				hostA.send('push', { value: 2 }) // queued second
 			}
 		})
-		hostB.on('* -> *', (e) => log.push(`B${e.to.data.order.at(-1)}`))
+		hostB.observe('* -> *', (e) => log.push(`B${e.to.data.order.at(-1)}`))
 
 		hostA.send('push', { value: 0 })
 		expect(log).toEqual(['A0', 'B1', 'A2'])
@@ -348,12 +348,12 @@ describe('commit ordering across hosts', () => {
 		const hostB = toggle.start()
 		const log: string[] = []
 
-		hostA.on('* -> b', () => {
+		hostA.observe('* -> b', () => {
 			log.push('A entered b')
 			hostB.send('toggle') // must not drain until hostA's chain is fully settled
 		})
-		hostA.on('* -> *', (e) => log.push(`A -> ${e.to.state}`))
-		hostB.on('* -> *', () => log.push('B toggled'))
+		hostA.observe('* -> *', (e) => log.push(`A -> ${e.to.state}`))
+		hostB.observe('* -> *', () => log.push('B toggled'))
 
 		hostA.send('go')
 
@@ -368,7 +368,7 @@ describe('commit ordering across hosts', () => {
 		let queued = false
 		let thrown = false
 
-		hostA.on('* -> *', () => {
+		hostA.observe('* -> *', () => {
 			log.push('A1')
 			if (!queued) {
 				queued = true
@@ -376,7 +376,7 @@ describe('commit ordering across hosts', () => {
 				hostA.send('toggle') // queued after it; must be discarded, never runs
 			}
 		})
-		hostB.on('* -> *', () => {
+		hostB.observe('* -> *', () => {
 			log.push('B')
 			if (!thrown) {
 				thrown = true
@@ -402,7 +402,7 @@ describe('commit ordering across hosts', () => {
 		const hostB = toggle.start()
 		let queued = false
 
-		hostA.on('* -> loop', () => {
+		hostA.observe('* -> loop', () => {
 			if (!queued) {
 				queued = true
 				hostB.send('toggle') // queued; must be discarded when the chain overflows
@@ -424,7 +424,7 @@ describe('commit ordering across hosts', () => {
 		const hostB = toggle.start()
 		let seenRightAfterSend: string | undefined
 
-		hostA.on('* -> *', () => {
+		hostA.observe('* -> *', () => {
 			hostB.send('toggle')
 			seenRightAfterSend = hostB.current.state // deferred: still the old state
 		})

@@ -390,6 +390,15 @@ than widening each independently.
 
 The exact subscription or reaction mechanism remains open.
 
+> **Settled 2026-08-19 — two mechanisms, not one.** Transitions are observed
+> with `observe(pattern, fn)` on the host, keeping the pattern language and the
+> correlated record this entry requires. A second, opt-in channel carries
+> declared **outputs**, subscribed by name. Both exist because they answer
+> different questions: under one merged mechanism a debugging subscription and a
+> structural one are the same call, and a consumer of a machine has to name its
+> internal states to react to it. Nothing is hidden either way —
+> [api-rationale.md, §16](api-rationale.md#16-the-composition-boundary).
+
 ### P0.11 — Fit high-frequency, platform-neutral browser code
 
 The primary runtime target is modern ESM-capable browsers. State evolution
@@ -471,6 +480,24 @@ part keeps its own typestate and effect ownership. Where live executions exist,
 a coordinator should be able to start, stop, and communicate with them.
 Composition must not require hierarchical or parallel states in the core API.
 
+> **Answered 2026-08-19, and it is mostly not a notation.** Peers communicate by
+> declared outputs — each level publishes its own vocabulary and the next
+> consumes it without naming a state, which is SwingStates' stacking pattern
+> ([note 04](research/04-hci-critiques-and-alternatives.md), F7). Prototyped
+> twice over three examples in `explorations/composition/`.
+>
+> The blocker was not expressiveness. Commit ordering guarantees that a
+> listener is never re-entered while an earlier call is still running, but the
+> queue is **per host**, so peer wiring — which crosses hosts — is exactly where
+> the guarantee lapses. A shared scheduler fixes it in about fifteen lines, and
+> it is needed whatever the notation. See
+> [api-rationale.md, §16](api-rationale.md#16-the-composition-boundary).
+>
+> Still outside this entry: the wiring itself remains imperative and outside the
+> definition, so an exported peer is still "half a machine plus a convention"
+> (§10). Declared outputs improve that — the convention names published outputs
+> rather than internal states — without closing it.
+
 ### P2.2 — Distinguish same-state updates from explicit re-entry
 
 An ordinary same-state data update should be able to preserve state-lifetime
@@ -538,6 +565,17 @@ reuse mechanism would obscure targets.
 > machines** (linear menu, marking menu, item highlighting), while
 > [acceptance-cases.md](acceptance-cases.md) Case 1 folds recognition, timing
 > and feedback into one. The case may be testing the wrong shape.
+
+> **Followed up 2026-08-19 — it was, in two ways.** Written as peers,
+> recognition and feedback each stay small and neither names the other's states;
+> the split cost nothing and the composition seam is six patterns or four output
+> names depending on the model (`explorations/composition/ex1-marking-menu/`).
+>
+> Timing is the sharper finding, and it goes the other way: the dwell belongs
+> **inside** recognition rather than beside it. Once the machine owns the timer,
+> leaving the state cancels it, a stale `dwell` cannot arrive, and Case 1's
+> `timerToken` and `nextToken` stop being needed at all. That is the strongest
+> argument in the record for `actions`, and it is not an argument for splitting.
 
 ## Deferred extension probes
 
