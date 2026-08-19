@@ -567,6 +567,45 @@ let queue: (() => void)[] = []
 let draining = false
 
 /**
+ * Run `work`, and everything it queues, as one dispatch — the window rule 4 is
+ * stated in terms of, and the thing `draining` records being inside of. Takes
+ * the drain if nobody holds it, drains to exhaustion and releases it; or, if
+ * somebody already holds it, runs `work` and leaves the queue to them.
+ *
+ * Named for that window rather than for the flag it sets, because the window is
+ * what both callers are asking for, and neither can be expressed as the other:
+ * `send` has already queued its work and passes nothing, while `start` must run
+ * its chain *inline* — it cannot defer it and still hand back a settled host —
+ * but must do so from inside the window, so a send issued from one of those
+ * hops queues like any other. Not the `dispatch` of the reducer libraries: that
+ * verb is `send`, and this takes a thunk or nothing.
+ *
+ * The queue is empty whenever `draining` is false, because every exit path
+ * clears it below, so taking the drain can never inherit abandoned work.
+ *
+ * `work?.()` rather than two call sites: the optional call is one byte-cheap
+ * token where a required parameter would push `send` into allocating a closure
+ * per call just to hand its `queue.push` over.
+ */
+const dispatch = (work?: () => void): void => {
+	// Already inside a dispatch, somewhere — on this host or any other. The
+	// outermost call, on whichever host started the chain, owns the drain.
+	if (draining) return work?.()
+	draining = true
+	try {
+		work?.()
+		for (let run; (run = queue.shift());) run()
+	} finally {
+		// In a `finally` so a throwing listener leaves every host usable and the
+		// flag correct. The queue is abandoned rather than drained: each
+		// transition already committed stays committed, but nothing still queued
+		// runs — on this host or any other.
+		draining = false
+		queue.length = 0
+	}
+}
+
+/**
  * Declare a machine. The result is inert data — it holds the index in a
  * closure, never touches or annotates the configuration object it was given,
  * and exposes `start` only, because observation is a property of a running
@@ -741,16 +780,14 @@ export function machine<
 					}
 				}
 			}
-			// Settled outside the queue, and without setting `draining`. Sound only
-			// because handlers project: no listener exists yet — `observe` is
-			// unreachable until this returns — so the one way to reach `send` from
-			// here is a handler closing over some *other* host, which nothing
-			// supported does. When it happens, that send nests if `start` was called
-			// at top level and queues if it was called from inside a dispatch: same
-			// code, two semantics. `actions` makes that path ordinary rather than
-			// off-label, and `start` then has to own a drain the way `send` does —
-			// see `docs/api-rationale.md`, "`start` settles outside the queue".
-			settle()
+			// Under the same drain ownership `send` takes, rather than bare: the
+			// initial chain is a dispatch, so a send issued from one of its hops —
+			// a handler reaching into another host today, an action on the initial
+			// state once `actions` lands — queues and drains after the chain
+			// settles, instead of nesting whenever `start` happened to be called
+			// with nothing else in flight. See `docs/api-rationale.md`, "`start`
+			// settles under the drain".
+			dispatch(settle)
 
 			return {
 				get current(): Snapshot {
@@ -774,29 +811,15 @@ export function machine<
 
 				send: (name: string, payload?: unknown): void => {
 					// Queued rather than run: `draining` is module scope, so this holds
-					// whether the call came from this host's own listener or a listener
-					// on a completely different host — see the queue's own comment.
+					// whether the call came from this host's own listener, a listener on
+					// a completely different host, or a hop `start` is settling — see
+					// the queue's own comment.
 					queue.push(() => {
 						// Evaluated against the state at drain time, so a queued send may
 						// correctly find no row and do nothing.
 						if (step(index[current.state]?.[name], name, payload)) settle()
 					})
-					// Already inside a dispatch, somewhere: this call was made from a
-					// listener, so it waits its turn rather than running nested. The
-					// outermost call, on whichever host started the chain, owns the
-					// drain.
-					if (draining) return
-					draining = true
-					try {
-						while (queue.length) queue.shift()!()
-					} finally {
-						// In a `finally` so a throwing listener leaves every host usable
-						// and the flag correct. The queue is abandoned rather than
-						// drained: each transition already committed stays committed, but
-						// nothing still queued runs — on this host or any other.
-						draining = false
-						queue.length = 0
-					}
+					dispatch()
 				},
 			}
 		},

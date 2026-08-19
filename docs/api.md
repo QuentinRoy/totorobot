@@ -244,7 +244,9 @@ them:
 - **The settling hops are unobservable.** Nobody has subscribed yet when `.start()`
   runs, so a chain off the initial state produces no events — only the state it lands
   in is visible, in the host `.start()` returns. If you need to observe an arrival,
-  don't make it the initial state.
+  don't make it the initial state. The chain is still a dispatch, though: it settles
+  under the same drain a `send` takes, so anything it sends into another host queues
+  behind it rather than landing mid-chain ([commit ordering](#commit-ordering) rule 4).
 - **`.start()` can throw.** A cycle among the initial state's immediates raises the same
   `RangeError`, with the same message, from `.start()` rather than from `send`.
 
@@ -405,7 +407,8 @@ Five rules, and they are the whole execution model:
 2. **Commit, then notify.** A listener always sees a fully committed machine, so `e.to`
    and `doc.current` agree — for every listener, on every hop, always.
 3. **Listeners fire in registration order**, on every hop.
-4. **A send from a listener is queued, unconditionally, across every host.** The queue
+4. **A send from inside a dispatch is queued, unconditionally, across every host** —
+   from a listener, or from a hop `start()` is settling. The queue
    and its draining flag are shared by every machine in the process, not owned one per
    host, so this holds whether the listener sends to its own host or to a completely
    different one. The queue drains before the outermost `send` returns — never on a
@@ -467,11 +470,12 @@ implementation to be driven from.
    declared initial state, exactly as plain construction would.
 5. A cycle among the initial state's immediates throws `RangeError` — same message
    shape as (34) — from `start()` rather than from `send`.
-6. The hops `start()` settles are unobservable **on the host being started**: nothing
-   has subscribed to it yet, so only the state the chain lands in is visible, never the
-   hops that got it there. Those hops run outside the dispatch queue, so a handler on
-   one of them that sends into a _different_ host is not covered by rule 4 — see
-   [rationale §12](api-rationale.md#start-settles-outside-the-queue--a-trap-not-yet-a-bug).
+6. The hops `start()` settles are unobservable: nothing has subscribed yet, so only the
+   state the chain lands in is visible, never the hops that got it there. They settle
+   under the same drain a `send` takes, so a send issued from one of them — into
+   another host, since nothing can yet reach the one being started — queues and drains
+   after the chain settles, before `start()` returns (rule 4); a `start()` called from
+   inside a dispatch settles inline and leaves the queue to the outer drain.
 7. Two hosts from one definition share no current state and no listeners.
 8. Nothing ever mutates the definition.
 
