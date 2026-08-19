@@ -19,10 +19,8 @@ type Inputs = {
 	revise: { text: string }
 	cancel: void
 }
-type States = {
-	empty: void
-	draft: { text: string; revision: number }
-}
+type States =
+	{ name: 'empty' } | { name: 'draft'; text: string; revision: number }
 
 const doc = machine({
 	initial: 'empty',
@@ -30,10 +28,10 @@ const doc = machine({
 	states: types<States>(),
 	transitions: {
 		'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
-		'draft -revise> draft': ({ data, input, skip }) =>
-			input.text === data.text
+		'draft -revise> draft': ({ state, input, skip }) =>
+			input.text === state.text
 				? skip()
-				: { text: input.text, revision: data.revision + 1 },
+				: { text: input.text, revision: state.revision + 1 },
 		'draft -cancel> empty': () => {},
 	},
 })
@@ -43,11 +41,11 @@ const withData = machine({
 	inputs: types<Inputs>(),
 	states: types<States>(),
 	transitions: {
-		'draft -revise> draft': ({ data, input, skip }) =>
-			input.text === data.text
+		'draft -revise> draft': ({ state, input, skip }) =>
+			input.text === state.text
 				? skip()
-				: { text: input.text, revision: data.revision + 1 },
-		'draft -cancel> draft': ({ data }) => data,
+				: { text: input.text, revision: state.revision + 1 },
+		'draft -cancel> draft': ({ state }) => ({ ...state }),
 	},
 })
 
@@ -68,44 +66,47 @@ function read<T>(value: T): T {
 	return value
 }
 
-test('narrowing the state narrows its data, with no nullable padding', () => {
+test('narrowing the tag narrows the state, with no nullable padding', () => {
 	const current = read(doc.start().current)
 
 	expectTypeOf(current).not.toBeAny()
-	if (current.state === 'empty') {
-		expectTypeOf(current.data).not.toBeAny()
-		expectTypeOf(current.data).toEqualTypeOf<undefined>()
+	if (current.name === 'empty') {
+		expectTypeOf(current).not.toBeAny()
+		expectTypeOf(current).toEqualTypeOf<{ name: 'empty' }>()
 	}
-	if (current.state === 'draft') {
-		expectTypeOf(current.data).not.toBeAny()
-		expectTypeOf(current.data).toEqualTypeOf<{
+	if (current.name === 'draft') {
+		expectTypeOf(current).not.toBeAny()
+		expectTypeOf(current).toEqualTypeOf<{
+			name: 'draft'
 			text: string
 			revision: number
 		}>()
 	}
 })
 
-test("a handler's data is its source state's data and its input is that input's payload, with no type annotations", () => {
+test("a handler's state is the full source state, tag included, and its input is that input's payload, with no type annotations", () => {
 	machine({
 		initial: 'empty',
 		inputs: types<Inputs>(),
 		states: types<States>(),
 		transitions: {
-			'empty -open> draft': ({ data, input }) => {
-				expectTypeOf(data).toEqualTypeOf<undefined>()
+			'empty -open> draft': ({ state, input }) => {
+				expectTypeOf(state).toEqualTypeOf<{ name: 'empty' }>()
 				expectTypeOf(input).toEqualTypeOf<{ text: string }>()
 				return { text: input.text, revision: 0 }
 			},
-			'draft -revise> draft': ({ data, input }) => {
-				expectTypeOf(data).toEqualTypeOf<{
+			'draft -revise> draft': ({ state, input }) => {
+				expectTypeOf(state).toEqualTypeOf<{
+					name: 'draft'
 					text: string
 					revision: number
 				}>()
 				expectTypeOf(input).toEqualTypeOf<{ text: string }>()
-				return { text: input.text, revision: data.revision + 1 }
+				return { text: input.text, revision: state.revision + 1 }
 			},
-			'draft -cancel> empty': ({ data, input }) => {
-				expectTypeOf(data).toEqualTypeOf<{
+			'draft -cancel> empty': ({ state, input }) => {
+				expectTypeOf(state).toEqualTypeOf<{
+					name: 'draft'
 					text: string
 					revision: number
 				}>()
@@ -115,9 +116,9 @@ test("a handler's data is its source state's data and its input is that input's 
 	})
 })
 
-test('start() takes no argument when the initial state is void, and requires one otherwise', () => {
+test('start() takes no argument when the initial state carries no payload, and requires one otherwise', () => {
 	doc.start()
-	// @ts-expect-error - empty's data is void; start() takes no argument
+	// @ts-expect-error - empty carries no payload; start() takes no argument
 	doc.start({ text: 'x', revision: 0 })
 
 	withData.start({ text: 'x', revision: 0 })

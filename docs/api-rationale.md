@@ -38,28 +38,28 @@ Twenty axes. All twenty were closed. **§16 and §17 then reopened two of them (
 renamed one (16) and reshaped one without changing its answer (6)** — decided after the
 rest of this record, and none of it built.
 
-| #   | Axis                       | Answer                                                             | §      |
-| --- | -------------------------- | ------------------------------------------------------------------ | ------ |
-| 1   | Overall layout             | string keys, input as arrow label — `'draft -submit> review'`      | 4      |
-| 2   | Data-free states           | ~~`void` in the vocabulary~~ — **reopened**, §17 deletes `void`    | 5, 17  |
-| 3   | Entry / exit actions       | edge patterns with one end pinned; no keyword                      | 9      |
-| 4   | Re-entry vs stay           | dissolved — it is an action's restart policy                       | 9      |
-| 5   | Self-transition spelling   | `'draft -revise> draft'`, an ordinary row                          | 5      |
-| 6   | Input vocabulary           | declared — **answer stands, shape changed** to unions by §17       | 5, 17  |
-| 7   | Returned commands (`emit`) | ~~out~~ — **reopened** as `emit` in `actions`, §16                 | 6, 16  |
-| 8   | Fall-through refusal       | no `else` and no warning — a decline is silent                     | 4      |
-| 9   | Async / work-in-flight     | subsumed by axis 10                                                | 8      |
-| 10  | Actions in the machine     | `actions:`, keyed by trigger, wrappers for policy                  | 9      |
-| 11  | The word for what you send | `inputs`, not `events` — the core is not a mailbox                 | 5      |
-| 12  | Typed send site            | **dropped** — broad `send` only; reversible later                  | 11     |
-| 13  | Composition                | **deferred from v1** — shape unsettled; a design to return to      | 10     |
-| 14  | Actions in v1              | **deferred** — v1 has no effect mechanism at all                   | 9      |
-| 15  | Immediate transitions      | `'from -> to'`, no input — **shipped**, chained, budget-guarded    | 7      |
-| 16  | Observation                | on the host, patterns, no residency key — **shipped as** `observe` | 12, 16 |
-| 17  | Commit ordering            | a chain per input, FIFO; commit, notify in order, queue            | 12     |
-| 18  | Definition and instance    | **split kept** — `publication.start(data)`                         | 12     |
-| 19  | Disposal and errors        | no `stop()` — the host owns nothing; a throw propagates            | 12     |
-| 20  | What `send` returns        | **nothing** — additive to add later, breaking to remove            | 12     |
+| #   | Axis                       | Answer                                                                                                  | §      |
+| --- | -------------------------- | ------------------------------------------------------------------------------------------------------- | ------ |
+| 1   | Overall layout             | string keys, input as arrow label — `'draft -submit> review'`                                           | 4      |
+| 2   | Data-free states           | ~~`void` in the vocabulary~~ — **reopened**, §17 deletes `void` for states, **shipped**; inputs unbuilt | 5, 17  |
+| 3   | Entry / exit actions       | edge patterns with one end pinned; no keyword                                                           | 9      |
+| 4   | Re-entry vs stay           | dissolved — it is an action's restart policy                                                            | 9      |
+| 5   | Self-transition spelling   | `'draft -revise> draft'`, an ordinary row                                                               | 5      |
+| 6   | Input vocabulary           | declared — **answer stands, shape changed** to unions by §17                                            | 5, 17  |
+| 7   | Returned commands (`emit`) | ~~out~~ — **reopened** as `emit` in `actions`, §16                                                      | 6, 16  |
+| 8   | Fall-through refusal       | no `else` and no warning — a decline is silent                                                          | 4      |
+| 9   | Async / work-in-flight     | subsumed by axis 10                                                                                     | 8      |
+| 10  | Actions in the machine     | `actions:`, keyed by trigger, wrappers for policy                                                       | 9      |
+| 11  | The word for what you send | `inputs`, not `events` — the core is not a mailbox                                                      | 5      |
+| 12  | Typed send site            | **dropped** — broad `send` only; reversible later                                                       | 11     |
+| 13  | Composition                | **deferred from v1** — shape unsettled; a design to return to                                           | 10     |
+| 14  | Actions in v1              | **deferred** — v1 has no effect mechanism at all                                                        | 9      |
+| 15  | Immediate transitions      | `'from -> to'`, no input — **shipped**, chained, budget-guarded                                         | 7      |
+| 16  | Observation                | on the host, patterns, no residency key — **shipped as** `observe`                                      | 12, 16 |
+| 17  | Commit ordering            | a chain per input, FIFO; commit, notify in order, queue                                                 | 12     |
+| 18  | Definition and instance    | **split kept** — `publication.start(data)`                                                              | 12     |
+| 19  | Disposal and errors        | no `stop()` — the host owns nothing; a throw propagates                                                 | 12     |
+| 20  | What `send` returns        | **nothing** — additive to add later, breaking to remove                                                 | 12     |
 
 The axes are not independent. Declaring the vocabulary (§5) settles 2, 5 and 6 in
 one move. Removing entry/exit settles 3, which makes 4 and 5 unobservable and
@@ -2708,9 +2708,12 @@ consumers. It does not close it.
 
 ## 17. The shape of a named thing
 
-> **Decided with §16 and unbuilt like it.** Reopens axis 2 — `void` leaves the
-> vocabulary entirely — and changes the shape axis 6 settled, though not its answer:
-> the vocabulary is still declared.
+> **Decided with §16. States are built; inputs and outputs are unbuilt like §16.**
+> Reopens axis 2 for states — `void` leaves the state half of the vocabulary entirely —
+> and changes the shape axis 6 settled, though not its answer: the vocabulary is still
+> declared. The input half of the same reshape, and the transition record's fourth
+> field it frees up, remain decided and unbuilt — `docs/api.md`,
+> [Changing before v1](api.md#changing-before-v1).
 
 ### The collision that started it
 
@@ -2741,11 +2744,19 @@ states: types<{ name: 'empty' } | { name: 'draft'; text: string; revision: numbe
   output _becomes_ an input, so `b.send(output)` has to typecheck. That forwarding
   property is the concrete gain, and it is what makes a `pipe(a, b)` writable.
 - **States are tagged `name`, and are free to differ, because states never travel.**
-  The whole object is the state, so it has a name; once `to` _is_ a state,
-  `e.to.state` reads as "the state's state".
-- **`send` takes one argument**: `send({ type: 'move', x, y })`.
+  The whole object is the state, so it has a name; `name` rather than `state` is what
+  keeps `e.to.name` reading as "the target's name" instead of the state's state.
+- **`send` takes one argument**: `send({ type: 'move', x, y })` — decided for inputs,
+  unbuilt; `states` has no `send`-equivalent call site to change.
 - **A handler still does not restate its target.** It returns the target's payload
-  minus the tag, which the library injects. The arrow test is untouched.
+  minus the tag, which the library injects — spread in _last_, so a handler that
+  spreads its source into the return cannot leave the source's tag on the committed
+  state. The arrow test is untouched.
+- **The handler's source parameter is `state`, tag included** — replacing `data`, which
+  after the reshape would have named neither the state nor the recommended nesting
+  field, and would have left a handler unable to ask which state it was transitioning
+  from: the case that matters for a handler shared across several rows
+  (`state.name === 'draft'`).
 
 ### `data` is a convention, not a rule
 
@@ -2764,22 +2775,32 @@ failure mode worth designing against.
 
 ### What it deletes, and what survives
 
-**Deleted.** `Dispatch<I>` goes entirely — `send` becomes `(input: I) => void`, because
-arity no longer follows the payload. `Snapshot`/`At<S, N>` go — `current` is `S`, and a
-narrowed end is `Extract<S, { name: N }>`. And **`void` leaves the vocabulary**:
-`{ type: 'up' }` and `{ name: 'empty' }` need no sentinel, so axis 2's answer is
-deleted rather than reworded.
+**Deleted for states, built.** `Snapshot`/`At<S, N>` are gone — `current` is `S`, and a
+narrowed end is `Extract<S, { name: N }>`. And **`void` leaves the state half of the
+vocabulary**: `{ name: 'empty' }` needs no sentinel, so axis 2's answer is deleted rather
+than reworded, for states.
+
+**Deleted for inputs, still ahead.** `Dispatch<I>` goes entirely once inputs are tagged
+— `send` becomes `(input: I) => void`, because arity no longer follows the payload
+argument. `void` leaves the input half of the vocabulary the same way it left the state
+half.
 
 **Survives.** `Start<S, Init>` still needs "no payload, no argument", with its condition
-changing from `[S[Init]] extends [void]` to `keyof Payload extends never`. Same
-complexity, different test.
+changed from `[S[Init]] extends [void]` to `keyof Payload extends never` — built, for the
+initial state. `send`'s arity keeps the analogous three-way test — `void`, unknown,
+required — until inputs are tagged and the whole conditional goes with `Dispatch<I>`.
 
 ### Measured, not assumed
 
 TS 7.0.2, each probe carrying a tripwire that must fail. All of it is pinned in
 [`explorations/tagged-vocabulary.ts`](../explorations/tagged-vocabulary.ts) — covered
 by `pnpm typecheck`, so a compiler release that changes any of these turns the build
-red rather than quietly invalidating this section.
+red rather than quietly invalidating this section. The empty-payload finding below is
+pinned separately, in
+[`explorations/empty-state-payload.ts`](../explorations/empty-state-payload.ts), because
+it outgrew a negative result once states shipped — see
+[The empty-payload encoding](#the-empty-payload-encoding-closing-the-negative-result)
+below.
 
 **The shape is not new to this repository.** `config-object-kit.ts` already carries
 states as `{ name: … }` unions and derives a source context with
@@ -2817,15 +2838,84 @@ why it does not bite.
   return gives an error identical to today's — bare, resolved, no wrapper — and costs
   the arrow test, since the target migrates back inside the lambda. That is [08 F3]'s
   criticism of Tinder, declined deliberately here rather than stumbled into.
-- **Negative result: for a payload-free target the tag is _not required_ but is also
-  _not rejected_.** `Omit<{ name: 'empty' }, 'name'>` is `{}`, and `{}` accepts any
-  object literal — both the weak-type check and excess-property checking need the
-  target to have at least one property. So a handler may restate `{ name: 'empty' }`
-  and nothing objects. Harmless in itself, but it means the type upholds the arrow
-  test only where the state carries data; everywhere else it is convention.
+- **The negative result this section originally recorded — closed, for states.** For a
+  payload-free target the bare `Omit<S, 'name'>` form leaves the tag _not required_ but
+  also _not rejected_: `Omit<{ name: 'empty' }, 'name'>` is `{}`, and `{}` accepts any
+  object literal. §31 closes this with the tagged empty-object encoding — see
+  [below](#the-empty-payload-encoding-closing-the-negative-result) — so the type upholds
+  the arrow test everywhere, not only where the state carries data. The bare form's
+  behaviour is unchanged and is exactly what makes the tagged form worth having.
 - **`typeof` queries do not see control-flow narrowing**, which is a trap for the
   assertions rather than for the design: a narrowed value has to be bound before it
   can be asserted about. Worth knowing before writing the real type tests.
+
+### The empty-payload encoding: closing the negative result
+
+The negative result above is real, and it is not the tagged union's fault: any
+form that reduces a payload-free target to `{}` inherits it, because `{}` is the one
+object type that accepts every object literal — TypeScript's weak-type check and
+excess-property check both require the target to carry at least one known property
+before either fires. Closing it needs a target type that is not `{}`.
+
+**The fix is a tagged empty-object type**, keyed by a module-private `unique symbol`,
+never populated:
+
+```ts
+declare const emptyObjectTag: unique symbol
+type EmptyObject = { readonly [emptyObjectTag]?: never }
+
+type Ret = keyof Payload extends never ? EmptyObject | void : Payload
+```
+
+`EmptyObject | void` is a handler's return type for a target with no payload beyond its
+tag; `Payload` otherwise, unchanged. `EmptyObject` carries one optional property the
+caller cannot spell, so nothing satisfies it except `{}` or `undefined` — the `void` arm.
+
+**Compared against an index-signature form** (`Record<string, never>` and kin), both
+against TS 7.0.2, both pinned in
+[`explorations/empty-state-payload.ts`](../explorations/empty-state-payload.ts): both
+reject a fresh literal carrying extra properties, a variable of a wider object type, an
+interface-typed value, and a spread of a wider state; both accept `{}` and `undefined`.
+Strictness is identical. The tagged form is chosen on two other grounds:
+
+- **Error quality.** The tagged form reports the value is not assignable to
+  `EmptyObject`. The index-signature form reports a property incompatible with the index
+  signature and a string literal not assignable to `never` — machinery the caller never
+  wrote, on what is the most common row in a table.
+- **Read safety.** In a union with a data-carrying member, reading a foreign property off
+  a `Record`-shaped member infers `never` rather than erroring; the tagged form errors.
+  Unreachable through this library's types today — the type appears only as a handler's
+  return, and no caller holds a reference to read a foreign property off — but it becomes
+  reachable if a handler's target ever resolves to more than one state name, and the
+  tagged form does not depend on that staying true.
+
+The cost is a `unique symbol` declaration in the published types, and it is paid once,
+module-private, not exported ([On what is exported](../src/totorobot.ts)) — the same
+shape `Skip`/`SKIP` already uses for the same reason. Both encodings cost nothing at
+runtime.
+
+**Rejecting a spread of a wider state is inherent to the empty target, not a property of
+either encoding** — only `{}` accepts one, which is the hole this closes. Spreading into
+a state that carries nothing is a mistake or a no-op, and the honest spellings — nothing,
+or `{}` — are accepted.
+
+### Why the handler's `state` parameter uses `NoInfer`
+
+The initial failure looked like a self-referential `S`/`K` problem: every row was reported as `not a transition`. That diagnosis was wrong.
+
+The actual issue is that `state: Extract<S, ...>` is an inference site. When a handler destructures its argument, TypeScript infers `S` from the table, competing with the `states` property. `S` becomes incorrect, `Key<I, S>` collapses, and every row fails.
+
+The fix is:
+
+```ts id="j6y5s"
+readonly state: NoInfer<Extract<S, { name: From<P> }>>
+```
+
+`states` is then the sole inference site. `NoInfer` belongs on the parameter, not on `S` itself.
+
+Overloads were considered as a workaround, but produce much worse diagnostics: errors move from individual rows to `machine({` and multiple bad rows collapse into one. The single signature with `NoInfer` preserves per-row errors.
+
+This also makes the state side symmetric with the existing `RawS`/`Declared` input handling. Other approaches, such as a plain default or constraining `S` to `StatesFromKeys<K>`, fail for `states: undefined`, interface-based vocabularies, or unused declared states.
 
 ## Where the code is
 

@@ -20,44 +20,48 @@ type AsyncInputs = {
 	cancel: void
 	reset: void
 }
-type AsyncStates = {
-	idle: { nextRequestId: number }
-	loading: { requestId: number; nextRequestId: number; progress: number }
-	success: { result: string; nextRequestId: number }
-	failure: { error: string; nextRequestId: number }
-}
+type AsyncStates =
+	| { name: 'idle'; nextRequestId: number }
+	| {
+			name: 'loading'
+			requestId: number
+			nextRequestId: number
+			progress: number
+	  }
+	| { name: 'success'; result: string; nextRequestId: number }
+	| { name: 'failure'; error: string; nextRequestId: number }
 
 const asyncRequest = machine({
 	initial: 'idle',
 	inputs: types<AsyncInputs>(),
 	states: types<AsyncStates>(),
 	transitions: {
-		'idle -start> loading': ({ data }) => ({
-			requestId: data.nextRequestId,
-			nextRequestId: data.nextRequestId + 1,
+		'idle -start> loading': ({ state }) => ({
+			requestId: state.nextRequestId,
+			nextRequestId: state.nextRequestId + 1,
 			progress: 0,
 		}),
-		'loading -progress> loading': ({ data, input, skip }) =>
-			input.requestId === data.requestId
-				? { ...data, progress: input.value }
+		'loading -progress> loading': ({ state, input, skip }) =>
+			input.requestId === state.requestId
+				? { ...state, progress: input.value }
 				: skip(),
-		'loading -succeed> success': ({ data, input, skip }) =>
-			input.requestId === data.requestId
-				? { result: input.result, nextRequestId: data.nextRequestId }
+		'loading -succeed> success': ({ state, input, skip }) =>
+			input.requestId === state.requestId
+				? { result: input.result, nextRequestId: state.nextRequestId }
 				: skip(),
-		'loading -fail> failure': ({ data, input, skip }) =>
-			input.requestId === data.requestId
-				? { error: input.error, nextRequestId: data.nextRequestId }
+		'loading -fail> failure': ({ state, input, skip }) =>
+			input.requestId === state.requestId
+				? { error: input.error, nextRequestId: state.nextRequestId }
 				: skip(),
 		// nextRequestId was already incremented on entering `loading`
-		'loading -cancel> idle': ({ data }) => ({
-			nextRequestId: data.nextRequestId,
+		'loading -cancel> idle': ({ state }) => ({
+			nextRequestId: state.nextRequestId,
 		}),
-		'success -reset> idle': ({ data }) => ({
-			nextRequestId: data.nextRequestId,
+		'success -reset> idle': ({ state }) => ({
+			nextRequestId: state.nextRequestId,
 		}),
-		'failure -reset> idle': ({ data }) => ({
-			nextRequestId: data.nextRequestId,
+		'failure -reset> idle': ({ state }) => ({
+			nextRequestId: state.nextRequestId,
 		}),
 	},
 })
@@ -69,18 +73,21 @@ describe('acceptance: asynchronous request race', () => {
 		doc.send('start')
 		doc.send('progress', { requestId: 0, value: 0.5 })
 		expect(doc.current).toEqual({
-			state: 'loading',
-			data: { requestId: 0, nextRequestId: 1, progress: 0.5 },
+			name: 'loading',
+			requestId: 0,
+			nextRequestId: 1,
+			progress: 0.5,
 		})
 
 		doc.send('fail', { requestId: 0, error: 'boom' })
 		expect(doc.current).toEqual({
-			state: 'failure',
-			data: { error: 'boom', nextRequestId: 1 },
+			name: 'failure',
+			error: 'boom',
+			nextRequestId: 1,
 		})
 
 		doc.send('reset')
-		expect(doc.current).toEqual({ state: 'idle', data: { nextRequestId: 1 } })
+		expect(doc.current).toEqual({ name: 'idle', nextRequestId: 1 })
 	})
 
 	test('the required race: a stale success for a cancelled request is free, and the live request still succeeds', () => {
@@ -88,32 +95,39 @@ describe('acceptance: asynchronous request race', () => {
 
 		doc.send('start') // 1. start request 0
 		expect(doc.current).toEqual({
-			state: 'loading',
-			data: { requestId: 0, nextRequestId: 1, progress: 0 },
+			name: 'loading',
+			requestId: 0,
+			nextRequestId: 1,
+			progress: 0,
 		})
 
 		doc.send('cancel') // 2. cancel request 0
-		expect(doc.current).toEqual({ state: 'idle', data: { nextRequestId: 1 } })
+		expect(doc.current).toEqual({ name: 'idle', nextRequestId: 1 })
 
 		doc.send('start') // 3. start request 1
 		expect(doc.current).toEqual({
-			state: 'loading',
-			data: { requestId: 1, nextRequestId: 2, progress: 0 },
+			name: 'loading',
+			requestId: 1,
+			nextRequestId: 2,
+			progress: 0,
 		})
 
 		// 4. receive success for request 0: matches no row for the current
 		// requestId, so it produces no transition — the stale result is free
 		doc.send('succeed', { requestId: 0, result: 'stale' })
 		expect(doc.current).toEqual({
-			state: 'loading',
-			data: { requestId: 1, nextRequestId: 2, progress: 0 },
+			name: 'loading',
+			requestId: 1,
+			nextRequestId: 2,
+			progress: 0,
 		})
 
 		// 5. receive success for request 1: enters success with its result
 		doc.send('succeed', { requestId: 1, result: 'fresh' })
 		expect(doc.current).toEqual({
-			state: 'success',
-			data: { result: 'fresh', nextRequestId: 2 },
+			name: 'success',
+			result: 'fresh',
+			nextRequestId: 2,
 		})
 	})
 })

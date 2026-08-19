@@ -4,14 +4,15 @@ import { editor } from './fixtures.ts'
 import { cloneDeep } from './helpers.ts'
 
 describe('reading', () => {
-	test('current is { state, data }, with data undefined for a void state', () => {
+	test('current is the state itself, tag included', () => {
 		const host = editor.start()
-		expect(host.current).toEqual({ state: 'idle', data: undefined })
+		expect(host.current).toEqual({ name: 'idle' })
 
 		host.send('open', { text: 'hello' })
 		expect(host.current).toEqual({
-			state: 'draft',
-			data: { text: 'hello', revision: 0 },
+			name: 'draft',
+			text: 'hello',
+			revision: 0,
 		})
 	})
 
@@ -20,16 +21,16 @@ describe('reading', () => {
 		host.send('open', { text: 'hello' })
 
 		const before = host.current
-		const beforeDataClone = cloneDeep(before.data)
-		const beforeDataRef = before.data
+		const beforeClone = cloneDeep(before)
+		const beforeRef = before
 
 		host.send('revise', { text: 'goodbye' })
 
 		// Deep equality catches a value that changed; object identity catches an
-		// implementation that mutated the old data in place even where, by
+		// implementation that mutated the old state in place even where, by
 		// coincidence, the mutated value would still equal the clone.
-		expect(before.data).toEqual(beforeDataClone)
-		expect(before.data).toBe(beforeDataRef)
-		expect(host.current.data).not.toBe(beforeDataRef)
+		expect(before).toEqual(beforeClone)
+		expect(before).toBe(beforeRef)
+		expect(host.current).not.toBe(beforeRef)
 	})
 })

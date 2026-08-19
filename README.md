@@ -24,12 +24,11 @@ type Inputs = {
 	submit: { route: 'review' | 'publish'; reviewer?: string }
 	cancel: void
 }
-type States = {
-	empty: void
-	draft: { text: string; revision: number }
-	review: { text: string; revision: number; reviewer: string }
-	published: { text: string; revision: number }
-}
+type States =
+	| { name: 'empty' }
+	| { name: 'draft'; text: string; revision: number }
+	| { name: 'review'; text: string; revision: number; reviewer: string }
+	| { name: 'published'; text: string; revision: number }
 
 export const publication = machine({
 	initial: 'empty',
@@ -38,18 +37,18 @@ export const publication = machine({
 
 	transitions: {
 		'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
-		'draft -submit> review': ({ data, input, skip }) =>
+		'draft -submit> review': ({ state, input, skip }) =>
 			input.route === 'review'
-				? { ...data, reviewer: input.reviewer! }
+				? { ...state, reviewer: input.reviewer! }
 				: skip(),
-		'draft -submit> published': ({ data, input, skip }) =>
-			input.route === 'publish' ? { ...data } : skip(),
+		'draft -submit> published': ({ state, input, skip }) =>
+			input.route === 'publish' ? { ...state } : skip(),
 		'draft -cancel> empty': () => {},
 	},
 })
 
 const doc = publication.start()
-doc.observe('* -> published', (e) => notify(e.to.data))
+doc.observe('* -> published', (e) => notify(e.to))
 doc.send('open', { text: 'hello' })
 ```
 
@@ -65,10 +64,11 @@ Read [the API](docs/api.md) for the full design, and
 [the design record](docs/api-rationale.md) for why it looks this way.
 
 > [!NOTE]
-> The example above is what `src/` implements today, and two parts of it are
-> already decided against. Settling where a machine's boundary goes reshaped the
-> vocabulary into a tagged union and dropped a field from the transition record —
-> before v1 tags, while nothing depends on them. See
+> The example above is what `src/` implements today, and one part of it is
+> already decided against. Settling where a machine's boundary goes calls for
+> inputs to become a tagged union too and for a field to drop from the
+> transition record — before v1 tags, while nothing depends on them. States
+> already made this move. See
 > [Changing before v1](docs/api.md#changing-before-v1).
 
 ## What is checked

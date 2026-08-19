@@ -33,17 +33,23 @@ type MarkingMenuInputs = {
 	up: { point: Point }
 	cancel: { point: Point }
 }
-type MarkingMenuStates = {
-	idle: { nextToken: number }
-	startup: {
-		origin: Point
-		stroke: Stroke
-		timerToken: number
-		nextToken: number
-	}
-	expert: { stroke: Stroke; nextToken: number }
-	novice: { menu: Menu; center: Point; stroke: Stroke; nextToken: number }
-}
+type MarkingMenuStates =
+	| { name: 'idle'; nextToken: number }
+	| {
+			name: 'startup'
+			origin: Point
+			stroke: Stroke
+			timerToken: number
+			nextToken: number
+	  }
+	| { name: 'expert'; stroke: Stroke; nextToken: number }
+	| {
+			name: 'novice'
+			menu: Menu
+			center: Point
+			stroke: Stroke
+			nextToken: number
+	  }
 
 const DWELL_DISTANCE_THRESHOLD = 10
 
@@ -65,46 +71,46 @@ const markingMenu = machine({
 	inputs: types<MarkingMenuInputs>(),
 	states: types<MarkingMenuStates>(),
 	transitions: {
-		'idle -down> startup': ({ data, input }) => ({
+		'idle -down> startup': ({ state, input }) => ({
 			origin: input.point,
 			stroke: [input.point],
-			timerToken: data.nextToken,
-			nextToken: data.nextToken + 1,
+			timerToken: state.nextToken,
+			nextToken: state.nextToken + 1,
 		}),
-		'startup -move> startup': ({ data, input, skip }) =>
-			distance(data.origin, input.point) < DWELL_DISTANCE_THRESHOLD
-				? { ...data, stroke: appendStroke(data.stroke, input.point) }
+		'startup -move> startup': ({ state, input, skip }) =>
+			distance(state.origin, input.point) < DWELL_DISTANCE_THRESHOLD
+				? { ...state, stroke: appendStroke(state.stroke, input.point) }
 				: skip(),
-		'startup -move> expert': ({ data, input, skip }) =>
-			distance(data.origin, input.point) < DWELL_DISTANCE_THRESHOLD
+		'startup -move> expert': ({ state, input, skip }) =>
+			distance(state.origin, input.point) < DWELL_DISTANCE_THRESHOLD
 				? skip()
 				: {
-						stroke: appendStroke(data.stroke, input.point),
-						nextToken: data.nextToken,
+						stroke: appendStroke(state.stroke, input.point),
+						nextToken: state.nextToken,
 					},
-		'startup -dwellElapsed> novice': ({ data, input, skip }) =>
-			input.token === data.timerToken
+		'startup -dwellElapsed> novice': ({ state, input, skip }) =>
+			input.token === state.timerToken
 				? {
 						menu: rootMenu,
-						center: data.origin,
-						stroke: data.stroke,
-						nextToken: data.nextToken,
+						center: state.origin,
+						stroke: state.stroke,
+						nextToken: state.nextToken,
 					}
 				: skip(),
-		'expert -move> expert': ({ data, input }) => ({
-			...data,
-			stroke: appendStroke(data.stroke, input.point),
+		'expert -move> expert': ({ state, input }) => ({
+			...state,
+			stroke: appendStroke(state.stroke, input.point),
 		}),
-		'novice -move> novice': ({ data, input }) => ({
-			...data,
-			stroke: appendStroke(data.stroke, input.point),
+		'novice -move> novice': ({ state, input }) => ({
+			...state,
+			stroke: appendStroke(state.stroke, input.point),
 		}),
-		'startup -up> idle': ({ data }) => ({ nextToken: data.nextToken }),
-		'expert -up> idle': ({ data }) => ({ nextToken: data.nextToken }),
-		'novice -up> idle': ({ data }) => ({ nextToken: data.nextToken }),
-		'startup -cancel> idle': ({ data }) => ({ nextToken: data.nextToken }),
-		'expert -cancel> idle': ({ data }) => ({ nextToken: data.nextToken }),
-		'novice -cancel> idle': ({ data }) => ({ nextToken: data.nextToken }),
+		'startup -up> idle': ({ state }) => ({ nextToken: state.nextToken }),
+		'expert -up> idle': ({ state }) => ({ nextToken: state.nextToken }),
+		'novice -up> idle': ({ state }) => ({ nextToken: state.nextToken }),
+		'startup -cancel> idle': ({ state }) => ({ nextToken: state.nextToken }),
+		'expert -cancel> idle': ({ state }) => ({ nextToken: state.nextToken }),
+		'novice -cancel> idle': ({ state }) => ({ nextToken: state.nextToken }),
 	},
 })
 
@@ -118,14 +124,17 @@ describe('acceptance: Reduced Marking Menu', () => {
 		const log: string[] = []
 		doc.observe('idle -down> startup', () => log.push('report:start'))
 		doc.observe('idle -down> startup', (e) =>
-			log.push(`schedule:${e.to.data.timerToken}`),
+			log.push(`schedule:${e.to.timerToken}`),
 		)
 
 		doc.send('down', { point: p0 })
 
 		expect(doc.current).toEqual({
-			state: 'startup',
-			data: { origin: p0, stroke: [p0], timerToken: 0, nextToken: 1 },
+			name: 'startup',
+			origin: p0,
+			stroke: [p0],
+			timerToken: 0,
+			nextToken: 1,
 		})
 		expect(log).toEqual(['report:start', 'schedule:0'])
 	})
@@ -136,8 +145,11 @@ describe('acceptance: Reduced Marking Menu', () => {
 
 		doc.send('move', { point: p1Near })
 		expect(doc.current).toEqual({
-			state: 'startup',
-			data: { origin: p0, stroke: [p0, p1Near], timerToken: 0, nextToken: 1 },
+			name: 'startup',
+			origin: p0,
+			stroke: [p0, p1Near],
+			timerToken: 0,
+			nextToken: 1,
 		})
 
 		const log: string[] = []
@@ -146,8 +158,11 @@ describe('acceptance: Reduced Marking Menu', () => {
 		doc.send('dwellElapsed', { token: 0 }) // matches the scheduled token
 
 		expect(doc.current).toEqual({
-			state: 'novice',
-			data: { menu: rootMenu, center: p0, stroke: [p0, p1Near], nextToken: 1 },
+			name: 'novice',
+			menu: rootMenu,
+			center: p0,
+			stroke: [p0, p1Near],
+			nextToken: 1,
 		})
 		expect(log).toEqual(['open'])
 	})
@@ -158,20 +173,21 @@ describe('acceptance: Reduced Marking Menu', () => {
 
 		const log: string[] = []
 		doc.observe('startup -move> expert', (e) =>
-			log.push(`cancel:${e.from.data.timerToken}`),
+			log.push(`cancel:${e.from.timerToken}`),
 		)
 
 		doc.send('move', { point: p2Far })
 		expect(doc.current).toEqual({
-			state: 'expert',
-			data: { stroke: [p0, p2Far], nextToken: 1 },
+			name: 'expert',
+			stroke: [p0, p2Far],
+			nextToken: 1,
 		})
 		expect(log).toEqual(['cancel:0'])
 
 		const before = doc.current
 		doc.send('dwellElapsed', { token: 0 }) // stale: token 0 was already cancelled
 		expect(doc.current).toEqual(before)
-		expect(doc.current.state).not.toBe('novice')
+		expect(doc.current.name).not.toBe('novice')
 	})
 
 	test('trace 4: cancel from startup returns to idle, cancels the dwell token, and reports cancellation', () => {
@@ -180,13 +196,13 @@ describe('acceptance: Reduced Marking Menu', () => {
 
 		const log: string[] = []
 		doc.observe('startup -cancel> idle', (e) => {
-			log.push(`cancel:${e.from.data.timerToken}`)
+			log.push(`cancel:${e.from.timerToken}`)
 			log.push('report:cancel')
 		})
 
 		doc.send('cancel', { point: p0 })
 
-		expect(doc.current).toEqual({ state: 'idle', data: { nextToken: 1 } })
+		expect(doc.current).toEqual({ name: 'idle', nextToken: 1 })
 		expect(log).toEqual(['cancel:0', 'report:cancel'])
 	})
 

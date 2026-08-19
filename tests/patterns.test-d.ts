@@ -11,12 +11,11 @@ type Inputs = {
 	submit: { route: 'review' | 'publish' }
 	cancel: void
 }
-type States = {
-	empty: void
-	draft: { text: string }
-	review: { text: string; reviewer: string }
-	published: { text: string }
-}
+type States =
+	| { name: 'empty' }
+	| { name: 'draft'; text: string }
+	| { name: 'review'; text: string; reviewer: string }
+	| { name: 'published'; text: string }
 
 const doc = machine({
 	initial: 'empty',
@@ -24,10 +23,10 @@ const doc = machine({
 	states: types<States>(),
 	transitions: {
 		'empty -open> draft': ({ input }) => ({ text: input.text }),
-		'draft -submit> review': ({ data, input, skip }) =>
-			input.route === 'review' ? { text: data.text, reviewer: '' } : skip(),
-		'draft -submit> published': ({ data, input, skip }) =>
-			input.route === 'publish' ? { text: data.text } : skip(),
+		'draft -submit> review': ({ state, input, skip }) =>
+			input.route === 'review' ? { text: state.text, reviewer: '' } : skip(),
+		'draft -submit> published': ({ state, input, skip }) =>
+			input.route === 'publish' ? { text: state.text } : skip(),
 		'draft -cancel> empty': () => {},
 	},
 })
@@ -65,7 +64,7 @@ test('a bare key names a state and is not a legal pattern', () => {
 	).toThrow(SyntaxError)
 })
 
-test('the transition record is discriminated by its input name, and each end carries its own state and data', () => {
+test('the transition record is discriminated by its input name, and each end carries its own tag and data', () => {
 	const host = doc.start()
 
 	host.observe('* -> *', (e) => {
@@ -81,24 +80,25 @@ test('the transition record is discriminated by its input name, and each end car
 			expectTypeOf(e.input).toEqualTypeOf<undefined>()
 		}
 
-		if (e.from.state === 'draft') {
-			expectTypeOf(e.from.data).toEqualTypeOf<{ text: string }>()
+		if (e.from.name === 'draft') {
+			expectTypeOf(e.from).toEqualTypeOf<{ name: 'draft'; text: string }>()
 		}
-		if (e.to.state === 'review') {
-			expectTypeOf(e.to.data).toEqualTypeOf<{
+		if (e.to.name === 'review') {
+			expectTypeOf(e.to).toEqualTypeOf<{
+				name: 'review'
 				text: string
 				reviewer: string
 			}>()
 		}
-		if (e.to.state === 'empty') {
-			expectTypeOf(e.to.data).toEqualTypeOf<undefined>()
+		if (e.to.name === 'empty') {
+			expectTypeOf(e.to).toEqualTypeOf<{ name: 'empty' }>()
 		}
 	})
 })
 
 test('an unlabelled pattern admits on: undefined for an immediate hop; a labelled pattern excludes it', () => {
 	type ImmediateInputs = { open: { text: string } }
-	type ImmediateStates = { empty: void; draft: { text: string } }
+	type ImmediateStates = { name: 'empty' } | { name: 'draft'; text: string }
 
 	const withImmediate = machine({
 		initial: 'empty',
@@ -106,7 +106,7 @@ test('an unlabelled pattern admits on: undefined for an immediate hop; a labelle
 		states: types<ImmediateStates>(),
 		transitions: {
 			'empty -open> draft': ({ input }) => ({ text: input.text }),
-			'draft -> draft': ({ data }) => data,
+			'draft -> draft': ({ state }) => ({ ...state }),
 		},
 	})
 	const host = withImmediate.start()

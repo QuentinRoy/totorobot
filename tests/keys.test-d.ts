@@ -12,13 +12,11 @@ type Inputs = {
 	revise: { text: string }
 	cancel: void
 }
-type States = {
-	empty: void
-	draft: { text: string; revision: number }
-}
+type States =
+	{ name: 'empty' } | { name: 'draft'; text: string; revision: number }
 
 type SkipInputs = { revise: { text: string }; cancel: void }
-type SkipStates = { draft: { text: string }; empty: void }
+type SkipStates = { name: 'draft'; text: string } | { name: 'empty' }
 
 test('a handler returning the wrong shape for its target state is rejected', () => {
 	machine({
@@ -43,14 +41,14 @@ test('reading source data the source state does not have is rejected', () => {
 		inputs: types<Inputs>(),
 		states: types<States>(),
 		transitions: {
-			'empty -open> draft': ({ data, input }) => ({
+			'empty -open> draft': ({ state, input }) => ({
 				text: input.text,
-				// @ts-expect-error - empty's data is void; there is no `.revision` to read
-				revision: data.revision,
+				// @ts-expect-error - empty carries no payload; there is no `.revision` to read
+				revision: state.revision,
 			}),
-			'draft -revise> draft': ({ data, input }) => ({
+			'draft -revise> draft': ({ state, input }) => ({
 				text: input.text,
-				revision: data.revision + 1,
+				revision: state.revision + 1,
 			}),
 			'draft -cancel> empty': () => {},
 		},
@@ -119,7 +117,7 @@ test('an unlabelled arrow is accepted as an immediate transition', () => {
 				text: input.text,
 				revision: 0,
 			}),
-			'draft -> draft': ({ data }) => data,
+			'draft -> draft': ({ state }) => ({ ...state }),
 		},
 	})
 })
@@ -135,9 +133,9 @@ test("an immediate row's handler receives no input, and a wrong-shaped return is
 				revision: 0,
 			}),
 			'draft -cancel> empty': () => {},
-			'empty -> draft': ({ data, input }) => {
-				// @ts-expect-error - empty's data is void; there is no `.anything` to read
-				data.anything
+			'empty -> draft': ({ state, input }) => {
+				// @ts-expect-error - empty carries no payload; there is no `.anything` to read
+				state.anything
 				expectTypeOf(input).toEqualTypeOf<undefined>()
 				return { text: '', revision: 0 }
 			},
@@ -167,14 +165,14 @@ test('a bare key names a state and is rejected in the transitions table', () => 
 	).toThrow(SyntaxError)
 })
 
-test('skip() is returnable from a handler for every target shape, including a void target', () => {
+test('skip() is returnable from a handler for every target shape, including a payload-free target', () => {
 	machine({
 		initial: 'draft',
 		inputs: types<SkipInputs>(),
 		states: types<SkipStates>(),
 		transitions: {
-			'draft -revise> draft': ({ data, input, skip }) =>
-				input.text === data.text ? skip() : { text: input.text },
+			'draft -revise> draft': ({ state, input, skip }) =>
+				input.text === state.text ? skip() : { text: input.text },
 			'draft -cancel> empty': ({ skip }) =>
 				Math.random() > 0.5 ? skip() : undefined,
 		},
@@ -187,7 +185,7 @@ test('a declared vocabulary may still name `*` or a padded name explicitly (#22)
 	// `types<T>()` is a different inference site entirely, and declaring ' b'
 	// or '*' by hand is deliberate in a way a doubled space in a key never is
 	// — so neither is filtered here.
-	type OddStates = { off: void; '*': void; ' padded': void }
+	type OddStates = { name: 'off' } | { name: '*' } | { name: ' padded' }
 	type OddInputs = { go: void }
 
 	machine({
@@ -207,11 +205,11 @@ test('a wrong-shaped return is still rejected on a row that could also skip()', 
 		inputs: types<SkipInputs>(),
 		states: types<SkipStates>(),
 		transitions: {
-			'draft -revise> draft': ({ data, input, skip }) =>
+			'draft -revise> draft': ({ state, input, skip }) =>
 				// @ts-expect-error - draft's data needs `text`; the skip() channel does not excuse a wrong shape
-				input.text === data.text ? skip() : { wrong: true },
+				input.text === state.text ? skip() : { wrong: true },
 			'draft -cancel> empty': ({ skip }) =>
-				// @ts-expect-error - empty is void; a handler may return skip() or nothing, not data
+				// @ts-expect-error - empty carries no payload; a handler may return skip() or nothing, not data
 				Math.random() > 0.5 ? skip() : { text: 'x' },
 		},
 	})

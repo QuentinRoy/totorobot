@@ -10,11 +10,10 @@ import { machine, types } from '../../src/totorobot.ts'
  */
 type Inputs = { next: void }
 
-type States = {
-	red: { changes: number }
-	green: { changes: number }
-	yellow: { changes: number; blinking: boolean }
-}
+type States =
+	| { name: 'red'; changes: number }
+	| { name: 'green'; changes: number }
+	| { name: 'yellow'; changes: number; blinking: boolean }
 
 export const trafficLight = machine({
 	initial: 'red',
@@ -22,14 +21,14 @@ export const trafficLight = machine({
 	states: types<States>(),
 
 	transitions: {
-		'red -next> green': ({ data }) => ({ changes: data.changes + 1 }),
-		'green -next> yellow': ({ data }) => ({
-			changes: data.changes + 1,
+		'red -next> green': ({ state }) => ({ changes: state.changes + 1 }),
+		'green -next> yellow': ({ state }) => ({
+			changes: state.changes + 1,
 			blinking: true,
 		}),
-		// `data.blinking` is available here and nowhere else.
-		'yellow -next> red': ({ data }) => ({
-			changes: data.changes + (data.blinking ? 1 : 0),
+		// `state.blinking` is available here and nowhere else.
+		'yellow -next> red': ({ state }) => ({
+			changes: state.changes + (state.blinking ? 1 : 0),
 		}),
 	},
 })

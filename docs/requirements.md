@@ -543,6 +543,17 @@ Missing fields and fields of the wrong type are part of the core typestate
 guarantee. Rejecting extra fields as well is useful, but may be traded for
 clearer types and errors.
 
+> **Amended 2026-08-19 — built, for every target, without the trade.** A
+> data-carrying target already rejected excess fields through ordinary
+> excess-property checking. The one gap was a payload-free target, where the
+> bare projection type is `{}` and `{}` accepts any object literal — so a
+> handler could restate the target's tag and nothing objected. The tagged
+> empty-object encoding closes it: a payload-free target now rejects a fresh
+> literal carrying extra properties, a wider-typed variable, an
+> interface-typed value, and a spread of a wider state, with error quality
+> equal to the data-carrying case — no trade needed
+> ([rationale §17](api-rationale.md#17-the-shape-of-a-named-thing)).
+
 ### P2.9 — Reuse behavior shared by several states
 
 It should be possible to avoid repeating common behavior such as cancellation

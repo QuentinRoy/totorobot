@@ -20,7 +20,7 @@ describe('commit ordering', () => {
 		doc.observe('* -> *', () => {
 			log.push('second')
 			if (stateWhenSecondRan === undefined)
-				stateWhenSecondRan = doc.current.state
+				stateWhenSecondRan = doc.current.name
 		})
 
 		doc.send('toggle')
@@ -41,17 +41,17 @@ describe('commit ordering', () => {
 
 		doc.send('toggle')
 		// no await, no microtask flush: the queued send has already drained
-		expect(doc.current).toEqual({ state: 'off', data: undefined })
+		expect(doc.current).toEqual({ name: 'off' })
 	})
 
 	test('several queued sends drain first-in-first-out', () => {
 		const counter = machine({
 			initial: 'ready',
 			inputs: types<{ push: { value: number } }>(),
-			states: types<{ ready: { order: number[] } }>(),
+			states: types<{ name: 'ready'; order: number[] }>(),
 			transitions: {
-				'ready -push> ready': ({ data, input }) => ({
-					order: [...data.order, input.value],
+				'ready -push> ready': ({ state, input }) => ({
+					order: [...state.order, input.value],
 				}),
 			},
 		})
@@ -67,14 +67,14 @@ describe('commit ordering', () => {
 		})
 
 		doc.send('push', { value: 0 })
-		expect(doc.current.data.order).toEqual([0, 1, 2])
+		expect(doc.current.order).toEqual([0, 1, 2])
 	})
 
 	test('a queued send is evaluated against the state at drain time, so it may correctly find no row and do nothing', () => {
 		const stepper = machine({
 			initial: 'a',
 			inputs: types<{ go: void }>(),
-			states: types<{ a: void; b: void; c: void }>(),
+			states: types<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
 			transitions: {
 				'a -go> b': () => {},
 				'b -go> c': () => {},
@@ -85,7 +85,7 @@ describe('commit ordering', () => {
 		const log: string[] = []
 		let queued = false
 		doc.observe('* -> *', (e) => {
-			log.push(e.to.state)
+			log.push(e.to.name)
 			if (!queued) {
 				queued = true
 				doc.send('go') // drains at b -> c
@@ -95,7 +95,7 @@ describe('commit ordering', () => {
 
 		doc.send('go')
 		expect(log).toEqual(['b', 'c'])
-		expect(doc.current).toEqual({ state: 'c', data: undefined })
+		expect(doc.current).toEqual({ name: 'c' })
 	})
 
 	test('a listener that throws propagates out of send; later listeners and the queue are abandoned, but the transition stays committed', () => {
@@ -122,13 +122,13 @@ describe('commit ordering', () => {
 
 		expect(() => doc.send('toggle')).toThrow('boom')
 		expect(log).toEqual(['first', 'second'])
-		expect(doc.current).toEqual({ state: 'on', data: undefined })
+		expect(doc.current).toEqual({ name: 'on' })
 
 		// the host still works afterwards
 		log.length = 0
 		doc.send('toggle')
 		expect(log).toEqual(['first', 'second', 'third'])
-		expect(doc.current).toEqual({ state: 'off', data: undefined })
+		expect(doc.current).toEqual({ name: 'off' })
 	})
 
 	test('the drain flag resets after a throw, so a send from inside a listener still queues and drains afterwards', () => {
@@ -179,7 +179,7 @@ describe('commit ordering', () => {
 		const relay = machine({
 			initial: 'a',
 			inputs: types<{ go: void; peek: void }>(),
-			states: types<{ a: void; b: void; c: void }>(),
+			states: types<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
 			transitions: {
 				'a -go> b': () => {},
 				'b -> c': () => {},
@@ -195,11 +195,11 @@ describe('commit ordering', () => {
 			log.push('entered b')
 			doc.send('peek') // must not be drained until the chain is fully settled
 		})
-		doc.observe('* -> *', (e) => log.push(`-> ${e.to.state}`))
+		doc.observe('* -> *', (e) => log.push(`-> ${e.to.name}`))
 
 		doc.send('go')
 
-		expect(doc.current).toEqual({ state: 'c', data: undefined })
+		expect(doc.current).toEqual({ name: 'c' })
 		expect(log).toEqual(['entered b', '-> b', '-> c'])
 	})
 
@@ -210,7 +210,7 @@ describe('commit ordering', () => {
 			new RangeError("maximum transitions reached in 'loop'"),
 		)
 		// no rollback: the 1e5 hops already committed stay committed
-		expect(doc.current.state).toBe('loop')
+		expect(doc.current.name).toBe('loop')
 	})
 
 	test('the host is usable after a budget throw', () => {
@@ -218,25 +218,25 @@ describe('commit ordering', () => {
 		expect(() => doc.send('go')).toThrow(RangeError)
 
 		doc.send('stop')
-		expect(doc.current).toEqual({ state: 'idle', data: undefined })
+		expect(doc.current).toEqual({ name: 'idle' })
 	})
 
 	test('an immediate self-loop that rewrites its data and eventually skips terminates normally, well inside the budget', () => {
 		const counter = machine({
 			initial: 'idle',
 			inputs: types<{ go: void }>(),
-			states: types<{ idle: void; counting: number }>(),
+			states: types<{ name: 'idle' } | { name: 'counting'; count: number }>(),
 			transitions: {
-				'idle -go> counting': () => 0,
-				'counting -> counting': ({ data, skip }) =>
-					data < 5 ? data + 1 : skip(),
+				'idle -go> counting': () => ({ count: 0 }),
+				'counting -> counting': ({ state, skip }) =>
+					state.count < 5 ? { count: state.count + 1 } : skip(),
 			},
 		})
 
 		const doc = counter.start()
 		doc.send('go')
 
-		expect(doc.current).toEqual({ state: 'counting', data: 5 })
+		expect(doc.current).toEqual({ name: 'counting', count: 5 })
 	})
 
 	test('every submitted input is considered exactly once', () => {
@@ -245,7 +245,7 @@ describe('commit ordering', () => {
 		let queued = false
 
 		doc.observe('* -> *', (e) => {
-			log.push(e.to.state)
+			log.push(e.to.name)
 			if (!queued) {
 				queued = true
 				doc.send('toggle')
@@ -299,17 +299,17 @@ describe('commit ordering across hosts', () => {
 
 		hostA.send('toggle')
 		// no await, no microtask flush: hostB has already drained
-		expect(hostB.current).toEqual({ state: 'on', data: undefined })
+		expect(hostB.current).toEqual({ name: 'on' })
 	})
 
 	test('several sends from listeners across hosts drain first-in-first-out', () => {
 		const counter = machine({
 			initial: 'ready',
 			inputs: types<{ push: { value: number } }>(),
-			states: types<{ ready: { order: number[] } }>(),
+			states: types<{ name: 'ready'; order: number[] }>(),
 			transitions: {
-				'ready -push> ready': ({ data, input }) => ({
-					order: [...data.order, input.value],
+				'ready -push> ready': ({ state, input }) => ({
+					order: [...state.order, input.value],
 				}),
 			},
 		})
@@ -320,14 +320,14 @@ describe('commit ordering across hosts', () => {
 		let queued = false
 
 		hostA.observe('* -> *', (e) => {
-			log.push(`A${e.to.data.order.at(-1)}`)
+			log.push(`A${e.to.order.at(-1)}`)
 			if (!queued) {
 				queued = true
 				hostB.send('push', { value: 1 }) // queued first
 				hostA.send('push', { value: 2 }) // queued second
 			}
 		})
-		hostB.observe('* -> *', (e) => log.push(`B${e.to.data.order.at(-1)}`))
+		hostB.observe('* -> *', (e) => log.push(`B${e.to.order.at(-1)}`))
 
 		hostA.send('push', { value: 0 })
 		expect(log).toEqual(['A0', 'B1', 'A2'])
@@ -337,7 +337,7 @@ describe('commit ordering across hosts', () => {
 		const relay = machine({
 			initial: 'a',
 			inputs: types<{ go: void }>(),
-			states: types<{ a: void; b: void; c: void }>(),
+			states: types<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
 			transitions: {
 				'a -go> b': () => {},
 				'b -> c': () => {},
@@ -352,12 +352,12 @@ describe('commit ordering across hosts', () => {
 			log.push('A entered b')
 			hostB.send('toggle') // must not drain until hostA's chain is fully settled
 		})
-		hostA.observe('* -> *', (e) => log.push(`A -> ${e.to.state}`))
+		hostA.observe('* -> *', (e) => log.push(`A -> ${e.to.name}`))
 		hostB.observe('* -> *', () => log.push('B toggled'))
 
 		hostA.send('go')
 
-		expect(hostA.current).toEqual({ state: 'c', data: undefined })
+		expect(hostA.current).toEqual({ name: 'c' })
 		expect(log).toEqual(['A entered b', 'A -> b', 'A -> c', 'B toggled'])
 	})
 
@@ -387,14 +387,14 @@ describe('commit ordering across hosts', () => {
 		expect(() => hostA.send('toggle')).toThrow('boom')
 		expect(log).toEqual(['A1', 'B'])
 		// the throwing transition itself stays committed; the discarded one never ran
-		expect(hostA.current).toEqual({ state: 'on', data: undefined })
-		expect(hostB.current).toEqual({ state: 'on', data: undefined })
+		expect(hostA.current).toEqual({ name: 'on' })
+		expect(hostB.current).toEqual({ name: 'on' })
 
 		// both hosts still work afterwards
 		hostA.send('toggle')
 		hostB.send('toggle')
-		expect(hostA.current).toEqual({ state: 'off', data: undefined })
-		expect(hostB.current).toEqual({ state: 'off', data: undefined })
+		expect(hostA.current).toEqual({ name: 'off' })
+		expect(hostB.current).toEqual({ name: 'off' })
 	})
 
 	test('a runaway immediate chain in one host discards queued sends in another host the same way a throwing listener does', () => {
@@ -410,13 +410,13 @@ describe('commit ordering across hosts', () => {
 		})
 
 		expect(() => hostA.send('go')).toThrow(RangeError)
-		expect(hostB.current).toEqual({ state: 'off', data: undefined }) // never drained
+		expect(hostB.current).toEqual({ name: 'off' }) // never drained
 
 		// both hosts still work afterwards
 		hostA.send('stop')
 		hostB.send('toggle')
-		expect(hostA.current).toEqual({ state: 'idle', data: undefined })
-		expect(hostB.current).toEqual({ state: 'on', data: undefined })
+		expect(hostA.current).toEqual({ name: 'idle' })
+		expect(hostB.current).toEqual({ name: 'on' })
 	})
 
 	test("reading a machine's current state right after sending to it from inside any dispatch shows the old state, even when the target is a different host", () => {
@@ -426,13 +426,13 @@ describe('commit ordering across hosts', () => {
 
 		hostA.observe('* -> *', () => {
 			hostB.send('toggle')
-			seenRightAfterSend = hostB.current.state // deferred: still the old state
+			seenRightAfterSend = hostB.current.name // deferred: still the old state
 		})
 
 		hostA.send('toggle')
 		expect(seenRightAfterSend).toBe('off')
 		// drained by the time the outermost send returns
-		expect(hostB.current).toEqual({ state: 'on', data: undefined })
+		expect(hostB.current).toEqual({ name: 'on' })
 	})
 })
 
@@ -447,17 +447,17 @@ describe('commit ordering while `start` settles', () => {
 	test('a send issued while the initial chain settles queues rather than nesting, and drains after the chain has settled', () => {
 		const sink = toggle.start()
 		const log: string[] = []
-		sink.observe('* -> *', (e) => log.push(`sink listener: -> ${e.to.state}`))
+		sink.observe('* -> *', (e) => log.push(`sink listener: -> ${e.to.name}`))
 
 		const started = machine({
 			initial: 'a',
-			states: types<{ a: void; b: void; c: void }>(),
+			states: types<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
 			transitions: {
 				'a -> b': () => {
 					log.push('hop a->b')
 					sink.send('toggle')
 					// deferred: the queue belongs to the drain `start` is holding
-					log.push(`sink right after send: ${sink.current.state}`)
+					log.push(`sink right after send: ${sink.current.name}`)
 				},
 				// a block body: a handler's return value is the new data, and
 				// `log.push` returns a number
@@ -467,7 +467,7 @@ describe('commit ordering while `start` settles', () => {
 			},
 		}).start()
 
-		expect(started.current).toEqual({ state: 'c', data: undefined })
+		expect(started.current).toEqual({ name: 'c' })
 		expect(log).toEqual([
 			'hop a->b',
 			'sink right after send: off',
@@ -475,29 +475,29 @@ describe('commit ordering while `start` settles', () => {
 			'sink listener: -> on',
 		])
 		// drained before `start` returned
-		expect(sink.current).toEqual({ state: 'on', data: undefined })
+		expect(sink.current).toEqual({ name: 'on' })
 	})
 
 	test('`start` called from inside a dispatch settles inline but leaves the queue to the outer drain', () => {
 		const driver = toggle.start()
 		const sink = toggle.start()
 		const log: string[] = []
-		sink.observe('* -> *', (e) => log.push(`sink listener: -> ${e.to.state}`))
+		sink.observe('* -> *', (e) => log.push(`sink listener: -> ${e.to.name}`))
 
 		const late = machine({
 			initial: 'a',
-			states: types<{ a: void; b: void }>(),
+			states: types<{ name: 'a' } | { name: 'b' }>(),
 			transitions: {
 				'a -> b': () => {
 					sink.send('toggle')
-					log.push(`sink right after send: ${sink.current.state}`)
+					log.push(`sink right after send: ${sink.current.name}`)
 				},
 			},
 		})
 
 		driver.observe('* -> *', () => {
 			// settled inline: the caller cannot be handed an unsettled host
-			expect(late.start().current).toEqual({ state: 'b', data: undefined })
+			expect(late.start().current).toEqual({ name: 'b' })
 			log.push('driver listener done')
 		})
 
@@ -513,7 +513,7 @@ describe('commit ordering while `start` settles', () => {
 		const sink = toggle.start()
 		const runaway = machine({
 			initial: 'spin',
-			states: types<{ spin: void }>(),
+			states: types<{ name: 'spin' }>(),
 			transitions: {
 				'spin -> spin': () => {
 					sink.send('toggle') // queued; discarded when the chain overflows
@@ -524,10 +524,10 @@ describe('commit ordering while `start` settles', () => {
 		expect(() => runaway.start()).toThrow(
 			new RangeError("maximum transitions reached in 'spin'"),
 		)
-		expect(sink.current).toEqual({ state: 'off', data: undefined }) // never drained
+		expect(sink.current).toEqual({ name: 'off' }) // never drained
 
 		// the drain was released: an ordinary send still works
 		sink.send('toggle')
-		expect(sink.current).toEqual({ state: 'on', data: undefined })
+		expect(sink.current).toEqual({ name: 'on' })
 	})
 })

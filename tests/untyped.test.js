@@ -19,15 +19,15 @@ describe('the untyped path', () => {
 
 		const host = untyped.start()
 		const log = []
-		host.observe('* -> *', (e) => log.push(`${e.from.state}->${e.to.state}`))
+		host.observe('* -> *', (e) => log.push(`${e.from.name}->${e.to.name}`))
 
-		expect(host.current).toEqual({ state: 'off', data: undefined })
-
-		host.send('toggle')
-		expect(host.current).toEqual({ state: 'on', data: undefined })
+		expect(host.current).toEqual({ name: 'off' })
 
 		host.send('toggle')
-		expect(host.current).toEqual({ state: 'off', data: undefined })
+		expect(host.current).toEqual({ name: 'on' })
+
+		host.send('toggle')
+		expect(host.current).toEqual({ name: 'off' })
 
 		expect(log).toEqual(['off->on', 'on->off'])
 	})
@@ -47,7 +47,7 @@ describe('the untyped path', () => {
 
 		host.send('bogus')
 
-		expect(host.current).toEqual({ state: 'off', data: undefined })
+		expect(host.current).toEqual({ name: 'off' })
 		expect(log).toEqual([])
 	})
 
@@ -86,8 +86,8 @@ describe('the untyped path', () => {
 			host.send('submit')
 
 			expect(host.current).toEqual({
-				state: 'settled',
-				data: { via: 'immediate' },
+				name: 'settled',
+				via: 'immediate',
 			})
 		})
 	})
