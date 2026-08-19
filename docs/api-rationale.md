@@ -2152,6 +2152,66 @@ Robot3 nests — measured, and its reentrant send runs to completion inside the 
 callback — which also makes it non-compliant with P0.7 as written. It gets away with
 it because it has exactly one observer; with a list it would not.
 
+#### Module scope, not per host
+
+The argument above settles queue over stack for one host. It says nothing about two —
+and two machines wired to each other is how peer composition works today, before any
+composition feature exists. A queue and a draining flag owned by the host that created
+them get this wrong: a send from one machine's listener into another finds the second
+host's own flag unset and nests, exactly the shape just rejected, and precisely where
+composition needs the guarantee most. [Issue #24](https://github.com/QuentinRoy/totorobot/issues/24)'s
+prototype hit this directly — see
+[§16, "What the prototype measured"](#what-the-prototype-measured) — "cross-machine
+dispatch nests, under both models."
+
+Three shapes were on the table:
+
+- **Per host — the status quo, and wrong.** Argued above.
+- **A scheduler passed at `start()`.** Lets unrelated hosts opt into sharing a queue
+  explicitly. Rejected because it puts a knob in the v1 surface — frozen at the tag —
+  for a feature (`actions`, composition) that is not designed yet. Whatever a
+  scheduler ends up being once those land, `start()`'s signature should not have
+  already committed to a shape for it.
+- **Shared only among declared peers.** Scope the queue to machines that some future
+  composition feature explicitly wires together, leaving hand-wired hosts — two
+  `machine().start()` calls with a plain closure between them, which is how peer
+  composition is _done today_ — back on separate queues. Rejected because it gives
+  two call shapes that read identically — a listener calling another host's `send` —
+  different semantics depending on whether that host was "declared" a peer through
+  machinery that does not exist yet. A reader cannot tell which rule applies by
+  looking at the code.
+
+**Decided: module scope.** One queue and one draining flag for every host that shares
+this module, not one per host. Every host reads and writes the same two module-level
+bindings, so
+"a dispatch is in progress" is a single fact rather than a per-host one, and rule 4
+holds across any wiring, declared or not, with no host-side configuration at all. The
+uniformity is the point: nothing about how two hosts came to call each other's `send`
+changes what ordering they get.
+
+**Accepted cost, not designed around.** A send issued while any dispatch is in
+progress is deferred — including one into a host that has nothing to do with whichever
+dispatch is running. Reading that host's `current` right afterwards shows the state it
+had before the send. This is not a new property: a send from a listener into its
+_own_ host was already exactly this stale, for the same reason
+([above](#queue-not-stack)). Module scope widens who a send can be stale with respect to; it does not
+introduce staleness that single-host use did not already have.
+
+**Failure widens along the same axis.** A per-host queue could let one host's listener
+bug stay that host's problem. A shared queue cannot: a throw anywhere unwinds out of
+the `send` that started the chain — the outermost call, wherever it sits — and
+discards everything still queued, on every host in that chain, not only the one that
+threw. The alternative, draining on and surfacing the error at the end, was rejected
+for the same reason a per-host version of it would be: an entry left in the queue past
+the throw is either picked up later by an unrelated send at an arbitrary time, or run
+anyway against assumptions the throw may have already broken. Neither is better for
+being scoped to one host. What does not widen: the listeners after the throwing one
+still do not run, and every host in the chain — including the one whose listener threw
+— stays usable afterwards, exactly as a single host did. The coupling this introduces
+— one machine's listener bug discarding another machine's queued work — is a bug-path
+property, understood and accepted rather than designed around; uniform-scheduler
+designs share it.
+
 #### No disposal, and a listener that throws
 
 **There is no `stop()`.** Not because disposal is hard, but because in v1 **the host

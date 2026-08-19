@@ -284,6 +284,15 @@ object, so a `void` input is just `doc.send('cancel')`.
 current state does not handle changes nothing — it does not throw, corrupt, or
 half-apply, and that is also how a stale async result lands harmlessly.
 
+**A send is immediate only when no dispatch is in progress anywhere** — on this host
+or any other. Otherwise it queues and drains once the dispatch in progress settles,
+per [commit ordering](#commit-ordering) rule 4. The accepted cost: a send issued from
+inside a dispatch, into a machine unrelated to the one dispatching, is deferred too —
+reading that machine's `current` right afterwards still shows the state it had before
+the send. This widens a property sending already has within a single host — a send
+from a listener into its own host is exactly as stale — rather than introducing a new
+one.
+
 **`send` returns nothing.** What happened is `doc.current`; what would have been
 accepted is `available`, consulted before sending rather than reported after.
 
@@ -383,17 +392,35 @@ Five rules, and they are the whole execution model:
 2. **Commit, then notify.** A listener always sees a fully committed machine, so `e.to`
    and `doc.current` agree — for every listener, on every hop, always.
 3. **Listeners fire in registration order**, on every hop.
-4. **A send from a listener is queued**, and the queue drains before the outermost
-   `send` returns — never on a microtask, never nested. So a listener is never
-   re-entered while an earlier call is still running, the listeners after it are never
-   told about a transition the machine has already left, and a queued send waits for
-   the whole chain to settle rather than landing mid-hop.
+4. **A send from a listener is queued, unconditionally, across every host.** The queue
+   and its draining flag are shared by every machine in the process, not owned one per
+   host, so this holds whether the listener sends to its own host or to a completely
+   different one. The queue drains before the outermost `send` returns — never on a
+   microtask, never nested. So a listener is never re-entered while an earlier call is
+   still running, on any host; the listeners after it, on any host, are never told
+   about a transition their machine has already left; and a queued send — including
+   one into an unrelated host — waits for the whole chain to settle rather than
+   landing mid-hop. A `send` is therefore immediate only when no dispatch is in
+   progress anywhere; otherwise it queues, which is also why reading a machine's
+   `current` immediately after sending to it from inside any dispatch shows the state
+   it had before that send, even when the two are unrelated hosts
+   ([Sending](#sending)).
 5. **`send` returns nothing**, including when it was queued.
 
 **A chain that never settles throws.** After 1e5 consecutive hops, `RangeError` —
 naming the state it could not settle — unwinds out of `send` exactly as a throwing
 listener does: there is no rollback, the transition stays at its last committed hop,
 and the host stays usable.
+
+**A throwing listener ends the drain, wherever it sits.** The error unwinds out of the
+`send` that started the chain — the outermost call, not necessarily the one on whose
+host the listener threw — and everything still queued at that moment is discarded,
+across every host in that chain: leaving it in place would let an unrelated later send
+pick it up at an arbitrary time, and draining on would run queued work whose
+assumptions the throw may have already broken. The listeners after the throwing one
+still do not run. Every host in the chain stays usable afterwards: a later `send`
+transitions and notifies normally, on the host that threw and on every other. A
+runaway immediate chain's `RangeError` is treated identically.
 
 **There is no `stop()`.** Disposal is unsubscribing your listeners and not sending any
 more; the host holds nothing else.

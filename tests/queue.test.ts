@@ -259,3 +259,179 @@ describe('commit ordering', () => {
 		expect(log).toEqual(['on', 'off', 'on', 'off'])
 	})
 })
+
+// Two machines wired to each other are how peer composition works today, before
+// any composition feature exists. The dispatch queue is module scope, not per
+// host, so these must hold across hosts exactly as the single-host tests above
+// hold within one — see `docs/api-rationale.md`, "Module scope, not per host".
+describe('commit ordering across hosts', () => {
+	test("a send from one host into another queues rather than nesting: the second host runs only after the first host's remaining listeners for the current transition", () => {
+		const hostA = toggle.start()
+		const hostB = toggle.start()
+		const log: string[] = []
+		let queued = false
+
+		hostA.on('* -> *', () => {
+			log.push('A-first')
+			if (!queued) {
+				queued = true
+				hostB.send('toggle') // must queue, not nest
+			}
+		})
+		hostA.on('* -> *', () => log.push('A-second'))
+		hostB.on('* -> *', () => log.push('B'))
+
+		hostA.send('toggle')
+		expect(log).toEqual(['A-first', 'A-second', 'B'])
+	})
+
+	test('the whole thing drains before the outermost send returns, synchronously, across hosts', () => {
+		const hostA = toggle.start()
+		const hostB = toggle.start()
+		let queued = false
+
+		hostA.on('* -> *', () => {
+			if (!queued) {
+				queued = true
+				hostB.send('toggle')
+			}
+		})
+
+		hostA.send('toggle')
+		// no await, no microtask flush: hostB has already drained
+		expect(hostB.current).toEqual({ state: 'on', data: undefined })
+	})
+
+	test('several sends from listeners across hosts drain first-in-first-out', () => {
+		const counter = machine({
+			initial: 'ready',
+			inputs: types<{ push: { value: number } }>(),
+			states: types<{ ready: { order: number[] } }>(),
+			transitions: {
+				'ready -push> ready': ({ data, input }) => ({
+					order: [...data.order, input.value],
+				}),
+			},
+		})
+
+		const hostA = counter.start({ order: [] })
+		const hostB = counter.start({ order: [] })
+		const log: string[] = []
+		let queued = false
+
+		hostA.on('* -> *', (e) => {
+			log.push(`A${e.to.data.order.at(-1)}`)
+			if (!queued) {
+				queued = true
+				hostB.send('push', { value: 1 }) // queued first
+				hostA.send('push', { value: 2 }) // queued second
+			}
+		})
+		hostB.on('* -> *', (e) => log.push(`B${e.to.data.order.at(-1)}`))
+
+		hostA.send('push', { value: 0 })
+		expect(log).toEqual(['A0', 'B1', 'A2'])
+	})
+
+	test('a send from inside a listener into another host, issued mid-chain, drains only once the chain has settled, never mid-hop', () => {
+		const relay = machine({
+			initial: 'a',
+			inputs: types<{ go: void }>(),
+			states: types<{ a: void; b: void; c: void }>(),
+			transitions: {
+				'a -go> b': () => {},
+				'b -> c': () => {},
+			},
+		})
+
+		const hostA = relay.start()
+		const hostB = toggle.start()
+		const log: string[] = []
+
+		hostA.on('* -> b', () => {
+			log.push('A entered b')
+			hostB.send('toggle') // must not drain until hostA's chain is fully settled
+		})
+		hostA.on('* -> *', (e) => log.push(`A -> ${e.to.state}`))
+		hostB.on('* -> *', () => log.push('B toggled'))
+
+		hostA.send('go')
+
+		expect(hostA.current).toEqual({ state: 'c', data: undefined })
+		expect(log).toEqual(['A entered b', 'A -> b', 'A -> c', 'B toggled'])
+	})
+
+	test('a listener throwing in a second host unwinds out of the send that started the chain, discarding everything still queued across both hosts, and both stay usable afterwards', () => {
+		const hostA = toggle.start()
+		const hostB = toggle.start()
+		const log: string[] = []
+		let queued = false
+		let thrown = false
+
+		hostA.on('* -> *', () => {
+			log.push('A1')
+			if (!queued) {
+				queued = true
+				hostB.send('toggle') // will throw once drained
+				hostA.send('toggle') // queued after it; must be discarded, never runs
+			}
+		})
+		hostB.on('* -> *', () => {
+			log.push('B')
+			if (!thrown) {
+				thrown = true
+				throw new Error('boom')
+			}
+		})
+
+		expect(() => hostA.send('toggle')).toThrow('boom')
+		expect(log).toEqual(['A1', 'B'])
+		// the throwing transition itself stays committed; the discarded one never ran
+		expect(hostA.current).toEqual({ state: 'on', data: undefined })
+		expect(hostB.current).toEqual({ state: 'on', data: undefined })
+
+		// both hosts still work afterwards
+		hostA.send('toggle')
+		hostB.send('toggle')
+		expect(hostA.current).toEqual({ state: 'off', data: undefined })
+		expect(hostB.current).toEqual({ state: 'off', data: undefined })
+	})
+
+	test('a runaway immediate chain in one host discards queued sends in another host the same way a throwing listener does', () => {
+		const hostA = spinner.start()
+		const hostB = toggle.start()
+		let queued = false
+
+		hostA.on('* -> loop', () => {
+			if (!queued) {
+				queued = true
+				hostB.send('toggle') // queued; must be discarded when the chain overflows
+			}
+		})
+
+		expect(() => hostA.send('go')).toThrow(RangeError)
+		expect(hostB.current).toEqual({ state: 'off', data: undefined }) // never drained
+
+		// both hosts still work afterwards
+		hostA.send('stop')
+		hostB.send('toggle')
+		expect(hostA.current).toEqual({ state: 'idle', data: undefined })
+		expect(hostB.current).toEqual({ state: 'on', data: undefined })
+	})
+
+	test("reading a machine's current state right after sending to it from inside any dispatch shows the old state, even when the target is a different host", () => {
+		const hostA = toggle.start()
+		const hostB = toggle.start()
+		let seenRightAfterSend: string | undefined
+
+		hostA.on('* -> *', () => {
+			hostB.send('toggle')
+			seenRightAfterSend = hostB.current.state // deferred: still the old state
+		})
+
+		hostA.send('toggle')
+		expect(seenRightAfterSend).toBe('off')
+		// drained by the time the outermost send returns
+		expect(hostB.current).toEqual({ state: 'on', data: undefined })
+	})
+})

@@ -511,6 +511,22 @@ type Immediates = Record<string, Row[] | undefined>
 export const types = <T>(): T | undefined => undefined
 
 /**
+ * One queue and one draining flag for every host, not one per host. Two
+ * machines wired to each other are how peer composition works today, before
+ * any composition feature exists, and commit ordering's rule 4 — `docs/api.md`
+ * — has to hold across that wiring the same way it holds within one host —
+ * see `docs/api-rationale.md`, "Module scope, not per host".
+ *
+ * A queued entry is a thunk rather than a `[name, payload]` tuple: draining
+ * now has to run rows against *whichever* host queued the entry, and a thunk
+ * closes over that host's own `step`/`settle`/`index`/`current` for free,
+ * where a tuple would need the host carried alongside it and matched back up
+ * at drain time.
+ */
+let queue: (() => void)[] = []
+let draining = false
+
+/**
  * Declare a machine. The result is inert data — it holds the index in a
  * closure, never touches or annotates the configuration object it was given,
  * and exposes `start` only, because observation is a property of a running
@@ -626,9 +642,6 @@ export function machine<
 			// design; one registered during dispatch runs under neither.
 			let listeners: Registration[] = []
 
-			const queue: [name: string, payload: unknown][] = []
-			let draining = false
-
 			// One row-scanning path for both kinds of transition, rather than a
 			// `commit` helper called from two near-identical loops: takes the rows
 			// to try, commits the first that does not decline, and reports whether
@@ -722,23 +735,27 @@ export function machine<
 				},
 
 				send: (name: string, payload?: unknown): void => {
-					queue.push([name, payload])
-					// Already inside a dispatch: this call was made from a listener, so
-					// it waits its turn rather than running nested. The outermost call
-					// owns the drain.
+					// Queued rather than run: `draining` is module scope, so this holds
+					// whether the call came from this host's own listener or a listener
+					// on a completely different host — see the queue's own comment.
+					queue.push(() => {
+						// Evaluated against the state at drain time, so a queued send may
+						// correctly find no row and do nothing.
+						if (step(index[current.state]?.[name], name, payload)) settle()
+					})
+					// Already inside a dispatch, somewhere: this call was made from a
+					// listener, so it waits its turn rather than running nested. The
+					// outermost call, on whichever host started the chain, owns the
+					// drain.
 					if (draining) return
 					draining = true
 					try {
-						while (queue.length) {
-							const [on, input] = queue.shift()!
-							// Evaluated against the state at drain time, so a queued send
-							// may correctly find no row and do nothing.
-							if (step(index[current.state]?.[on], on, input)) settle()
-						}
+						while (queue.length) queue.shift()!()
 					} finally {
-						// In a `finally` so a throwing listener leaves the host usable and
-						// the flag correct. The queue is abandoned rather than drained:
-						// the transition stays committed, but nothing further runs.
+						// In a `finally` so a throwing listener leaves every host usable
+						// and the flag correct. The queue is abandoned rather than
+						// drained: each transition already committed stays committed, but
+						// nothing still queued runs — on this host or any other.
 						draining = false
 						queue.length = 0
 					}
