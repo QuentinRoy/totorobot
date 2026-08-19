@@ -9,7 +9,7 @@ describe('observing', () => {
 		const doc = toggle.start()
 		const log: string[] = []
 
-		const off = doc.on('* -> *', () => log.push('fired'))
+		const off = doc.observe('* -> *', () => log.push('fired'))
 		off()
 
 		expect(() => off()).not.toThrow()
@@ -22,8 +22,8 @@ describe('observing', () => {
 		const doc = toggle.start()
 		const log: string[] = []
 
-		doc.on('* -> *', () => log.push('first'))
-		doc.on('* -> *', () => log.push('second'))
+		doc.observe('* -> *', () => log.push('first'))
+		doc.observe('* -> *', () => log.push('second'))
 
 		doc.send('toggle')
 		expect(log).toEqual(['first', 'second'])
@@ -34,7 +34,7 @@ describe('observing', () => {
 		let seenTo: unknown
 		let seenCurrent: unknown
 
-		doc.on('* -> *', (e) => {
+		doc.observe('* -> *', (e) => {
 			seenTo = e.to
 			seenCurrent = doc.current
 		})
@@ -57,20 +57,20 @@ describe('observing', () => {
 		// sending 'x': any-state:b matches, unlabelled matches, labelled-x matches
 		const docX = fork.start()
 		const logX: string[] = []
-		docX.on('* -> b', () => logX.push('any-state:b'))
-		docX.on('* -> c', () => logX.push('any-state:c'))
-		docX.on('a -> *', () => logX.push('any-input'))
-		docX.on('a -x> *', () => logX.push('labelled-x'))
+		docX.observe('* -> b', () => logX.push('any-state:b'))
+		docX.observe('* -> c', () => logX.push('any-state:c'))
+		docX.observe('a -> *', () => logX.push('any-input'))
+		docX.observe('a -x> *', () => logX.push('labelled-x'))
 		docX.send('x')
 		expect(logX).toEqual(['any-state:b', 'any-input', 'labelled-x'])
 
 		// sending 'y': any-state:c matches, unlabelled matches, labelled-x does not
 		const docY = fork.start()
 		const logY: string[] = []
-		docY.on('* -> b', () => logY.push('any-state:b'))
-		docY.on('* -> c', () => logY.push('any-state:c'))
-		docY.on('a -> *', () => logY.push('any-input'))
-		docY.on('a -x> *', () => logY.push('labelled-x'))
+		docY.observe('* -> b', () => logY.push('any-state:b'))
+		docY.observe('* -> c', () => logY.push('any-state:c'))
+		docY.observe('a -> *', () => logY.push('any-input'))
+		docY.observe('a -x> *', () => logY.push('labelled-x'))
 		docY.send('y')
 		expect(logY).toEqual(['any-state:c', 'any-input'])
 	})
@@ -80,20 +80,20 @@ describe('observing', () => {
 		const docA = toggle.start()
 		const logA: string[] = []
 		let offSecond: () => void
-		docA.on('* -> *', () => {
+		docA.observe('* -> *', () => {
 			logA.push('first')
 			offSecond()
 		})
-		offSecond = docA.on('* -> *', () => logA.push('second'))
+		offSecond = docA.observe('* -> *', () => logA.push('second'))
 		docA.send('toggle')
 		expect(logA).toEqual(['first', 'second'])
 
 		// a listener registered during dispatch does not run for the current transition
 		const docB = toggle.start()
 		const logB: string[] = []
-		docB.on('* -> *', () => {
+		docB.observe('* -> *', () => {
 			logB.push('only')
-			docB.on('* -> *', () => logB.push('late'))
+			docB.observe('* -> *', () => logB.push('late'))
 		})
 		docB.send('toggle')
 		expect(logB).toEqual(['only'])
@@ -102,7 +102,7 @@ describe('observing', () => {
 	test("an immediate transition's record carries on: undefined and input: undefined, distinguishable from a void input", () => {
 		const host = gate.start()
 		const records: unknown[] = []
-		host.on('* -> *', (e) => records.push(e))
+		host.observe('* -> *', (e) => records.push(e))
 
 		// draft -submit> checking (input-driven), then checking -> allowed (immediate)
 		host.send('submit', { quota: 1 })
@@ -134,10 +134,10 @@ describe('observing', () => {
 	test('unlabelled patterns match an immediate hop at both ends; a labelled pattern never matches it', () => {
 		const host = gate.start()
 		const log: string[] = []
-		host.on('* -> allowed', () => log.push('entry'))
-		host.on('checking -> *', () => log.push('exit'))
-		host.on('checking -submit> *', () => log.push('labelled'))
-		host.on('* -> *', () => log.push('broad'))
+		host.observe('* -> allowed', () => log.push('entry'))
+		host.observe('checking -> *', () => log.push('exit'))
+		host.observe('checking -submit> *', () => log.push('labelled'))
+		host.observe('* -> *', () => log.push('broad'))
 
 		// draft -submit> checking (matches only the broad pattern), then
 		// checking -> allowed, immediate (matches entry, exit and broad — never
@@ -150,7 +150,7 @@ describe('observing', () => {
 	test('every hop in a chain notifies, in order, and e.to agrees with current on every hop', () => {
 		const host = chain.start()
 		const seen: { to: string; agreesWithCurrent: boolean }[] = []
-		host.on('* -> *', (e) => {
+		host.observe('* -> *', (e) => {
 			seen.push({
 				to: e.to.state,
 				agreesWithCurrent: e.to.state === host.current.state,
@@ -194,8 +194,8 @@ describe('observing', () => {
 
 		const doc = pinger.start()
 		const log: string[] = []
-		doc.on('idle -> *', () => log.push('exit'))
-		doc.on('* -> idle', () => log.push('entry'))
+		doc.observe('idle -> *', () => log.push('exit'))
+		doc.observe('* -> idle', () => log.push('entry'))
 
 		doc.send('ping')
 		expect(log).toEqual(['exit', 'entry'])

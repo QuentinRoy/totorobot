@@ -19,7 +19,7 @@ describe('the untyped path', () => {
 
 		const host = untyped.start()
 		const log = []
-		host.on('* -> *', (e) => log.push(`${e.from.state}->${e.to.state}`))
+		host.observe('* -> *', (e) => log.push(`${e.from.state}->${e.to.state}`))
 
 		expect(host.current).toEqual({ state: 'off', data: undefined })
 
@@ -43,7 +43,7 @@ describe('the untyped path', () => {
 
 		const host = untyped.start()
 		const log = []
-		host.on('* -> *', () => log.push('fired'))
+		host.observe('* -> *', () => log.push('fired'))
 
 		host.send('bogus')
 
@@ -63,7 +63,9 @@ describe('the untyped path', () => {
 		const host = untyped.start()
 		const log = []
 
-		expect(() => host.on('bogus -> *', () => log.push('fired'))).not.toThrow()
+		expect(() =>
+			host.observe('bogus -> *', () => log.push('fired')),
+		).not.toThrow()
 
 		host.send('toggle')
 
@@ -106,7 +108,7 @@ describe('the untyped path', () => {
 			const host = untyped.start()
 			const before = host.current
 			const log = []
-			host.on('* -> *', () => log.push('fired'))
+			host.observe('* -> *', () => log.push('fired'))
 
 			host.send('')
 
@@ -165,12 +167,12 @@ describe('the untyped path', () => {
 			['* -> *', true],
 			['* -go> b', true],
 			['a -> *', true],
-		])('.on(): %s', (pattern, legal) => {
+		])('.observe(): %s', (pattern, legal) => {
 			const host = machine({
 				initial: 'a',
 				transitions: { 'a -x> b': () => {} },
 			}).start()
-			const subscribe = () => host.on(pattern, () => {})
+			const subscribe = () => host.observe(pattern, () => {})
 
 			if (legal) {
 				expect(subscribe).not.toThrow()

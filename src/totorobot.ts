@@ -12,7 +12,7 @@
  *     })
  *
  *     const doc = publication.start()
- *     doc.on('* -> published', (e) => notify(e.to.data))
+ *     doc.observe('* -> published', (e) => notify(e.to.data))
  *     doc.send('open', { text: 'hello' })
  *
  * The API is specified in `docs/api.md` and argued in `docs/api-rationale.md`.
@@ -59,9 +59,9 @@
  * transitions that never settles — `'a -> b'` declared alongside `'b -> a'` —
  * throws a `RangeError` after 1e5 consecutive hops, naming the state it could
  * not settle in: a hang is worse than a loud failure. And a transition key or
- * `.on()` pattern that is not well formed — anything but exactly one arrow
- * with a non-empty source and target — throws a `SyntaxError` naming the
- * string, the same wording the type layer uses for the same mistake: a
+ * `observe()` pattern that is not well formed — anything but exactly one
+ * arrow with a non-empty source and target — throws a `SyntaxError` naming
+ * the string, the same wording the type layer uses for the same mistake: a
  * mis-typed key is a spelling error in a declaration, not user data, so it is
  * caught rather than silently building a dead or wrong row. Everything else
  * keeps the no-validation rule.
@@ -107,9 +107,9 @@ const skip = (): Skip => SKIP
  * separator without the other, a second arrow, an empty source or target —
  * throws: a key or pattern this malformed is not a coordinate that merely
  * fails to match, it is not a transition at all, so it is caught here rather
- * than registered as one. Both `machine()`'s key loop and `.on()`'s pattern
- * registration call this one function, so they cannot drift apart on what
- * they accept.
+ * than registered as one. Both `machine()`'s key loop and `observe()`'s
+ * pattern registration call this one function, so they cannot drift apart on
+ * what they accept.
  */
 const parse = (key: string): [from: string, input: string, to: string] => {
 	const parts = key.split(/ -|> /)
@@ -250,10 +250,10 @@ type InputsFromKeys<K extends string> = {
 }
 
 /**
- * Every legal `.on()` pattern: the key grammar with the state coordinates left
- * open. `*` is a state name that no vocabulary can shadow, and the unlabelled
- * arrow is the broad form — so there is no `-*>`, and a bare key, which names a
- * state, is not a pattern.
+ * Every legal `observe()` pattern: the key grammar with the state coordinates
+ * left open. `*` is a state name that no vocabulary can shadow, and the
+ * unlabelled arrow is the broad form — so there is no `-*>`, and a bare key,
+ * which names a state, is not a pattern.
  */
 type Wildcard<S extends Vocab> = Name<S> | '*'
 type Pattern<I extends Vocab = Vocab, S extends Vocab = Vocab> =
@@ -412,7 +412,7 @@ interface Host<I extends Vocab = Vocab, S extends Vocab = Vocab> {
 	readonly send: (...args: Dispatch<I>) => void
 	// Generic in the pattern, so the record the listener receives is narrowed by
 	// the pattern that selected it rather than being the whole union every time.
-	readonly on: <P extends Pattern<I, S>>(
+	readonly observe: <P extends Pattern<I, S>>(
 		pattern: P,
 		listener: Listener<I, S, P>,
 	) => () => void
@@ -505,7 +505,7 @@ type Row = readonly [to: string, handler: Call]
 interface RawHost {
 	readonly current: Snapshot
 	readonly send: (name: string, payload?: unknown) => void
-	readonly on: (pattern: string, listener: Listener) => () => void
+	readonly observe: (pattern: string, listener: Listener) => () => void
 }
 
 /**
@@ -735,7 +735,7 @@ export function machine<
 					return current
 				},
 
-				on: (pattern: string, listener: Listener): (() => void) => {
+				observe: (pattern: string, listener: Listener): (() => void) => {
 					// Parsed once, here, rather than kept as an opaque string and
 					// matched by generating the eight patterns each transition could
 					// answer to — 4.8% larger in the pre-implementation prototypes, and

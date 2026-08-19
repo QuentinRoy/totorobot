@@ -9,10 +9,14 @@
 > state rather than on an input. `actions` and composition are argued but deferred, and
 > neither is promised — see [Designed, not in v1](#designed-not-in-v1).
 >
-> **Three parts of this document are already decided against.** The vocabulary's shape,
-> the transition record, and `.on`'s name all change before v1 tags, as a consequence
-> of settling the composition boundary. What is written below is what `src/` implements
-> today; what replaces it is in [Changing before v1](#changing-before-v1).
+> **Two parts of this document are already decided against.** The vocabulary's shape and
+> the transition record both change before v1 tags, as a consequence of settling the
+> composition boundary. `observe`'s name already reflects that decision — it replaced
+> `.on` for the same reason, argued in
+> [rationale §12](api-rationale.md#observation-observe-on-the-host-with-patterns) — and
+> `.on` stays unclaimed for the later output channel below. What is written below is
+> what `src/` implements today; what else replaces it is in
+> [Changing before v1](#changing-before-v1).
 
 ## The whole thing at a glance
 
@@ -54,7 +58,7 @@ export const publication = machine({
 })
 
 const doc = publication.start()
-doc.on('* -> published', (e) => notify(e.to.data))
+doc.observe('* -> published', (e) => notify(e.to.data))
 doc.send('open', { text: 'hello' })
 ```
 
@@ -64,7 +68,7 @@ doc.send('open', { text: 'hello' })
 | `inputs`      | what can happen                       |
 | `states`      | what we can be                        |
 | `transitions` | how we move, and what the new data is |
-| `.on()`       | what the outside world does about it  |
+| `observe()`   | what the outside world does about it  |
 
 ## The surface
 
@@ -77,7 +81,7 @@ Everything the package exports, and everything a host has:
 | `definition.start(data?)`                                   | a **host** — the only mutable object in the design         |
 | `host.current`                                              | `{ state, data }`                                          |
 | `host.send(name, payload?)`                                 | a dispatch; returns nothing                                |
-| `host.on(pattern, listener)`                                | a subscription; returns an unsubscribe function            |
+| `host.observe(pattern, listener)`                           | a subscription; returns an unsubscribe function            |
 | a handler's `{ data, input, skip }`                         | source data, the input payload, and the way to decline     |
 | `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>` | derived types, over `M = typeof publication`               |
 
@@ -147,7 +151,7 @@ The input is the arrow's **label**. Two rules:
   every row.
 - **A key with no `->` names a state. An edge always contains an arrow.** So the two
   halves of the grammar are decidable from the string alone. A bare key is invalid in
-  `transitions` and in `.on()` — it is reserved for residency, which is what
+  `transitions` and in `observe()` — it is reserved for residency, which is what
   [`actions`](#designed-not-in-v1) would use.
 - **An arrow with no label is an [immediate transition](#immediate-transitions-an-edge-with-no-input)** —
   `'checking -> allowed'` rather than `'checking -input> allowed'`. Declaring one says
@@ -155,7 +159,7 @@ The input is the arrow's **label**. Two rules:
   where the same absence means the input is unconstrained.
 
 **The grammar is also enforced at runtime.** `machine()` throws `SyntaxError` for a
-malformed key and `.on()` throws the same way for a malformed pattern, naming the
+malformed key and `observe()` throws the same way for a malformed pattern, naming the
 offending string — see [observable behaviour](#observable-behaviour) items 1 and 22.
 This is what catches a typo in plain JavaScript, where nothing else checks the shape of
 what was written.
@@ -313,14 +317,14 @@ if (now.state === 'draft') {
 }
 ```
 
-### `.on()` — observing transitions
+### `observe()` — observing transitions
 
 ```ts
-const off = doc.on('* -> published', (e) => notify(e.to.data))
-doc.on('draft -cancel> *', () => track('cancelled'))
+const off = doc.observe('* -> published', (e) => notify(e.to.data))
+doc.observe('draft -cancel> *', () => track('cancelled'))
 ```
 
-**On the host, never the definition** — an imported definition is inert. `.on()` returns
+**On the host, never the definition** — an imported definition is inert. `observe()` returns
 an unsubscribe function.
 
 **The handler receives the transition record**, `{ on, input, from, to }`, discriminated
@@ -341,11 +345,11 @@ There is no `-*>`: `*` appears only in state positions, so the input coordinate 
 either a name or absent. The unlabelled form is the broad one — it matches
 input-driven edges **and**
 [immediate transitions](#immediate-transitions-an-edge-with-no-input), which have no
-input at all. A bare key is not legal: `doc.on('draft', fn)` names a state, and states
+input at all. A bare key is not legal: `doc.observe('draft', fn)` names a state, and states
 mean residency.
 
 _Why patterns and a record rather than a snapshot:_
-[rationale §12](api-rationale.md#observation-on-on-the-host-with-patterns).
+[rationale §12](api-rationale.md#observation-observe-on-the-host-with-patterns).
 
 ### Residency is a recipe, not a feature
 
@@ -356,11 +360,11 @@ does not already provide:
 function residency(doc, state, setup) {
 	let teardown
 	// exit registered FIRST, so a self-transition tears down before it sets up
-	const offExit = doc.on(`${state} -> *`, () => {
+	const offExit = doc.observe(`${state} -> *`, () => {
 		teardown?.()
 		teardown = undefined
 	})
-	const offEnter = doc.on(`* -> ${state}`, (e) => {
+	const offEnter = doc.observe(`* -> ${state}`, (e) => {
 		teardown = setup(e.to)
 	})
 	// nothing will announce a state we are already in
@@ -470,8 +474,8 @@ implementation to be driven from.
 
 **Observing**
 
-21. `on` returns an unsubscribe function; calling it more than once is harmless.
-22. A malformed `.on()` pattern throws the same `SyntaxError`, at registration,
+21. `observe` returns an unsubscribe function; calling it more than once is harmless.
+22. A malformed `observe()` pattern throws the same `SyntaxError`, at registration,
     naming the pattern — so a typo in a subscription cannot become a listener that
     silently never fires.
 23. Listeners fire after the commit, in registration order — on every hop of a chain.
@@ -576,15 +580,16 @@ Not oversights. What to reach for instead, and where the argument is:
 
 Settling the composition boundary
 ([rationale §16](api-rationale.md#16-the-composition-boundary)) reached back into the
-surface above. Three changes are decided and unbuilt. They are breaking, which is why
+surface above. Two changes are decided and unbuilt. They are breaking, which is why
 they go **before** v1 tags rather than after — spent while nobody holds the API.
 
-**1. `.on` becomes `observe`.** A rename and nothing else: same patterns, same two
-arguments, same record semantics, bare state keys still illegal. `.on` is then left
-**unclaimed**, so the output channel below arrives later as pure addition and no caller
-ever sees `.on` change meaning. Residency stays the [recipe](#residency-is-a-recipe-not-a-feature).
+A third — `.on` becoming `observe` — is decided the same way and **already shipped**:
+same patterns, same two arguments, same record semantics, bare state keys still
+illegal. `.on` is left **unclaimed**, so the output channel below arrives later as
+pure addition and no caller ever sees `.on` change meaning. Residency stays the
+[recipe](#residency-is-a-recipe-not-a-feature).
 
-**2. The transition record loses its fourth field.**
+**1. The transition record loses its fourth field.**
 
 ```ts
 {
@@ -599,7 +604,7 @@ ever sees `.on` change meaning. Residency stays the [recipe](#residency-is-a-rec
 one `undefined` field rather than two. The record then has one field per coordinate of
 the key that produced it.
 
-**3. The vocabulary becomes a tagged union.**
+**2. The vocabulary becomes a tagged union.**
 
 ```ts
 // today
@@ -744,9 +749,9 @@ beyond appeal — rival layouts still compile — and the completion payload is 
 with latency fine ([rationale §15](api-rationale.md#15-still-open),
 `pnpm measure:completions`).
 
-**Before v1**, three breaking changes are decided and unbuilt — `observe`, the
-transition record, and the vocabulary's shape. See
-[Changing before v1](#changing-before-v1).
+**Before v1**, two more breaking changes are decided and unbuilt — the transition
+record and the vocabulary's shape. `.on` becoming `observe` was a third and has
+already shipped. See [Changing before v1](#changing-before-v1).
 
 **After v1**, in this order and none of it promised:
 
