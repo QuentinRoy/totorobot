@@ -39,9 +39,9 @@ type EditorStates = {
 
 /**
  * A richer topology for the reading and sending behaviour groups: `draft` carries
- * data, has two rows for one input (`submit`, deduplicated in `available`), a row
- * that always declines (`poke`), a self-transition (`revise`) and `locked` has no
- * outgoing rows at all.
+ * data, has two rows for one input (`submit`), a row that always declines
+ * (`poke`), a self-transition (`revise`) and `locked` has no outgoing rows at
+ * all.
  */
 type GateInputs = { submit: { quota: number }; reset: void }
 type GateStates = {

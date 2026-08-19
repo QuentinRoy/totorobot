@@ -188,11 +188,3 @@ test('Handled excludes an immediate row; Sources includes an immediate source', 
 	expectTypeOf<Sources<M, 'draft'>>().not.toBeAny()
 	expectTypeOf<Sources<M, 'draft'>>().toEqualTypeOf<'empty'>()
 })
-
-test('available is asserted only as a readonly array of input names, not a per-state literal union', () => {
-	const host = read(doc.start())
-	expectTypeOf(host.available).not.toBeAny()
-	expectTypeOf(host.available).toEqualTypeOf<
-		readonly ('open' | 'revise' | 'cancel')[]
-	>()
-})

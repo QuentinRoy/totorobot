@@ -409,8 +409,7 @@ example — so it would fire on correct code, and the machine has no way to tell
 protocol working from a mistake. And it is not free. "Dev mode" in a no-build
 browser library (P0.11) means either a build-condition split with two artifacts or
 API surface for the caller to opt in, and _no API surface_ was the whole selling
-point. So a decline is **silent**, which is the intended meaning of a refusal
-anyway; `available` answers the question that can be answered, in advance.
+point. So a decline is **silent**, which is the intended meaning of a refusal.
 
 What that loses is the author's per-edge assertion that fall-through is impossible —
 the one thing `else` genuinely buys. Still not worth a line on every multi-branch
@@ -804,7 +803,7 @@ Two findings are already recorded in that wrapper and carry over:
 
 - **An immediate contributes nothing to what a state _handles_.** It is typed
   `handles: never`, because it is not sendable — so it must not appear in
-  `Handled<T, S>` or in `doc.available`.
+  `Handled<T, S>`.
 - **robot3 reuses whatever event caused entry** as the immediate's event, which the
   wrapper calls "untyped rather than mistyped". This design avoids the question
   entirely: there is no input, so the handler has **no `input` binding**. Reading
@@ -913,7 +912,8 @@ input edges out of that state (`'loading.ok -cancel> empty'`) become meaningful.
   the same settle loop `send` does before handing the host back, so "on entering"
   needed no exception for the first entering. Leaving it unsettled — the other
   option floated here — was rejected: it parks the machine in the one state its
-  author declared transient, where `available` for a pure junction is empty.
+  author declared transient, where a pure junction has no input-driven rows to
+  move it again.
 - **The listener event has `on: undefined`, not a separate arm or a `null`
   discriminant.** `on` stays the discriminant an input carrying no data already
   needed to be distinguishable by (`on: 'cancel'`, `input: undefined`); the empty
@@ -1488,9 +1488,9 @@ to answer "what happens when the fetch succeeds".
 
 **So the child is declared, and its outcome is a _state_, not an input.** An
 intermediate draft made the outcome an input — `'fetch.ok: loading -> ready'` —
-which is a lie, and a small one that matters: nothing sends `fetch.ok`, no caller
-can, and it would appear in `available` as though a user could pick it. The child
-reaching `ok` is **a condition that became true**, which is what a state is.
+which is a lie, and a small one that matters: nothing sends `fetch.ok`, and no
+caller can, as though a user could pick it. The child reaching `ok` is **a
+condition that became true**, which is what a state is.
 
 Spelling it as a state requires a way to leave a state with no input — an
 **immediate transition** (§7), which is wanted on its own account anyway, so one
@@ -1792,7 +1792,7 @@ mutation.
 | **S5**  | pure snapshot chaining, `b = a.open({…})`        | 1        | pure, typed and ergonomic at once — but cannot host actions                                                                                                                                                     |
 | **S6**  | S5's methods on both detached and live snapshots | 1 + 4    | the two read identically at the call site; nothing says whether anything was mutated                                                                                                                            |
 | **S7**  | a scoped handle — `when` / `visit`               | 2        | sound and revocable; reads as a subscription next to `.on()`, and inverts control                                                                                                                               |
-| **S8**  | `doc.available`                                  | n/a      | **not a rival** — a runtime array for rendering buttons; kept                                                                                                                                                   |
+| **S8**  | `doc.available`                                  | n/a      | **not a rival** — a runtime array for rendering buttons; kept at the time, later removed                                                                                                                        |
 | **S9**  | `doc.from('draft').submit(…)`                    | 3        | the assumption is written down and greps; a handle that can still be stored                                                                                                                                     |
 | **S10** | `doc.send('draft -submit>', …)`                  | 3        | most consistent with the notation, least obvious to a newcomer; reads as half a key                                                                                                                             |
 | **S11** | `doc.sendIf('draft', 'submit', …)`               | 3        | cheapest of category 3 — one method, no handle at all; a three-argument call, a second verb                                                                                                                     |
@@ -1835,8 +1835,12 @@ differentiator. The honest statement is now narrower:
 - **Per-state _data_ still works and is untouched.** Narrowing `doc.current` gives
   typed data with no nullable padding — the half XState's global `context` gets
   wrong, and reason enough for the project to exist.
-- **Per-state _capabilities_ are advertised, not enforced** — `doc.available` at
-  runtime. That is exactly where `useStateMachine` landed.
+- **Per-state _capabilities_ are not surfaced at all.** An earlier revision advertised
+  them at runtime as `doc.available` — exactly where `useStateMachine` landed — but
+  that value answered a different question than the one a caller reads it for: which
+  inputs the state has rows for, not which will commit, since a guarded row can still
+  decline. It was removed rather than kept with a caveat; see
+  [If `available` comes back, it comes back as `accepts`](#if-available-comes-back-it-comes-back-as-accepts).
 - **The definition site keeps its checking.** Illegal transitions still cannot be
   written; what is unenforced is only the _call_.
 
@@ -1925,6 +1929,27 @@ region earns its keep in everyday code.
 
 **Recorded as cheaper ways back in**: `sendIf` adds one method and no concepts;
 `from` if a handle turns out to be wanted for reading as well as sending.
+
+### If `available` comes back, it comes back as `accepts`
+
+**Removed, not renamed, and not kept with a caveat.** S8 above records `doc.available`
+as it stood: a runtime array of the current state's input names, judged "not a rival"
+to the typed-send question and kept on that basis. That basis did not hold up: the
+value UI code actually needs is "which inputs will commit", and `available` answers a
+different question — which inputs the state has _rows_ for. A guarded row can still
+decline, so an input can sit in `available` and still do nothing when sent. Nobody can
+build a disabled-control UI on that distinction, because the value does not carry it.
+
+The host's surface is `current`, `send`, and the subscription method — three members,
+each answering a question the library can actually answer.
+
+**If the capability returns, its name is `accepts`.** That name states the true thing;
+`available` did not. Answering it for real means evaluating every candidate row's
+handler against a payload the read site does not have, which is a different and larger
+feature than a table lookup — not a fix to `available`, a new one. Nothing here is
+designed or scheduled. Re-adding it later is pure addition: no existing member changes
+shape, so nothing today is written against its absence in a way that removal would
+break.
 
 ## 12. The host
 
@@ -2224,8 +2249,11 @@ in the same state" from "a move". That is a requirement on the **model**, and th
 transition function does distinguish them; whether the host hands the tag back to the
 caller is a separate question, and the answer is no.
 
-- **Two of the four are recoverable without it.** `moved` is `doc.current`, and
-  `unavailable` is `doc.available` consulted _before_ sending rather than after.
+- **One of the four is recoverable without it.** `moved` is `doc.current`.
+  `unavailable` was, for a time, `doc.available` consulted _before_ sending rather
+  than after; `available` itself was later removed for reporting the wrong thing —
+  see [If `available` comes back, it comes back as `accepts`](#if-available-comes-back-it-comes-back-as-accepts)
+  — so nothing today answers that question in advance at all.
 - **`queued` is not information the caller can use.** It is inside a listener, it
   queued something, it will happen.
 - **Only a `skip()` refusal is genuinely unobservable** — nothing commits, so no
