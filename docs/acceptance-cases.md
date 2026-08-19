@@ -41,6 +41,19 @@ type Menu = {
 | `expert`  | `stroke`, `nextToken`                                     |
 | `novice`  | current recursive `menu`, `center`, `stroke`, `nextToken` |
 
+> **Note, 2026-08-19 — the tokens are an artefact of external timing.** They are
+> correct as written, because v1 has no way for a machine to own an effect. But
+> a prototype where the machine schedules its own dwell, and the cancel returned
+> by the timer _is_ the residency teardown, removes them: leaving `startup`
+> cancels the timer, so a stale `dwell` cannot arrive, and neither `timerToken`
+> nor `nextToken` has anything left to guard
+> (`explorations/composition/ex1-marking-menu/`,
+> [api-rationale.md, §16](api-rationale.md#16-the-composition-boundary)).
+>
+> The case stays as it is — it is normative for v1, and the bookkeeping it
+> forces is a fair test of what v1 costs. Worth revisiting when `actions` lands,
+> because passing it will then look different.
+
 ### Inputs and outcomes
 
 | Current state | Input                    | Outcome                                                   |

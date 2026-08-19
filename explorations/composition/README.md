@@ -1,8 +1,9 @@
 # Composition prototype — issue #24
 
 > **Throwaway.** Nothing here is the library and nothing here is exported from
-> `totorobot`. It exists to answer one question and then be captured on a
-> branch. See [issue #24](https://github.com/QuentinRoy/totorobot/issues/24).
+> `totorobot`. It answered [issue #24](https://github.com/QuentinRoy/totorobot/issues/24)
+> — the verdict is below — and it is kept only while it is still the evidence for
+> that answer. See [Capture](#capture).
 
 ## The question
 
@@ -45,7 +46,7 @@ No `current`, no `available`. `inspect()` is issue #24's debugging caveat and
 nothing else.
 
 ```bash
-pnpm proto:composition
+pnpm exec node explorations/composition/tui.ts
 ```
 
 `[` `]` example · `\` model A/B · `=` scheduler · `0` clear trace · `q` quit.
@@ -76,7 +77,7 @@ as the library narrows them, verified with deliberate-error tripwires.
 ## What it costs in bytes
 
 ```bash
-pnpm proto:composition:size
+pnpm exec node explorations/composition/size.ts
 ```
 
 **Shipped**, through the project's own `vite.config.ts` and the same zlib call
@@ -98,13 +99,13 @@ commit directly. The inflation is roughly the same on both sides.
 
 **Authored**, comments and blank lines stripped:
 
-| example           | whole file A/B         | `machine({…})` only A/B          |
-| ----------------- | ---------------------- | -------------------------------- |
-| ex1 marking menu  | 4 694 / 5 503 B (+809) | 1 354 / 2 246 B (+892, **+66%**) |
-| ex2 gesture stack | 4 739 / 5 678 B (+939) | 1 413 / 2 116 B (+703, **+50%**) |
-| ex3 accordion     | 1 559 / 1 738 B (+179) | 225 / 349 B (+124, **+55%**)     |
+| example           | whole file A/B         | `machine({…})` only A/B           |
+| ----------------- | ---------------------- | --------------------------------- |
+| ex1 marking menu  | 4 694 / 5 503 B (+809) | 1 354 / 2 246 B (+892, **+66%**)  |
+| ex2 gesture stack | 4 739 / 5 609 B (+870) | 1 413 / 2 427 B (+1014, **+72%**) |
+| ex3 accordion     | 1 559 / 1 738 B (+179) | 225 / 349 B (+124, **+55%**)      |
 
-Both columns grow, and that is the answer. The definition grows 50–66% for the
+Both columns grow, and that is the answer. The definition grows 55–72% for the
 `outputs` block and the emitting `actions`; the **app grows too**, because a
 view lifetime the app used to express as one residency listener now needs a
 declared pair of outputs plus a variable to re-pair them by hand. B is a net
@@ -192,8 +193,44 @@ Observations from driving it, not conclusions.
     A and B alike, and is orthogonal to whether the protocol is named. Issue
     #24's criterion 3 cannot be met by either option as written.
 
+## The verdict
+
+**Neither option, and it is not a compromise: keep state and data observable,
+and add `emit` as a declared secondary channel.** Nothing is hidden.
+
+Bytes did not decide it — B costs 112 B brotli over A, which is noise. Two
+things did:
+
+- **Openness is recoverable; encapsulation is not.** An open host wraps into a
+  closed one in userland. Nothing recovers a feed that was never exposed.
+- **B's real price is views**, and it is paid per lifetime, forever (finding 5,
+  and finding 10 on the smallest machine of the three).
+
+What B was right about survives: under A a debugging subscription and a
+structural one are the same call. Splitting the two channels **by name** — a
+renamed `observe` for transitions, `.on` for declared outputs — recovers that
+distinction without hiding anything.
+
+Two consequences the prototype did not set out to find, and which are the
+reason it was worth building:
+
+- **`actions` earns its place on the dwell timer, not on `emit`** (findings 5–8).
+  Owning the timer deletes the token bookkeeping outright.
+- **Cross-host ordering is broken today** (finding 11), which turns out to be
+  most of what "support horizontal composition" means.
+
+Recorded in [`docs/api-rationale.md` §16](../../docs/api-rationale.md) and §17,
+with the reshaped vocabulary that fell out of it, and answered against P0.10,
+P2.1 and P2.9 in [`docs/requirements.md`](../../docs/requirements.md).
+
 ## Capture
 
-Fold any decision into `docs/api-rationale.md` / `docs/requirements.md`, then
-put this directory on a throwaway branch and leave a pointer on issue #24. Main
-keeps the decision, not the prototype.
+The decisions are folded into `docs/` — [`api-rationale.md`](../../docs/api-rationale.md)
+§16 and §17, and the answers against P0.10, P2.1 and P2.9 in
+[`requirements.md`](../../docs/requirements.md). Those are what `main` keeps.
+
+This directory is kept alongside them rather than parked on a throwaway branch,
+because the records cite it by path: the byte tables above are reproducible
+(`pnpm exec node explorations/composition/size.ts`) and the ordering result in finding 11 is
+something you press a key to see. Delete it once §16 and §17 are built and the
+numbers are no longer the only evidence for them.
