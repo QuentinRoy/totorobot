@@ -111,6 +111,17 @@ Declaring one map and not the other is supported and checks that half while the 
 names are still read off the table. This is a guarantee, not an accident: see
 [observable behaviour](#observable-behaviour) items 38–41.
 
+**An inferred name has to be one a key can round-trip.** `*` and a name padded by a
+leading or trailing space are excluded from what an omitted map infers — not because
+either is a bad name, but because neither survives being written back into a key:
+`*` is already how a pattern spells "any state," and a leading or trailing space is the
+grammar's own delimiter, so `'a -x>  b'` does not fail to parse, it quietly mints a
+state no other key can spell the same way twice. A key that mints one is rejected on its
+own row, `not a transition: '…'`, the same as any other unknown name. **A declared
+vocabulary is untouched** — `types<{ '*': void }>()` or `types<{ ' b': void }>()` still
+work, since declaring an odd name by hand is deliberate in a way a doubled space in a key
+never is.
+
 _Why declared, what it closed, and what it costs:_
 [rationale §5](api-rationale.md#5-the-declared-vocabulary).
 
@@ -530,6 +541,9 @@ implementation to be driven from.
 - Reads of source data the source state does not have.
 - Malformed keys — wrong spacing included — reported as `not a transition: '…'` on the
   offending line.
+- `*`, or a name padded by a leading or trailing space, joining an _inferred_
+  vocabulary — [see above](#inputs-and-states--the-vocabulary): neither is a name a key
+  can round-trip, so a row that mints one is rejected the same way a malformed key is.
 
 Errors land on the bad line, from a single declaration site, and no handler needs a type
 annotation.
