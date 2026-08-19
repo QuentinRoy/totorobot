@@ -244,7 +244,9 @@ them:
 - **The settling hops are unobservable.** Nobody has subscribed yet when `.start()`
   runs, so a chain off the initial state produces no events — only the state it lands
   in is visible, in the host `.start()` returns. If you need to observe an arrival,
-  don't make it the initial state.
+  don't make it the initial state. The chain is still a dispatch, though: it settles
+  under the same drain a `send` takes, so anything it sends into another host queues
+  behind it rather than landing mid-chain ([commit ordering](#commit-ordering) rule 4).
 - **`.start()` can throw.** A cycle among the initial state's immediates raises the same
   `RangeError`, with the same message, from `.start()` rather than from `send`.
 
@@ -405,7 +407,8 @@ Five rules, and they are the whole execution model:
 2. **Commit, then notify.** A listener always sees a fully committed machine, so `e.to`
    and `doc.current` agree — for every listener, on every hop, always.
 3. **Listeners fire in registration order**, on every hop.
-4. **A send from a listener is queued, unconditionally, across every host.** The queue
+4. **A send from inside a dispatch is queued, unconditionally, across every host** —
+   from a listener, or from a hop `start()` is settling. The queue
    and its draining flag are shared by every machine in the process, not owned one per
    host, so this holds whether the listener sends to its own host or to a completely
    different one. The queue drains before the outermost `send` returns — never on a
@@ -468,7 +471,11 @@ implementation to be driven from.
 5. A cycle among the initial state's immediates throws `RangeError` — same message
    shape as (34) — from `start()` rather than from `send`.
 6. The hops `start()` settles are unobservable: nothing has subscribed yet, so only the
-   state the chain lands in is visible, never the hops that got it there.
+   state the chain lands in is visible, never the hops that got it there. They settle
+   under the same drain a `send` takes, so a send issued from one of them — into
+   another host, since nothing can yet reach the one being started — queues and drains
+   after the chain settles, before `start()` returns (rule 4); a `start()` called from
+   inside a dispatch settles inline and leaves the queue to the outer drain.
 7. Two hosts from one definition share no current state and no listeners.
 8. Nothing ever mutates the definition.
 
@@ -678,7 +685,7 @@ _Why, what was measured, and the rejected alternatives:_
 
 ## Designed, not in v1
 
-Four directions v1 leaves room for, argued in the rationale and none built. Sketches
+Three directions v1 leaves room for, argued in the rationale and none built. Sketches
 rather than commitments: whether each ships, and — for composition — in what shape, are
 open. **The order is not**, and it is the one thing here that is settled: `actions`
 first, because `emit` has nowhere to live without it. A handler may `skip()`, and
@@ -731,19 +738,6 @@ claim the _definition_ makes, or it is worth nothing at a seam.
 _Why not encapsulation, and what it does not fix:_
 [rationale §16](api-rationale.md#16-the-composition-boundary).
 
-### A shared scheduler — for peers
-
-[Commit ordering](#commit-ordering) rule 4 — a listener is never re-entered while an
-earlier call is still running — holds **per host**. Peer machines wired to each other
-cross hosts, so a send from one machine's listener into another nests instead of
-queueing, which is precisely where composition needs the guarantee. The fix is one queue
-shared by the hosts that talk to each other; whether that is global or passed at
-`start()` is open.
-
-_Why peers rather than hierarchy, and the evidence:_
-[rationale §10](api-rationale.md#10-composition) and
-[§16](api-rationale.md#what-the-prototype-measured).
-
 ### Composition — invoked children
 
 A child machine mounted at a state. The leading sketch has the child's outcome as a
@@ -786,10 +780,7 @@ already shipped. See [Changing before v1](#changing-before-v1).
    notification within one commit, plus an error channel for a throwing action. First,
    because 2 depends on it.
 2. **`emit`, `outputs`, and the output subscription** on the freed `.on`.
-3. **A shared scheduler** — most of what "horizontal composition" turns out to mean.
-   [Commit ordering](#commit-ordering) rule 4 holds per host, so peer wiring, which
-   crosses hosts, is exactly where it lapses. Not a notation.
-4. **Composition — invoked children**, whose shape is still unresolved.
+3. **Composition — invoked children**, whose shape is still unresolved.
 
 [Rationale §15](api-rationale.md#15-still-open) has what is still open, including the
 four questions §16 and §17 opened.

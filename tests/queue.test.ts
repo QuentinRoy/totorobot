@@ -435,3 +435,99 @@ describe('commit ordering across hosts', () => {
 		expect(hostB.current).toEqual({ state: 'on', data: undefined })
 	})
 })
+
+// `start` settles the initial state's immediate chain, and that chain is a
+// dispatch like any other: it runs under the same drain ownership `send` takes,
+// so a send issued from one of its hops queues rather than nesting. Nothing on
+// the host being started can issue one — it has no listeners yet — so these go
+// through a handler reaching into another host, which is also the shape
+// `actions` will make ordinary. See `docs/api-rationale.md`, "`start` settles
+// under the drain".
+describe('commit ordering while `start` settles', () => {
+	test('a send issued while the initial chain settles queues rather than nesting, and drains after the chain has settled', () => {
+		const sink = toggle.start()
+		const log: string[] = []
+		sink.observe('* -> *', (e) => log.push(`sink listener: -> ${e.to.state}`))
+
+		const started = machine({
+			initial: 'a',
+			states: types<{ a: void; b: void; c: void }>(),
+			transitions: {
+				'a -> b': () => {
+					log.push('hop a->b')
+					sink.send('toggle')
+					// deferred: the queue belongs to the drain `start` is holding
+					log.push(`sink right after send: ${sink.current.state}`)
+				},
+				// a block body: a handler's return value is the new data, and
+				// `log.push` returns a number
+				'b -> c': () => {
+					log.push('hop b->c')
+				},
+			},
+		}).start()
+
+		expect(started.current).toEqual({ state: 'c', data: undefined })
+		expect(log).toEqual([
+			'hop a->b',
+			'sink right after send: off',
+			'hop b->c',
+			'sink listener: -> on',
+		])
+		// drained before `start` returned
+		expect(sink.current).toEqual({ state: 'on', data: undefined })
+	})
+
+	test('`start` called from inside a dispatch settles inline but leaves the queue to the outer drain', () => {
+		const driver = toggle.start()
+		const sink = toggle.start()
+		const log: string[] = []
+		sink.observe('* -> *', (e) => log.push(`sink listener: -> ${e.to.state}`))
+
+		const late = machine({
+			initial: 'a',
+			states: types<{ a: void; b: void }>(),
+			transitions: {
+				'a -> b': () => {
+					sink.send('toggle')
+					log.push(`sink right after send: ${sink.current.state}`)
+				},
+			},
+		})
+
+		driver.observe('* -> *', () => {
+			// settled inline: the caller cannot be handed an unsettled host
+			expect(late.start().current).toEqual({ state: 'b', data: undefined })
+			log.push('driver listener done')
+		})
+
+		driver.send('toggle')
+		expect(log).toEqual([
+			'sink right after send: off',
+			'driver listener done',
+			'sink listener: -> on',
+		])
+	})
+
+	test('a runaway initial chain discards what its own hops queued, and every host stays usable', () => {
+		const sink = toggle.start()
+		const runaway = machine({
+			initial: 'spin',
+			states: types<{ spin: void }>(),
+			transitions: {
+				'spin -> spin': () => {
+					sink.send('toggle') // queued; discarded when the chain overflows
+				},
+			},
+		})
+
+		expect(() => runaway.start()).toThrow(
+			new RangeError("maximum transitions reached in 'spin'"),
+		)
+		expect(sink.current).toEqual({ state: 'off', data: undefined }) // never drained
+
+		// the drain was released: an ordinary send still works
+		sink.send('toggle')
+		expect(sink.current).toEqual({ state: 'on', data: undefined })
+	})
+})
