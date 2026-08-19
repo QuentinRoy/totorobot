@@ -2907,7 +2907,7 @@ The actual issue is that `state: Extract<S, ...>` is an inference site. When a h
 
 The fix is:
 
-```ts id="j6y5s"
+```ts
 readonly state: NoInfer<Extract<S, { name: From<P> }>>
 ```
 
