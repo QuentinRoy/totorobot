@@ -599,6 +599,28 @@ data is, so assuming it absent would be a claim the table never made. Point 1 ab
 and 3 — `NoInfer` on `initial`, and a bad key poisoning its own value type — are
 unchanged and still what keep this safe.
 
+**Revision (#22): the inferred vocabulary excludes a name a key cannot round-trip.**
+`From<K> | To<K>` and `Label<K>` read every name a key mentions, including two a key
+should never have been able to mint: `*`, which is already how a pattern spells "any
+state" in the same coordinate, and a name padded by a leading or trailing space, which
+the grammar's own delimiters (` -`, `> `) quietly absorb rather than reject — `'a -x>
+b'` and `'a -x>  b'` differ only in a doubled space that reads as invisible in a diff,
+yet mint two different states. Both are excluded by remapping `From<K> | To<K>` and
+`Exclude<Label<K>, ''>` through a `RoundTrips<N>` filter before either mapped type is
+built (`src/totorobot.ts`), so a key that mints one fails `Key` and is rejected on its
+own row — no new diagnostic, the existing `not a transition: '…'` poisoning already
+built for a malformed key. **Declared vocabularies are left alone**: filtering `Name`
+itself was considered and rejected, because it would reach every type in the module and
+make the name simply not exist, moving the diagnostic away from its cause — onto a
+rejected `initial`, a rejected row, or a rejected `send`, whichever happened to reference
+it, rather than the row that minted it. A hand-written `types<{ ' b': void }>()` keeps
+working, the same way it did before this revision: declaring an odd name is deliberate
+in a way a doubled space in a key never is. **No runtime check accompanies this**: it is
+a compile-time-only guarantee, costing nothing in the shipped artifact because the type
+layer is erased, and plain JavaScript with no typechecking stays uncovered — the same
+trade-off #16's `parse` throw made for a malformed key, scoped to what a _typo in the
+grammar_ produces rather than what an _odd but intentional_ name produces.
+
 **The alternative shape** — `machine<Publication>()({ … })` — removes the `types:`
 property but needs the double call, because TypeScript has no partial
 type-argument inference (microsoft/TypeScript#53999). `()()` reads worse than one
