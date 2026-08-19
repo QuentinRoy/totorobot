@@ -89,14 +89,18 @@ enforced by the compiler.
 This repository is a design prototype, not a released library. There is no
 stability guarantee, compatibility promise, or npm release yet.
 
-`actions` and composition of invoked children are designed but not part of v1
-— see [Designed, not in v1](docs/api.md#designed-not-in-v1). The design is
-also flat: no hierarchy, no parallel regions.
+`actions` is designed but not part of v1 — see
+[Designed, not in v1](docs/api.md#designed-not-in-v1). Composition and further
+effect directions are a prospective plan, not a promise — see
+[the roadmap](docs/roadmap.md). The design is also flat: no hierarchy, no
+parallel regions.
 
 ## Documentation
 
 - [The API](docs/api.md) — the design: the blocks, the key language, what is
   checked, what is deliberately absent, and what is deferred past v1.
+- [Roadmap](docs/roadmap.md) — the prospective plan past v1: effects, a
+  declared output channel, and composition, none of it promised.
 - [Design record](docs/api-rationale.md) — the decision ledger, what was
   considered and rejected and on what evidence, and the reusable TypeScript
   findings.
@@ -121,6 +125,7 @@ also flat: no hierarchy, no parallel regions.
   (`*.test-d.ts`) and the plain-JavaScript untyped path (`untyped.test.js`).
 - `docs/api.md` — the shipped design.
 - `docs/api-rationale.md` — the evidence behind that design.
+- `docs/roadmap.md` — the prospective plan past v1, not promised.
 - `explorations/` — prototypes of alternative API shapes, kept compiling as
   evidence for that history. Not part of the library.
 - `explorations/candidates/` — the notation candidates and the three rival
