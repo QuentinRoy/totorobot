@@ -487,11 +487,14 @@ Composition must not require hierarchical or parallel states in the core API.
 > twice over three examples in `explorations/composition/`.
 >
 > The blocker was not expressiveness. Commit ordering guarantees that a
-> listener is never re-entered while an earlier call is still running, but the
-> queue is **per host**, so peer wiring — which crosses hosts — is exactly where
-> the guarantee lapses. A shared scheduler fixes it in about fifteen lines, and
-> it is needed whatever the notation. See
-> [api-rationale.md, §16](api-rationale.md#16-the-composition-boundary).
+> listener is never re-entered while an earlier call is still running, and the
+> queue was **per host**, so peer wiring — which crosses hosts — was exactly
+> where the guarantee lapsed. **Resolved 2026-08-19**: the queue and its
+> draining flag moved to module scope, shared by every host, so rule 4 holds
+> across any wiring with no host-side configuration — a scheduler passed at
+> `start()` was rejected rather than deferred. See
+> [api-rationale.md, §12](api-rationale.md#module-scope-not-per-host) and
+> [§16](api-rationale.md#16-the-composition-boundary).
 >
 > Still outside this entry: the wiring itself remains imperative and outside the
 > definition, so an exported peer is still "half a machine plus a convention"

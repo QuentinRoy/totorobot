@@ -1345,6 +1345,29 @@ const doc = run(publication, (e) => {
 
 That is the cost, and it is the thing `actions` exists to delete.
 
+### What to test when it lands: actions fired by `start()`
+
+**Required coverage, and the one entry here that is a decision rather than a
+description.** The first action a machine ever runs is the one `start()` triggers —
+residency on the initial state, or on whatever its immediate chain settles into, plus
+any edge action on the hops of that chain. Those hops settle **outside the dispatch
+queue** ([§12](#start-settles-outside-the-queue--a-trap-not-yet-a-bug)), so an action
+that calls its own `send` — the ordinary case, in every sketch above — nests and lands
+mid-chain instead of queueing. **`actions` is therefore buggy unless `start` is fixed
+as part of the same work**, and it will present as an ordering oddity in `actions`
+with nothing pointing at `start`. Written first, red against today's `start`:
+
+- Residency on the initial state, its action sending synchronously: the input lands
+  **after** the initial chain has settled, never between hops.
+- The same where that chain runs two or more hops, and the same sending into a
+  **different** host — the cross-host assertions `tests/queue.test.ts` already makes
+  for `send`, made for `start`.
+- All of the above with `start()` itself called from inside a dispatch, where today's
+  behaviour is already right: they pin it against a fix that over-corrects by
+  deferring `start`'s own chain.
+- An action that throws while `start` is settling: whatever the rule for a throwing
+  action turns out to be, `start`'s copy of it has to match `send`'s.
+
 ## 10. Composition
 
 > **Designed, deferred.** This is the design to return to, not the plan.
@@ -2283,6 +2306,56 @@ still do not run, and every host in the chain — including the one whose listen
 property, understood and accepted rather than designed around; uniform-scheduler
 designs share it.
 
+#### `start` settles outside the queue — a trap, not yet a bug
+
+`start` settles the initial state's immediate chain by calling `settle()` directly:
+it never pushes onto the queue and never sets the draining flag. So for the duration
+of that chain, "a dispatch is in progress" is **false** everywhere, even though one
+plainly is.
+
+Nothing on the starting host can observe this. Its listener array is empty and
+`observe` is unreachable until `start` returns — observable behaviour 6, "the hops
+`start()` settles are unobservable", which is true **of the starting host**. The one
+way code runs during that chain is a **handler** of an initial-state immediate row,
+and the one way such a handler reaches the queue is by calling `send` on some _other_
+host it closed over. Measured, on a machine whose initial state settles `a -> b -> c`
+with a handler on `a -> b` sending into an unrelated host:
+
+|                                  | the handler's send                                            | the other host's listeners       |
+| -------------------------------- | ------------------------------------------------------------- | -------------------------------- |
+| `start()` called at top level    | runs **immediately, nested**, between hop `a→b` and hop `b→c` | fire **inside** `start`'s settle |
+| `start()` called from a listener | **queued** — stale read — drains with the outer chain         | fire after the outer chain       |
+
+The second row is rule 4. The first is the shape ["Queue, not stack"](#queue-not-stack)
+rejected: a listener on another host running mid-chain of somebody else's settling,
+and a handler reading a host it just sent to and seeing the _new_ state. Identical
+code, two semantics, decided by whether a dispatch happened to be in flight — which
+the author of that handler cannot see from where they stand.
+
+**Not fixed now, and the reason is narrow.** Handlers only project (§15); a handler
+reaching sideways into another host's `send` is off-label, hand-wired, and nothing in
+`tests/` does it. No re-entrancy is reachable either, since the nesting only happens
+when nothing was in flight, and no queue entry can be orphaned. It is an
+inconsistency with rule 4 that no supported use exercises.
+
+**It stops being narrow the moment `actions` lands.** Actions exist to put effects on
+transitions — the ordinary way an initial state kicks work off is then an action on a
+hop `start` is settling, and a send back from that effect is the supported path
+rather than an off-label one. At that point the first row above is a live ordering
+bug in the feature's main path, and it will present as an ordering oddity in
+`actions`, not as anything pointing at `start`. The guard against that is a test
+requirement on the actions work, written out in
+[§9](#what-to-test-when-it-lands-actions-fired-by-start).
+
+The fix is `send`'s own drain ownership, moved onto `start`: when the flag is unset,
+take the drain — settle, then drain the queue, resetting the flag and discarding the
+queue in a `finally` exactly as `send` does; when it is set, settle nested and leave
+the queue to the outer drain, which is already what has to happen, since `start` must
+hand back a settled host and cannot defer its own chain. What needs deciding along
+with it is whether a throw out of a `start` that owns the drain should discard queued
+work across every host — it follows from the same argument as a throwing listener, but
+the host being started is also lost, so the caller has nothing left to be usable.
+
 #### No disposal, and a listener that throws
 
 **There is no `stop()`.** Not because disposal is hard, but because in v1 **the host
@@ -2494,9 +2567,15 @@ Opened by §16 and §17, which are decided but unbuilt:
   `'draft -cancel> *'`, which §9's own sketch uses. **Not settled**: comparable APIs
   have been made to work before, and it has not been re-run against the real
   `machine()`.
-- **The scheduler's scope** — one queue for every host, or a scheduler passed at
-  `start()`. Global is a large hammer for machines that never meet. §16 has why one is
-  needed at all.
+- **`start` settles outside the queue.** The initial state's immediate chain runs
+  without the draining flag set, so a `send` issued from a handler on one of those
+  hops nests when `start` was called at top level and queues when it was called from
+  inside a dispatch — the same code, two semantics. Unreachable through any supported
+  use today, because handlers only project; load-bearing the moment `actions` puts
+  effects on the hops `start` is settling. Diagnosis and the fix's shape:
+  [§12](#start-settles-outside-the-queue--a-trap-not-yet-a-bug); the coverage that has
+  to be written with `actions`, or the fix is missed:
+  [§9](#what-to-test-when-it-lands-actions-fired-by-start).
 
 ## 16. The composition boundary
 

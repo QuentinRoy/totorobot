@@ -741,6 +741,15 @@ export function machine<
 					}
 				}
 			}
+			// Settled outside the queue, and without setting `draining`. Sound only
+			// because handlers project: no listener exists yet — `observe` is
+			// unreachable until this returns — so the one way to reach `send` from
+			// here is a handler closing over some *other* host, which nothing
+			// supported does. When it happens, that send nests if `start` was called
+			// at top level and queues if it was called from inside a dispatch: same
+			// code, two semantics. `actions` makes that path ordinary rather than
+			// off-label, and `start` then has to own a drain the way `send` does —
+			// see `docs/api-rationale.md`, "`start` settles outside the queue".
 			settle()
 
 			return {

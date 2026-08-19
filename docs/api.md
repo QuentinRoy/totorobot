@@ -467,8 +467,11 @@ implementation to be driven from.
    declared initial state, exactly as plain construction would.
 5. A cycle among the initial state's immediates throws `RangeError` — same message
    shape as (34) — from `start()` rather than from `send`.
-6. The hops `start()` settles are unobservable: nothing has subscribed yet, so only the
-   state the chain lands in is visible, never the hops that got it there.
+6. The hops `start()` settles are unobservable **on the host being started**: nothing
+   has subscribed to it yet, so only the state the chain lands in is visible, never the
+   hops that got it there. Those hops run outside the dispatch queue, so a handler on
+   one of them that sends into a _different_ host is not covered by rule 4 — see
+   [rationale §12](api-rationale.md#start-settles-outside-the-queue--a-trap-not-yet-a-bug).
 7. Two hosts from one definition share no current state and no listeners.
 8. Nothing ever mutates the definition.
 
@@ -678,7 +681,7 @@ _Why, what was measured, and the rejected alternatives:_
 
 ## Designed, not in v1
 
-Four directions v1 leaves room for, argued in the rationale and none built. Sketches
+Three directions v1 leaves room for, argued in the rationale and none built. Sketches
 rather than commitments: whether each ships, and — for composition — in what shape, are
 open. **The order is not**, and it is the one thing here that is settled: `actions`
 first, because `emit` has nowhere to live without it. A handler may `skip()`, and
@@ -731,19 +734,6 @@ claim the _definition_ makes, or it is worth nothing at a seam.
 _Why not encapsulation, and what it does not fix:_
 [rationale §16](api-rationale.md#16-the-composition-boundary).
 
-### A shared scheduler — for peers
-
-[Commit ordering](#commit-ordering) rule 4 — a listener is never re-entered while an
-earlier call is still running — holds **per host**. Peer machines wired to each other
-cross hosts, so a send from one machine's listener into another nests instead of
-queueing, which is precisely where composition needs the guarantee. The fix is one queue
-shared by the hosts that talk to each other; whether that is global or passed at
-`start()` is open.
-
-_Why peers rather than hierarchy, and the evidence:_
-[rationale §10](api-rationale.md#10-composition) and
-[§16](api-rationale.md#what-the-prototype-measured).
-
 ### Composition — invoked children
 
 A child machine mounted at a state. The leading sketch has the child's outcome as a
@@ -786,10 +776,7 @@ already shipped. See [Changing before v1](#changing-before-v1).
    notification within one commit, plus an error channel for a throwing action. First,
    because 2 depends on it.
 2. **`emit`, `outputs`, and the output subscription** on the freed `.on`.
-3. **A shared scheduler** — most of what "horizontal composition" turns out to mean.
-   [Commit ordering](#commit-ordering) rule 4 holds per host, so peer wiring, which
-   crosses hosts, is exactly where it lapses. Not a notation.
-4. **Composition — invoked children**, whose shape is still unresolved.
+3. **Composition — invoked children**, whose shape is still unresolved.
 
 [Rationale §15](api-rationale.md#15-still-open) has what is still open, including the
 four questions §16 and §17 opened.
