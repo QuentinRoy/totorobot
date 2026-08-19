@@ -76,7 +76,6 @@ Everything the package exports, and everything a host has:
 | `types<T>()`                                                | a declaration carrying `T`; returns `undefined` at runtime |
 | `definition.start(data?)`                                   | a **host** — the only mutable object in the design         |
 | `host.current`                                              | `{ state, data }`                                          |
-| `host.available`                                            | the input names the current state handles                  |
 | `host.send(name, payload?)`                                 | a dispatch; returns nothing                                |
 | `host.on(pattern, listener)`                                | a subscription; returns an unsubscribe function            |
 | a handler's `{ data, input, skip }`                         | source data, the input payload, and the way to decline     |
@@ -114,7 +113,7 @@ carries stays `unknown`, since nothing declares it — and **the key grammar sti
 enforced**, a malformed key a compile error whether or not a vocabulary was declared.
 Declaring one map and not the other is supported and checks that half while the other's
 names are still read off the table. This is a guarantee, not an accident: see
-[observable behaviour](#observable-behaviour) items 38–41.
+[observable behaviour](#observable-behaviour) items 35–38.
 
 **An inferred name has to be one a key can round-trip.** `*` and a name padded by a
 leading or trailing space are excluded from what an omitted map infers — not because
@@ -157,7 +156,7 @@ The input is the arrow's **label**. Two rules:
 
 **The grammar is also enforced at runtime.** `machine()` throws `SyntaxError` for a
 malformed key and `.on()` throws the same way for a malformed pattern, naming the
-offending string — see [observable behaviour](#observable-behaviour) items 1 and 25.
+offending string — see [observable behaviour](#observable-behaviour) items 1 and 22.
 This is what catches a typo in plain JavaScript, where nothing else checks the shape of
 what was written.
 
@@ -184,8 +183,7 @@ That is how one input reaches two states —
 — and **declaration order is priority order**. If every candidate skips, the machine
 declines the input: nothing changes, and no listener fires. That is a normal outcome
 rather than a fault — the `revise` row above declines an unchanged text on purpose — and
-nothing reports it. `available` is how you know in advance which inputs a state answers
-to at all.
+nothing reports it.
 
 ### Self-transitions are ordinary transitions
 
@@ -212,7 +210,7 @@ rows and continues on to `allowed` or `denied` without anyone sending anything.
 `skip()` falls through to the next candidate, exactly as on an input-driven row — a
 guarded choice needs no new concept, no `cond`, no junction pseudostate. If every
 candidate skips, the machine stays in `checking`, and `checking`'s input rows stay
-live and advertised: "the condition is not met yet" needs nothing invented.
+live: "the condition is not met yet" needs nothing invented.
 
 **Chains settle before anything else runs.** Landing somewhere that itself has
 immediate rows continues the chain, hop after hop — each one committing and notifying
@@ -274,7 +272,6 @@ const doc = publication.start() // `empty` is void, so no argument
 doc.send('open', { text: 'hello' })
 
 doc.current // { state: 'draft', data: { text: 'hello', revision: 0 } }
-doc.available // readonly ['revise', 'submit', 'cancel']
 ```
 
 One host per independent use — two hosts over one definition share no state and no
@@ -287,15 +284,6 @@ listeners, and neither mutates the definition.
   transitions**, which is what makes it safe to compare, serialise, or hold in
   component state. Nothing is frozen, though: immutability is `readonly` in the types
   plus a promise not to mutate, not a runtime guard.
-- **`available`** is the input names the current state handles, in the table's
-  declaration order, without duplicates — one `'submit'` even though two rows carry it.
-  This is what UI code needs to render buttons, and it is the runtime half of per-state
-  capabilities.
-  **It is derived from the table, not from running handlers**, so an input whose every
-  candidate row would `skip()` is still listed. Deciding otherwise would mean evaluating
-  handlers, which needs a payload `available` does not have — and would run them for
-  their answer without committing it. `available` therefore says which inputs the state
-  has rows for, not which will commit.
 
 ### Sending
 
@@ -306,14 +294,13 @@ object, so a `void` input is just `doc.send('cancel')`.
 current state does not handle changes nothing — it does not throw, corrupt, or
 half-apply, and that is also how a stale async result lands harmlessly.
 
-**`send` returns nothing.** What happened is `doc.current`; what would have been
-accepted is `available`, consulted before sending rather than reported after.
+**`send` returns nothing.** What happened is `doc.current`.
 
 **There is no typed send site**: `doc.send('decide', …)` compiles in `draft` and does
-nothing at runtime. Per-state capabilities are advertised at runtime and not enforced
-by the compiler. This is a deliberate drop — the narrow-then-send shape is unsound in
-TypeScript ([finding 11](api-rationale.md#13-type-system-findings)) — and a sound
-variant stays addable later without breaking anything
+nothing at runtime. Per-state capabilities are not enforced by the compiler. This is a
+deliberate drop — the narrow-then-send shape is unsound in TypeScript
+([finding 11](api-rationale.md#13-type-system-findings)) — and a sound variant stays
+addable later without breaking anything
 ([rationale §11](api-rationale.md#11-sending-inputs)).
 
 **Per-state _data_ is unaffected** — narrow `current` and the data narrows with it,
@@ -437,18 +424,18 @@ implementation to be driven from.
    naming the key — `not a transition: '<key>'`, the same wording the type layer
    reports on the offending row. Well formed means exactly one arrow, with a
    non-empty source and a non-empty target; the label between the two separators may
-   be empty, which is the unlabelled arrow (21).
+   be empty, which is the unlabelled arrow (18).
 2. `start(data)` yields a host whose `current` is `{ state: initial, data }` — or, if
    the initial state's own immediate rows settle it further, whatever state that chain
    lands in. `start()`'s arity always follows the **declared** initial state: it takes
    no argument when that state is `void`, even when settling carries it into a state
    that has data.
 3. A chain off the initial state settles fully, hop after hop, before `start()`
-   returns — exactly as it does after `send` (23).
+   returns — exactly as it does after `send` (20).
 4. If the initial state's immediate rows all skip, the host comes back sitting in the
    declared initial state, exactly as plain construction would.
 5. A cycle among the initial state's immediates throws `RangeError` — same message
-   shape as (37) — from `start()` rather than from `send`.
+   shape as (34) — from `start()` rather than from `send`.
 6. The hops `start()` settles are unobservable: nothing has subscribed yet, so only the
    state the chain lands in is visible, never the hops that got it there.
 7. Two hosts from one definition share no current state and no listeners.
@@ -458,82 +445,76 @@ implementation to be driven from.
 
 9. `current` is `{ state, data }`; `data` is `undefined` for a `void` state.
 10. A value read from `current` before a transition is unchanged after it.
-11. `available` lists the current state's inputs in table order, deduplicated. It comes
-    from the table alone: an input whose every candidate row would `skip()` is listed
-    like any other.
-12. `available` is `[]` for a state with no outgoing rows.
 
 **Sending**
 
-13. A handled input commits: `current` becomes `{ state: target, data: projection }`,
+11. A handled input commits: `current` becomes `{ state: target, data: projection }`,
     and every listener whose pattern matches that edge fires.
-14. An input no row matches changes nothing and fires no listener.
-15. An input whose every candidate row calls `skip()` changes nothing and fires no
-    listener. Externally indistinguishable from 14, deliberately — except that it is in
-    `available` and the input of 14 is not (11).
-16. With several rows for one `(from, input)`, candidates are tried in declaration order
+12. An input no row matches, and an input whose every candidate row calls `skip()`, both
+    change nothing and fire no listener — indistinguishable, without exception.
+13. With several rows for one `(from, input)`, candidates are tried in declaration order
     and the first that does not skip wins.
-17. A self-transition commits and notifies like any other, with
+14. A self-transition commits and notifies like any other, with
     `e.from.state === e.to.state`, `e.from.data` the old data and `e.to.data` the new.
-18. A handler receives the source state's data and the input payload; a `void` input's
+15. A handler receives the source state's data and the input payload; a `void` input's
     payload is `undefined`.
-19. A handler whose target is `void` returns nothing.
-20. `send` returns `undefined`, always.
-21. An input name that is not in the vocabulary (reachable from untyped code) changes
+16. A handler whose target is `void` returns nothing.
+17. `send` returns `undefined`, always.
+18. An input name that is not in the vocabulary (reachable from untyped code) changes
     nothing.
-22. Entering a state by an input runs its immediate rows in declaration order;
+19. Entering a state by an input runs its immediate rows in declaration order;
     `skip()` falls through exactly as it does on an input-driven row, and a state
-    whose candidates all skip stays put, its input rows still live and advertised.
-23. A chain — several immediate hops in a row — settles fully before `send` returns,
+    whose candidates all skip stays put, its input rows still live.
+20. A chain — several immediate hops in a row — settles fully before `send` returns,
     however many hops it takes.
 
 **Observing**
 
-24. `on` returns an unsubscribe function; calling it more than once is harmless.
-25. A malformed `.on()` pattern throws the same `SyntaxError`, at registration,
+21. `on` returns an unsubscribe function; calling it more than once is harmless.
+22. A malformed `.on()` pattern throws the same `SyntaxError`, at registration,
     naming the pattern — so a typo in a subscription cannot become a listener that
     silently never fires.
-26. Listeners fire after the commit, in registration order — on every hop of a chain.
-27. Inside a listener, `e.to` deep-equals `doc.current` — for every listener, on every
+23. Listeners fire after the commit, in registration order — on every hop of a chain.
+24. Inside a listener, `e.to` deep-equals `doc.current` — for every listener, on every
     hop.
-28. `*` matches any state; an unlabelled arrow matches any input, or none — including an
+25. `*` matches any state; an unlabelled arrow matches any input, or none — including an
     immediate transition; a labelled one matches only that input and never an
     immediate.
-29. The listener list is snapshotted before dispatch: a listener unsubscribed by an
+26. The listener list is snapshotted before dispatch: a listener unsubscribed by an
     earlier listener still runs for the current transition, and one registered during a
     dispatch does not.
-30. An immediate transition's record carries `on: undefined` and `input: undefined`; a
+27. An immediate transition's record carries `on: undefined` and `input: undefined`; a
     `void` input's record — `on` its name, `input: undefined` — stays distinguishable
     from it.
 
 **Commit ordering**
 
-31. A `send` from inside a listener does not take effect before the remaining listeners
+28. A `send` from inside a listener does not take effect before the remaining listeners
     for the current transition have run.
-32. The queue drains before the outermost `send` returns — synchronously, not on a
+29. The queue drains before the outermost `send` returns — synchronously, not on a
     microtask.
-33. Several sends from listeners drain first-in-first-out.
-34. A queued send is evaluated against the state at drain time, so it may find no row
+30. Several sends from listeners drain first-in-first-out.
+31. A queued send is evaluated against the state at drain time, so it may find no row
     and do nothing.
-35. A listener that throws propagates out of `send`. The listeners after it do not run
+32. A listener that throws propagates out of `send`. The listeners after it do not run
     and that dispatch's queue is abandoned, but the transition stays committed. **The
     host still works afterwards**: a later `send` transitions and notifies normally.
-36. An input sent from a listener mid-chain is drained only once the whole chain has
+33. An input sent from a listener mid-chain is drained only once the whole chain has
     settled, never mid-hop.
-37. A chain that never settles throws `RangeError`, naming the state it could not
+34. A chain that never settles throws `RangeError`, naming the state it could not
     settle. There is no rollback — every hop up to that point has already committed and
     notified — and **the host stays usable afterward**.
 
 **The untyped path**
 
-38. With `inputs` and `states` both omitted, a well-formed table compiles: state and
+35. With `inputs` and `states` both omitted, a well-formed table compiles: state and
     input names are exactly the ones `transitions` mentions, `data` and `input` are
     `unknown`, and `initial` must name a state that appears somewhere in the table.
-39. A malformed key is still rejected with no vocabulary declared, and the error still
+36. A malformed key is still rejected with no vocabulary declared, and the error still
     lands on the offending line rather than on the `transitions` block.
-40. Declaring one map and omitting the other checks that half and infers the other from
+37. Declaring one map and omitting the other checks that half and infers the other from
     the table, the same as omitting both.
-41. An immediate row works the same with no vocabulary declared: its handler's `input`
+38. An immediate row works the same with no vocabulary declared: its handler's `input`
     is still `undefined`, and it never leaks the empty label into the inferred input
     names.
 
@@ -553,15 +534,15 @@ implementation to be driven from.
 Errors land on the bad line, from a single declaration site, and no handler needs a type
 annotation.
 
-**What is _not_ checked: the send site.** Per-state capabilities are advertised at
-runtime (`available`) rather than enforced by the compiler.
+**What is _not_ checked: the send site.** Per-state capabilities are not enforced by
+the compiler.
 
 ## What is claimed, and what is not
 
 - **A transition is pure.** Given a state and an input it yields either the next state
   or a refusal, and it neither performs nor schedules anything.
-- **Sending is broad**, and `available` says in advance which inputs the current state
-  has no row for at all — not which ones will commit, since a row may still decline.
+- **Sending is broad**: every declared input is accepted from every state, whether or
+  not it commits.
 - **Big steps terminate**, because one input causes at most one transition.
 - **Stale results are free.** A `loaded` arriving after we left `loading` matches no row
   and does nothing. That is _ignoring a result_, not _cancelling work_; cancelling is
@@ -584,9 +565,9 @@ Not oversights. What to reach for instead, and where the argument is:
 | `keep` / `repeat` / `stay`  | an ordinary self-transition row; restart is an action's question ([§6](api-rationale.md#6-self-transitions))                                  |
 | `emit`                      | ~~the transition record~~ — **reopened**, see [Changing before v1](#changing-before-v1) ([§16](api-rationale.md#16-the-composition-boundary)) |
 | `else`                      | declining is a normal outcome, and silent ([§4](api-rationale.md#two-decisions-that-fell-out-of-the-comparison))                              |
-| a `send` return value       | `current` and `available` ([§12](api-rationale.md#send-returns-nothing))                                                                      |
+| a `send` return value       | `current` ([§12](api-rationale.md#send-returns-nothing))                                                                                      |
 | `stop()`                    | unsubscribe, and stop sending ([§12](api-rationale.md#no-disposal-and-a-listener-that-throws))                                                |
-| typed `send`                | `available` at runtime; recorded but unbuilt ([§11](api-rationale.md#if-it-comes-back-it-comes-back-as-s12))                                  |
+| typed `send`                | nothing at runtime either; recorded but unbuilt ([§11](api-rationale.md#if-it-comes-back-it-comes-back-as-s12))                               |
 | hierarchy, parallel regions | out of scope ([§10](api-rationale.md#what-the-rest-of-the-record-forbids))                                                                    |
 
 ---
