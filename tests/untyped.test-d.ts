@@ -79,13 +79,8 @@ test('initial must be a state transitions mentions when no states are declared',
 		},
 	})
 
-	// @ts-expect-error - 'bogus' names no state in the table. With no
-	// `states` in the call, this and the "states declared" overload both
-	// fail to match — the mismatch on `initial` alone would otherwise land
-	// on this exact line, but overload resolution reports failing-to-match
-	// against the call as a whole, so the tripwire sits on `machine(` rather
-	// than on `initial` here.
 	machine({
+		// @ts-expect-error - 'bogus' names no state in the table
 		initial: 'bogus',
 		// The rows stay legal and stay checked: were `initial` an inference
 		// site, 'bogus' would become the only known state and every other row
@@ -261,26 +256,14 @@ test('declaring inputs and omitting states checks inputs and infers states from 
 				expectTypeOf(state['anything']).not.toBeAny()
 				expectTypeOf(state['anything']).toEqualTypeOf<unknown>()
 			},
+			// @ts-expect-error - 'bogus' is not a declared input
+			'off -bogus> on': () => {},
 		},
 	})
 
 	const host = half.start()
 	expectTypeOf(host.current.name).toEqualTypeOf<'off' | 'on'>()
 	expectTypeOf(host.send).parameter(0).toEqualTypeOf<'toggle'>()
-
-	// A separate call, kept to a single row beyond the valid one: mixing an
-	// inferred-vocabulary row rejection with a sibling row whose handler
-	// reads `state` corrupts unrelated rows' inference under TS 7.0.2 — see
-	// the note on `machine` in `src/totorobot.ts`.
-	machine({
-		initial: 'off',
-		inputs: types<Inputs>(),
-		transitions: {
-			'off -toggle> on': () => {},
-			// @ts-expect-error - 'bogus' is not a declared input
-			'off -bogus> on': () => {},
-		},
-	})
 })
 
 test('declaring states and omitting inputs checks states and infers inputs from the table', () => {
@@ -298,27 +281,14 @@ test('declaring states and omitting inputs checks states and infers inputs from 
 				expectTypeOf(input).not.toBeAny()
 				expectTypeOf(input).toEqualTypeOf<unknown>()
 			},
+			// @ts-expect-error - 'undeclared' is not a declared state
+			'undeclared -toggle> on': () => {},
 		},
 	})
 
 	const host = half.start()
 	expectTypeOf(host.current.name).toEqualTypeOf<'off' | 'on'>()
 	expectTypeOf(host.send).parameter(0).toEqualTypeOf<'toggle'>()
-
-	// A separate call, kept to a single row beyond the valid one, for the
-	// same reason as the mirroring "declaring inputs" test above: a sibling
-	// row rejection in the same table corrupts this table's own inference
-	// under TS 7.0.2 when the omitted half is self-referentially inferred —
-	// see the note on `machine` in `src/totorobot.ts`.
-	machine({
-		initial: 'off',
-		states: types<States>(),
-		transitions: {
-			'off -toggle> on': () => {},
-			// @ts-expect-error - 'undeclared' is not a declared state
-			'undeclared -toggle> on': () => {},
-		},
-	})
 })
 
 test('`*` in a key position is rejected rather than joining the inferred vocabulary (#22)', () => {
@@ -326,38 +296,14 @@ test('`*` in a key position is rejected rather than joining the inferred vocabul
 	// grammar `parse` enforces — so nothing throws. The rejection is entirely
 	// the type layer's: `*` never joins `StatesFromKeys`, so `Key` never
 	// matches these rows and `Table` poisons each on its own line.
-	//
-	// One malformed row per call, each alongside one valid row: several
-	// inferred-vocabulary rejections sharing a table corrupt each other's
-	// inference under TS 7.0.2 — see the note on `machine` in
-	// `src/totorobot.ts`. And where the excluded name is a *state* coordinate
-	// — always, below, except the labelled row — the same bug also moves the
-	// diagnostic off the row and onto the call: `states` is inferred from
-	// the whole table before the row-level rejection can be reported on its
-	// own line, so the tripwire sits on `machine(` rather than on the row.
-	// An excluded *input* name (the labelled row) is unaffected — `Table`
-	// only ever reads the input vocabulary through a plain indexed access —
-	// so that one keeps its usual row-level `@ts-expect-error`.
-	// @ts-expect-error - '*' is the wildcard, not an inferable state name
 	machine({
 		initial: 'off',
 		transitions: {
 			'off -go> on': () => {},
+			// @ts-expect-error - '*' is the wildcard, not an inferable state name
 			'* -go> on2': () => {},
-		},
-	})
-	// @ts-expect-error - '*' is the wildcard, not an inferable state name
-	machine({
-		initial: 'off',
-		transitions: {
-			'off -go> on': () => {},
+			// @ts-expect-error - '*' is the wildcard, not an inferable state name
 			'on -back> *': () => {},
-		},
-	})
-	machine({
-		initial: 'off',
-		transitions: {
-			'off -go> on': () => {},
 			// @ts-expect-error - '*' is the wildcard, not an inferable input name
 			'off -*> on': () => {},
 		},
@@ -365,22 +311,13 @@ test('`*` in a key position is rejected rather than joining the inferred vocabul
 })
 
 test('`initial: "*"` is rejected once `*` is excluded from the inferred states (#22)', () => {
-	// Split for the same reason as above: `initial` and the row are checked
-	// in separate calls so one rejection cannot corrupt the other's
-	// diagnosis. Both tripwires sit on `machine(` — see the comment above.
-	// @ts-expect-error - '*' never joins the inferred state vocabulary, even
-	// when a row mentions it
 	machine({
+		// @ts-expect-error - '*' never joins the inferred state vocabulary,
+		// even when a row mentions it
 		initial: '*',
 		transitions: {
 			'off -go> on': () => {},
-		},
-	})
-	// @ts-expect-error - '*' is the wildcard, not an inferable state name
-	machine({
-		initial: 'off',
-		transitions: {
-			'off -go> on': () => {},
+			// @ts-expect-error - '*' is the wildcard, not an inferable state name
 			'* -back> off': () => {},
 		},
 	})
@@ -389,29 +326,15 @@ test('`initial: "*"` is rejected once `*` is excluded from the inferred states (
 test('a name padded by a leading or trailing space is rejected rather than joining the inferred vocabulary (#22)', () => {
 	// Each of these parses to a well-formed, if oddly spelled, key at runtime —
 	// #16's grammar check only rejects a spelling that collides with ` -`/`> `,
-	// and a padded name does not. The rejection here is the type layer's
-	// alone. One malformed row per call, and the tripwire sits on `machine(`
-	// — see the comment on the `*`-in-a-key-position test above.
-	// @ts-expect-error - the doubled space puts a leading space into ' on'
+	// and a padded name does not. The rejection here is the type layer's alone.
 	machine({
 		initial: 'off',
 		transitions: {
 			'off -go> on': () => {},
+			// @ts-expect-error - the doubled space puts a leading space into ' on'
 			'on -go>  on': () => {},
-		},
-	})
-	// @ts-expect-error - the trailing space names 'on ', not 'on'
-	machine({
-		initial: 'off',
-		transitions: {
-			'off -go> on': () => {},
+			// @ts-expect-error - the trailing space names 'on ', not 'on'
 			'on -go> on ': () => {},
-		},
-	})
-	machine({
-		initial: 'off',
-		transitions: {
-			'off -go> on': () => {},
 			// @ts-expect-error - the space after '-' names input ' go', not 'go'
 			'on - go> off': () => {},
 		},

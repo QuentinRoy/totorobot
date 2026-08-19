@@ -360,6 +360,16 @@ type EmptyObject = { readonly [emptyObjectTag]?: never }
  * declining costs no type safety — a wrong-shaped return is still rejected on
  * a row that could also `skip()`.
  *
+ * `state` is wrapped in `NoInfer` because a handler parameter is an inference
+ * site: a context-sensitive handler — one that destructures its argument —
+ * otherwise infers `S` contravariantly from the table, competing with the
+ * `states` property that is meant to be its only source. `S` lands on garbage
+ * and `Key<I, S>` collapses, so **every** row, well formed or not, is
+ * rejected as `not a transition: '…'` — the diagnostic below, fired on rows
+ * that are fine. Only this one position needs it: the return type is
+ * covariant and infers nothing, and the input vocabulary is read through a
+ * plain indexed access. See the note on `machine`.
+ *
  * One limitation, and it is TypeScript's rather than this notation's: a handler
  * that destructures nothing — `() => ({ … })` — is not context-sensitive, so
  * the compiler types it in the same pass that infers `states:` from the sibling
@@ -375,7 +385,7 @@ type EmptyObject = { readonly [emptyObjectTag]?: never }
 type Table<I extends Vocab, S extends StateVocab, K extends string> = {
 	readonly [P in K]: P extends Key<I, S>
 		? (args: {
-				readonly state: Extract<S, { name: From<P> }>
+				readonly state: NoInfer<Extract<S, { name: From<P> }>>
 				readonly input: Value<I[Label<P> & Name<I>]>
 				readonly skip: () => Skip
 			}) =>
@@ -722,26 +732,31 @@ const dispatch = (work?: () => void): void => {
  * because collapsing it with `RawI` into one parameter, constrained to bare
  * `Vocab` with a default, is the version that fails: see `Declared`.
  *
- * `S` gets no `RawS`/`Declared` pair at all, and this is **two overloads**
- * rather than one signature with `states` optional — both load-bearing.
- * Measured against TS 7.0.2: a defaulted `S` here — `S extends StateVocab =
- * Declared<RawS, StatesFromKeys<K>>`, or the same formula substituted inline
- * at each site instead — sitting alongside `Table`'s own `P extends Key<I,
- * S> ? … : …`, resolves every row's `Extract<S, { name: … }>` against a
- * stale, prematurely-`never` reading of `S` and poisons every row with `not
- * a transition: '…'` even though the row is well formed, **exactly when**
- * `S` is `StatesFromKeys<K>` — a checker bug specific to a state vocabulary
- * self-referentially derived from the same `K` that indexes `Table`'s own
- * conditional, not anything this signature does with `S` semantically. A
- * declared `S`, independent of `K`, never triggers it — see
- * `docs/api-rationale.md#17-the-shape-of-a-named-thing`. Splitting the two
- * cases into separate overloads keeps `RawS` out of any signature where `S`
- * is `StatesFromKeys<K>`, which is what avoids it: the first overload's `S`
- * is always `StatesFromKeys<K>` and carries no `states` key beyond `undefined`;
- * the second's `S` is a genuine inferred parameter and `states` is required
- * (as `S | undefined`, so the marker's return type still satisfies it). `I`
- * needs no such split: `Table` only ever reads it through a plain indexed
- * access, not `Extract`.
+ * `S` gets the same `RawS`/`Declared` pair `I` gets, for the same reason and
+ * with the same spelling — the two halves are symmetric here.
+ *
+ * That symmetry depends on `states` being the **only** inference site for `S`,
+ * which is not free: `Table` also puts `S` in a handler *parameter*, and a
+ * parameter is an inference site too. A context-sensitive handler otherwise
+ * infers `S` contravariantly from the table and competes with `states` for
+ * it; `S` lands on garbage, `Key<I, S>` collapses, and every row — well
+ * formed or not — is rejected as `not a transition: '…'`. The `NoInfer` on
+ * `state` in `Table` closes that site, and closing it is what lets `S` carry
+ * a `Declared` default at all. It belongs there rather than around the type
+ * argument here, where it is too blunt and turns every declared `state` into
+ * `never`. `I` never needed it: `Table` only ever reads the input vocabulary
+ * through a plain indexed access, never through a handler parameter.
+ *
+ * Rejected: splitting this into two overloads (one for `states` omitted, one
+ * for `states` declared), which also avoids that failure — neither signature
+ * alone carries both inference sites — but costs the diagnostics the notation
+ * exists to give, exactly as §5 of the rationale already recorded for
+ * overloads generally. Overload resolution reports `No overload matches this
+ * call` against the whole call expression and then elaborates only the *last*
+ * overload, so a malformed row lands on `machine({` rather than on the row, a
+ * bad `initial` is reported as a missing `states` property, and a table
+ * carrying two malformed rows names only one of them. This signature reports
+ * each on its own row, and both of two malformed rows separately.
  *
  * `K` is the table's keys, inferred from the mapped type in `transitions`
  * because a mapped type over a bare type parameter infers its own key set.
@@ -755,19 +770,9 @@ export function machine<
 	Init extends string,
 	K extends string,
 	RawI extends Vocab | undefined = undefined,
+	RawS extends StateVocab | undefined = undefined,
 	I extends Vocab = Declared<RawI, InputsFromKeys<K>>,
->(definition: {
-	readonly initial: Init & StateName<NoInfer<StatesFromKeys<K>>>
-	readonly inputs?: RawI | undefined
-	readonly states?: undefined
-	readonly transitions: Table<I, StatesFromKeys<K>, K>
-}): Machine<I, StatesFromKeys<K>, K, Init>
-export function machine<
-	Init extends string,
-	K extends string,
-	S extends StateVocab,
-	RawI extends Vocab | undefined = undefined,
-	I extends Vocab = Declared<RawI, InputsFromKeys<K>>,
+	S extends StateVocab = Declared<RawS, StatesFromKeys<K>>,
 >(definition: {
 	readonly initial: Init & StateName<NoInfer<S>>
 	// `| undefined` is what `types()` returns, and inference subtracts it: the
@@ -777,16 +782,15 @@ export function machine<
 	// makes those two different: omitting the key is not the same as writing
 	// `inputs: undefined`, and the marker's return type has to satisfy both.
 	readonly inputs?: RawI | undefined
-	readonly states: S | undefined
+	readonly states?: RawS | undefined
 	readonly transitions: Table<I, S, K>
 }): Machine<I, S, K, Init>
-// The implementation signature, never seen by a caller — only the two
-// overloads above are. `any` rather than a structural type: a row's value in
-// either overload's `Table<I, S, K>` can itself be the poison string literal
+// The implementation signature, never seen by a caller — only the signature
+// above is. `any` rather than a structural type: a row's value in
+// `Table<I, S, K>` can itself be the poison string literal
 // `not a transition: '…'`, which is not a `Call`, so no non-`any` parameter
-// type is a valid implementation of both overloads at once. Narrowed back
-// immediately below, the same way the rest of this function already treats
-// its own inputs as `Data`.
+// type implements it. Narrowed back immediately below, the same way the rest
+// of this function already treats its own inputs as `Data`.
 export function machine(definition: any): any {
 	const { initial, transitions } = definition as unknown as {
 		readonly initial: string
