@@ -2374,8 +2374,8 @@ Opened by §16 and §17, which are decided but unbuilt:
   once, with both call sites in view. That is why the rename ships without it.
 - **Whether `persistent` survives inference in the action bag.** In the prototype's
   shim, wrapping a context-sensitive action collapsed every argument bag to `never` —
-  §13's trap, a block that is both checked against and the source of its own type
-  parameter. The fix was to key `actions` off the states and transitions already
+  §13's findings 3 and 6, where a type parameter appearing in a closure parameter is
+  fixed to its constraint before inference runs. The fix was to key `actions` off the states and transitions already
   declared rather than off the block, and it cost wildcard triggers like
   `'draft -cancel> *'`, which §9's own sketch uses. **Not settled**: comparable APIs
   have been made to work before, and it has not been re-run against the real
@@ -2581,7 +2581,19 @@ complexity, different test.
 
 ### Measured, not assumed
 
-TS 7.0.2, each probe carrying a tripwire that must fail.
+TS 7.0.2, each probe carrying a tripwire that must fail. All of it is pinned in
+[`explorations/tagged-vocabulary.ts`](../explorations/tagged-vocabulary.ts) — covered
+by `pnpm typecheck`, so a compiler release that changes any of these turns the build
+red rather than quietly invalidating this section.
+
+**The shape is not new to this repository.** `config-object-kit.ts` already carries
+states as `{ name: … }` unions and derives a source context with
+`Omit<Extract<S, { name: K }>, 'name'>`, for the generation-1 config-object family.
+What killed options D/E/F was sibling inference (§5), not the union — and §13's last
+finding records the one hazard of that construction: deriving the context from the
+state name inside a conditional forces the target to resolve before it is read. §17's
+spelling keeps the target a parsed string rather than a parameter to infer, which is
+why it does not bite.
 
 - **Nested discriminant narrowing works.** `e.input.type === 'submit'` narrows
   `e.input.data`; unnarrowed access still errors.
@@ -2610,6 +2622,15 @@ TS 7.0.2, each probe carrying a tripwire that must fail.
   return gives an error identical to today's — bare, resolved, no wrapper — and costs
   the arrow test, since the target migrates back inside the lambda. That is [08 F3]'s
   criticism of Tinder, declined deliberately here rather than stumbled into.
+- **Negative result: for a payload-free target the tag is _not required_ but is also
+  _not rejected_.** `Omit<{ name: 'empty' }, 'name'>` is `{}`, and `{}` accepts any
+  object literal — both the weak-type check and excess-property checking need the
+  target to have at least one property. So a handler may restate `{ name: 'empty' }`
+  and nothing objects. Harmless in itself, but it means the type upholds the arrow
+  test only where the state carries data; everywhere else it is convention.
+- **`typeof` queries do not see control-flow narrowing**, which is a trap for the
+  assertions rather than for the design: a narrowed value has to be bound before it
+  can be asserted about. Worth knowing before writing the real type tests.
 
 ## Where the code is
 
