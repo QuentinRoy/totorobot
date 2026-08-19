@@ -6,8 +6,9 @@
 >
 > **v1 is topology and data**: a declared vocabulary, a transition table, a host, and
 > listeners on the host — including immediate transitions, which fire on entering a
-> state rather than on an input. `actions` and composition are argued but deferred, and
-> neither is promised — see [Designed, not in v1](#designed-not-in-v1).
+> state rather than on an input. `actions` is argued but deferred, and is not
+> promised — see [Designed, not in v1](#designed-not-in-v1). Composition is a further,
+> more prospective direction — see [the roadmap](roadmap.md).
 >
 > **Two parts of this document are already decided against.** The vocabulary's shape and
 > the transition record both change before v1 tags, as a consequence of settling the
@@ -685,13 +686,16 @@ _Why, what was measured, and the rejected alternatives:_
 
 ## Designed, not in v1
 
-Three directions v1 leaves room for, argued in the rationale and none built. Sketches
-rather than commitments: whether each ships, and — for composition — in what shape, are
-open. **The order is not**, and it is the one thing here that is settled: `actions`
-first, because `emit` has nowhere to live without it. A handler may `skip()`, and
-declaration order is priority order, so a handler that emitted would announce a
-transition that then loses. `emit` needs a post-commit home, and the action bag is the
-only one ([§16](api-rationale.md#emit-cannot-precede-actions)).
+Two directions v1 leaves room for, argued in the rationale and neither built. Sketches
+rather than commitments: whether either ships is open. **The order is not**, and it is
+the one thing here that is settled: `actions` first, because `emit` has nowhere to live
+without it. A handler may `skip()`, and declaration order is priority order, so a
+handler that emitted would announce a transition that then loses. `emit` needs a
+post-commit home, and the action bag is the only one
+([§16](api-rationale.md#emit-cannot-precede-actions)).
+
+Further out, and past what is designed here at all, is a prospective plan for
+composition — see [the roadmap](roadmap.md).
 
 ### `actions` — effects owned by the definition
 
@@ -733,32 +737,12 @@ actions: {
 rather than replacing one. What it buys is that a consumer can subscribe in the
 machine's published words instead of its internal state names, so a topology refactor
 stops breaking it. `emit` is deliberately absent from `observe`: an output has to be a
-claim the _definition_ makes, or it is worth nothing at a seam.
+claim the _definition_ makes, or it is worth nothing at a seam. The `.on` spelling above
+is illustrative, not reserved — no method name, shape, or syntax is claimed ahead of the
+design that would justify it.
 
 _Why not encapsulation, and what it does not fix:_
 [rationale §16](api-rationale.md#16-the-composition-boundary).
-
-### Composition — invoked children
-
-A child machine mounted at a state. The leading sketch has the child's outcome as a
-derived state rather than an input, reached by an immediate transition:
-
-```ts
-invokes: { loading: Child<UserFetch, 'ok' | 'err'> }
-
-transitions: {
-	'empty -open> loading': ({ input })   => ({ id: input.id }),
-	'loading.ok -> ready':   ({ outcome }) => ({ user: outcome.user }),
-	'loading.err -> broken': ({ outcome }) => ({ error: outcome.error }),
-}
-```
-
-Every edge stays in the table, and `loading.ok` is a state name that happens to contain
-a dot, so this spelling needs no grammar of its own beyond immediate transitions. Rival
-designs need none of that, which is part of what is unresolved.
-
-_Full argument, the rival designs, and what is unresolved:
-[rationale §10](api-rationale.md#10-composition)._
 
 ---
 
@@ -774,13 +758,8 @@ with latency fine ([rationale §15](api-rationale.md#15-still-open),
 record and the vocabulary's shape. `.on` becoming `observe` was a third and has
 already shipped. See [Changing before v1](#changing-before-v1).
 
-**After v1**, in this order and none of it promised:
-
-1. **`actions`** — which is what extends commit ordering to effects: teardown, setup and
-   notification within one commit, plus an error channel for a throwing action. First,
-   because 2 depends on it.
-2. **`emit`, `outputs`, and the output subscription** on the freed `.on`.
-3. **Composition — invoked children**, whose shape is still unresolved.
+**After v1** is prospective, not promised — see [the roadmap](roadmap.md) for what is
+argued and in what order.
 
 [Rationale §15](api-rationale.md#15-still-open) has what is still open, including the
 four questions §16 and §17 opened.
