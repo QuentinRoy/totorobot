@@ -89,36 +89,18 @@ describe('the untyped path', () => {
 				state: 'settled',
 				data: { via: 'immediate' },
 			})
-			expect(host.available).toEqual([])
 		})
 	})
 
 	describe('an unlabelled arrow in the transitions table (#7)', () => {
-		test('available reports only the labelled input name, not the empty string', () => {
-			const untyped = machine({
-				initial: 'draft',
-				transitions: {
-					'draft -submit> published': () => ({ via: 'submit' }),
-					// Guarded to skip so `.start()` settling the initial state's
-					// immediates does not carry `draft` away before either test
-					// below gets to observe it.
-					'draft -> published': ({ skip }) => skip(),
-				},
-			})
-
-			const host = untyped.start()
-
-			expect(host.available).toEqual(['submit'])
-		})
-
 		test("send('') changes nothing and fires no listener", () => {
 			const untyped = machine({
 				initial: 'draft',
 				transitions: {
 					'draft -submit> published': () => ({ via: 'submit' }),
 					// Guarded to skip so `.start()` settling the initial state's
-					// immediates does not carry `draft` away before either test
-					// below gets to observe it.
+					// immediates does not carry `draft` away before the test below
+					// gets to observe it.
 					'draft -> published': ({ skip }) => skip(),
 				},
 			})

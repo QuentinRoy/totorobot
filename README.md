@@ -81,8 +81,8 @@ Read [the API](docs/api.md) for the full design, and
 - Malformed keys — wrong spacing included — reported as
   `not a transition: '…'` on the offending line.
 
-What is **not** checked: the send site. Per-state capabilities are advertised
-at runtime (`available`) rather than enforced by the compiler.
+What is **not** checked: the send site. Per-state capabilities are not
+enforced by the compiler.
 
 ## Status and limitations
 

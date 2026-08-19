@@ -409,7 +409,6 @@ type Start<S extends Vocab, Init extends string> = [S[Init & Name<S>]] extends [
 /** A running machine: the only mutable thing in the design. */
 interface Host<I extends Vocab = Vocab, S extends Vocab = Vocab> {
 	readonly current: Snapshot<S>
-	readonly available: readonly Name<I>[]
 	readonly send: (...args: Dispatch<I>) => void
 	// Generic in the pattern, so the record the listener receives is narrowed by
 	// the pattern that selected it rather than being the whole union every time.
@@ -462,9 +461,9 @@ export type InputsOf<M> = Carried<M>['inputs']
 export type StatesOf<M> = Carried<M>['states']
 
 /**
- * The inputs state `S` has rows for — `available`, at the type level, and the
- * `'draft -'` text search made derivable. `Exclude<…, ''>` drops an immediate
- * row's empty label, the same way `available` never lists one at runtime.
+ * The inputs state `S` has rows for, derived from the `'draft -'` text search
+ * over the table's keys. `Exclude<…, ''>` drops an immediate row's empty
+ * label.
  */
 export type Handled<M, S extends string> = Exclude<
 	Label<Extract<Carried<M>['keys'], `${S} -${string}> ${string}`>>,
@@ -505,7 +504,6 @@ type Row = readonly [to: string, handler: Call]
  */
 interface RawHost {
 	readonly current: Snapshot
-	readonly available: readonly string[]
 	readonly send: (name: string, payload?: unknown) => void
 	readonly observe: (pattern: string, listener: Listener) => () => void
 }
@@ -524,9 +522,8 @@ type Index = Record<string, Record<string, Row[] | undefined> | undefined>
 /**
  * Source state to the unlabelled rows declared out of it, in declaration
  * order. Kept apart from `Index` rather than filtered out of it at read
- * time: `available` and `send` read `Index` directly, so a row stored here
- * is structurally unreachable from either rather than merely absent by
- * convention.
+ * time: `send` reads `Index` directly, so a row stored here is structurally
+ * unreachable from it rather than merely absent by convention.
  */
 type Immediates = Record<string, Row[] | undefined>
 
@@ -562,10 +559,8 @@ export const types = <T>(): T | undefined => undefined
  * Every key is parsed **once**, here. Rejected: storing nothing and
  * prefix-scanning the raw keys on every dispatch, which came within 1.6% in the
  * pre-implementation prototypes — not a basis for choosing. The index wins on
- * behaviour: dispatch is a lookup rather than a scan, `available` falls out of
- * key insertion order (declaration order and de-duplication for free, deleting
- * the `Set` a scan needs), and a malformed key arriving from untyped code
- * cannot accidentally prefix-match.
+ * behaviour: dispatch is a lookup rather than a scan, and a malformed key
+ * arriving from untyped code cannot accidentally prefix-match.
  *
  * `inputs` and `states` are the only inference sites for the vocabulary, and
  * both are optional: omitting one — or passing the marker's `undefined`
@@ -738,13 +733,6 @@ export function machine<
 			return {
 				get current(): Snapshot {
 					return current
-				},
-
-				// Straight off the index, so the answer is the table's rather than
-				// the handlers': an input whose every row would decline is still
-				// advertised, and no handler runs to produce this list.
-				get available(): readonly string[] {
-					return Object.keys(index[current.state] ?? {})
 				},
 
 				observe: (pattern: string, listener: Listener): (() => void) => {

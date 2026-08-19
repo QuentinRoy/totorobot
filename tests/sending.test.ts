@@ -190,12 +190,11 @@ describe('sending', () => {
 			expect(denied.current).toEqual({ state: 'denied', data: { quota: 0 } })
 		})
 
-		test('a state whose immediate rows all skip stays put, with its input rows still live', () => {
+		test('a state whose immediate rows all skip stays put', () => {
 			const host = pending.start()
 			host.send('submit', { quota: 0 })
 
 			expect(host.current).toEqual({ state: 'checking', data: { quota: 0 } })
-			expect(host.available).toEqual(['cancel'])
 		})
 
 		test('a chain of several immediate hops settles fully before send returns', () => {

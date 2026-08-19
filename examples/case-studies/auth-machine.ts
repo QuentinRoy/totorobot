@@ -69,7 +69,7 @@ async function fakeLogin({
 
 /**
  * The effect, owned by the caller: submit the credentials, then report the
- * outcome back as an input. `available` is consulted rather than a `send`
+ * outcome back as an input. `current` is consulted rather than a `send`
  * return value, because `send` has none.
  */
 export async function signIn(

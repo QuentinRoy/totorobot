@@ -16,8 +16,6 @@ traffic.send('next')
 traffic.send('next')
 traffic.send('next')
 
-console.log('  available in red:', traffic.available)
-
 console.log('\n--- Auth machine (declining rows + an asynchronous result) ---')
 
 const auth = authMachine.start({ error: null, attempts: 0 })
