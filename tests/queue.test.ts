@@ -447,17 +447,17 @@ describe('commit ordering while `start` settles', () => {
 	test('a send issued while the initial chain settles queues rather than nesting, and drains after the chain has settled', () => {
 		const sink = toggle.start()
 		const log: string[] = []
-		sink.observe('* -> *', (e) => log.push(`sink listener: -> ${e.to.state}`))
+		sink.observe('* -> *', (e) => log.push(`sink listener: -> ${e.to.name}`))
 
 		const started = machine({
 			initial: 'a',
-			states: types<{ a: void; b: void; c: void }>(),
+			states: types<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
 			transitions: {
 				'a -> b': () => {
 					log.push('hop a->b')
 					sink.send('toggle')
 					// deferred: the queue belongs to the drain `start` is holding
-					log.push(`sink right after send: ${sink.current.state}`)
+					log.push(`sink right after send: ${sink.current.name}`)
 				},
 				// a block body: a handler's return value is the new data, and
 				// `log.push` returns a number
@@ -467,7 +467,7 @@ describe('commit ordering while `start` settles', () => {
 			},
 		}).start()
 
-		expect(started.current).toEqual({ state: 'c', data: undefined })
+		expect(started.current).toEqual({ name: 'c' })
 		expect(log).toEqual([
 			'hop a->b',
 			'sink right after send: off',
@@ -475,29 +475,29 @@ describe('commit ordering while `start` settles', () => {
 			'sink listener: -> on',
 		])
 		// drained before `start` returned
-		expect(sink.current).toEqual({ state: 'on', data: undefined })
+		expect(sink.current).toEqual({ name: 'on' })
 	})
 
 	test('`start` called from inside a dispatch settles inline but leaves the queue to the outer drain', () => {
 		const driver = toggle.start()
 		const sink = toggle.start()
 		const log: string[] = []
-		sink.observe('* -> *', (e) => log.push(`sink listener: -> ${e.to.state}`))
+		sink.observe('* -> *', (e) => log.push(`sink listener: -> ${e.to.name}`))
 
 		const late = machine({
 			initial: 'a',
-			states: types<{ a: void; b: void }>(),
+			states: types<{ name: 'a' } | { name: 'b' }>(),
 			transitions: {
 				'a -> b': () => {
 					sink.send('toggle')
-					log.push(`sink right after send: ${sink.current.state}`)
+					log.push(`sink right after send: ${sink.current.name}`)
 				},
 			},
 		})
 
 		driver.observe('* -> *', () => {
 			// settled inline: the caller cannot be handed an unsettled host
-			expect(late.start().current).toEqual({ state: 'b', data: undefined })
+			expect(late.start().current).toEqual({ name: 'b' })
 			log.push('driver listener done')
 		})
 
@@ -513,7 +513,7 @@ describe('commit ordering while `start` settles', () => {
 		const sink = toggle.start()
 		const runaway = machine({
 			initial: 'spin',
-			states: types<{ spin: void }>(),
+			states: types<{ name: 'spin' }>(),
 			transitions: {
 				'spin -> spin': () => {
 					sink.send('toggle') // queued; discarded when the chain overflows
@@ -524,10 +524,10 @@ describe('commit ordering while `start` settles', () => {
 		expect(() => runaway.start()).toThrow(
 			new RangeError("maximum transitions reached in 'spin'"),
 		)
-		expect(sink.current).toEqual({ state: 'off', data: undefined }) // never drained
+		expect(sink.current).toEqual({ name: 'off' }) // never drained
 
 		// the drain was released: an ordinary send still works
 		sink.send('toggle')
-		expect(sink.current).toEqual({ state: 'on', data: undefined })
+		expect(sink.current).toEqual({ name: 'on' })
 	})
 })
