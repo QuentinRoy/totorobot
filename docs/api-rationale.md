@@ -36,7 +36,8 @@
 
 Twenty axes. All twenty were closed. **§16 and §17 then reopened two of them (7, 2),
 renamed one (16) and reshaped one without changing its answer (6)** — decided after the
-rest of this record, and none of it built.
+rest of this record: states, inputs, `observe`, and the 3-field transition record are
+shipped; outputs and `emit` remain unbuilt.
 
 | #   | Axis                       | Answer                                                                                             | §      |
 | --- | -------------------------- | -------------------------------------------------------------------------------------------------- | ------ |
@@ -2555,15 +2556,8 @@ pinned) · a class or `new` for instantiation.
   candidate rows are tried is invisible. It stops being invisible the moment
   anything puts effects back in a handler — true of all three layouts.
 
-Opened by §16 and §17, which are decided but unbuilt:
+Opened by §16 and §17 (outputs, actions, and policy remain open):
 
-- **The untyped path is the one place the map had the easier job.** Omitting
-  `inputs`/`states` today infers _names_ from `transitions` while data stays
-  `unknown` — a guarantee, held by `tests/untyped.test.js` and observable behaviour
-  38–41. With a map that synthesis is `Record<N, unknown>`; with a union (§17) it has
-  to synthesise arms, and it is not known to land as cleanly. Candidate-sized, and
-  `scripts/check-candidates.ts` is where it goes, with the negative result pinned as
-  `MUST_FAIL`.
 - **How policy is spelled**, for `observe` and `actions` alike: a wrapper
   (`persistent(fn)`, §9's answer) or a third argument of options in the
   `addEventListener` shape. Options uniquely admit `signal: AbortSignal`, which is not
@@ -2581,10 +2575,10 @@ Opened by §16 and §17, which are decided but unbuilt:
 
 ## 16. The composition boundary
 
-> **Decided after v1's surface was written, and it changes that surface.** None of it
-> is built. Axis 7 is reopened, axis 16 is renamed, and §17 carries the shape changes
-> that fell out of this one. Recorded here rather than edited into the sections that
-> concluded otherwise.
+> **Decided after v1's surface was written, and it changes that surface.** Outputs and
+> `emit` (axis 7) remain unbuilt and deferred past v1; `observe` (axis 16) is shipped,
+> and §17's state/input shapes and 3-field transition record are shipped. Recorded here
+> rather than edited into the sections that concluded otherwise.
 
 [Issue #24](https://github.com/QuentinRoy/totorobot/issues/24) asked where the
 boundary of a machine goes, and offered two answers:
