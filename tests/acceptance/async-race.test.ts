@@ -10,7 +10,7 @@
 
 import { describe, expect, test } from 'vitest'
 
-import { machine, types } from 'totorobot'
+import { machine, type } from 'totorobot'
 
 type AsyncInputs =
 	| { type: 'start' }
@@ -32,8 +32,8 @@ type AsyncStates =
 
 const asyncRequest = machine({
 	initial: 'idle',
-	inputs: types<AsyncInputs>(),
-	states: types<AsyncStates>(),
+	inputs: type<AsyncInputs>(),
+	states: type<AsyncStates>(),
 	transitions: {
 		'idle -start> loading': ({ state }) => ({
 			requestId: state.nextRequestId,

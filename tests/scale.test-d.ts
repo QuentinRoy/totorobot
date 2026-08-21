@@ -17,7 +17,7 @@
 
 import { expectTypeOf, test } from 'vitest'
 
-import { machine, types, type Handled } from 'totorobot'
+import { machine, type, type Handled } from 'totorobot'
 
 type Inputs =
 	{ type: 'next'; delta: number } | { type: 'reset' } | { type: 'skip' }
@@ -45,8 +45,8 @@ type States =
 
 const stress = machine({
 	initial: 's00',
-	inputs: types<Inputs>(),
-	states: types<States>(),
+	inputs: type<Inputs>(),
+	states: type<States>(),
 	transitions: {
 		's00 -next> s01': ({ state, input }) => ({
 			visits: state.visits + input.delta,
@@ -220,8 +220,8 @@ test('skip is only available from s00, s05, s10 and s15', () => {
 test('handler state and input are inferred with no annotations, at this scale', () => {
 	machine({
 		initial: 's00',
-		inputs: types<Inputs>(),
-		states: types<States>(),
+		inputs: type<Inputs>(),
+		states: type<States>(),
 		transitions: {
 			's00 -next> s01': ({ state, input }) => {
 				expectTypeOf(state).toEqualTypeOf<{
@@ -249,8 +249,8 @@ test('handler state and input are inferred with no annotations, at this scale', 
 test('a wrong owner literal is still rejected at this scale', () => {
 	machine({
 		initial: 's00',
-		inputs: types<Inputs>(),
-		states: types<States>(),
+		inputs: type<Inputs>(),
+		states: type<States>(),
 		transitions: {
 			's00 -next> s01': ({ state, input }) => ({
 				visits: state.visits + input.delta,

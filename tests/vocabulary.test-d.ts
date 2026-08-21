@@ -7,7 +7,7 @@ import { expectTypeOf, test } from 'vitest'
 
 import {
 	machine,
-	types,
+	type,
 	type Handled,
 	type InputsOf,
 	type Sources,
@@ -23,8 +23,8 @@ type States =
 
 const doc = machine({
 	initial: 'empty',
-	inputs: types<Inputs>(),
-	states: types<States>(),
+	inputs: type<Inputs>(),
+	states: type<States>(),
 	transitions: {
 		'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
 		'draft -revise> draft': ({ state, input, skip }) =>
@@ -37,8 +37,8 @@ const doc = machine({
 
 const withData = machine({
 	initial: 'draft',
-	inputs: types<Inputs>(),
-	states: types<States>(),
+	inputs: type<Inputs>(),
+	states: type<States>(),
 	transitions: {
 		'draft -revise> draft': ({ state, input, skip }) =>
 			input.text === state.text
@@ -56,7 +56,7 @@ const withData = machine({
  * go green once the entry point lands.
  *
  * `read` does not by itself keep an assertion honest — while `machine` and
- * `types` are unresolved imports the value is `any`, and `toEqualTypeOf`
+ * `type` are unresolved imports the value is `any`, and `toEqualTypeOf`
  * compares `any` against anything without complaint. Every assertion here is
  * therefore paired with `not.toBeAny()`, which is what actually holds these
  * tests red until the real types exist.
@@ -86,8 +86,8 @@ test('narrowing the tag narrows the state, with no nullable padding', () => {
 test("a handler's state is the full source state, tag included, and its input is that input's payload, with no type annotations", () => {
 	machine({
 		initial: 'empty',
-		inputs: types<Inputs>(),
-		states: types<States>(),
+		inputs: type<Inputs>(),
+		states: type<States>(),
 		transitions: {
 			'empty -open> draft': ({ state, input }) => {
 				expectTypeOf(state).toEqualTypeOf<{ name: 'empty' }>()
@@ -173,8 +173,8 @@ test('InputsOf, StatesOf, Handled and Sources resolve correctly over a machine t
 test('Handled excludes an immediate row; Sources includes an immediate source', () => {
 	const withImmediate = machine({
 		initial: 'draft',
-		inputs: types<Inputs>(),
-		states: types<States>(),
+		inputs: type<Inputs>(),
+		states: type<States>(),
 		transitions: {
 			'draft -cancel> empty': () => {},
 			'empty -> draft': () => ({ text: '', revision: 0 }),

@@ -1,4 +1,4 @@
-import { machine, types } from '../../src/totorobot.ts'
+import { machine, type } from '../../src/totorobot.ts'
 
 /**
  * Example 1: per-state data.
@@ -17,8 +17,8 @@ type States =
 
 export const trafficLight = machine({
 	initial: 'red',
-	inputs: types<Inputs>(),
-	states: types<States>(),
+	inputs: type<Inputs>(),
+	states: type<States>(),
 
 	transitions: {
 		'red -next> green': ({ state }) => ({ changes: state.changes + 1 }),

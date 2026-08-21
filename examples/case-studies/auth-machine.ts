@@ -1,4 +1,4 @@
-import { machine, types } from '../../src/totorobot.ts'
+import { machine, type } from '../../src/totorobot.ts'
 
 /**
  * Example 2: per-state data, a declining row, and an asynchronous result.
@@ -29,8 +29,8 @@ type States =
 
 export const authMachine = machine({
 	initial: 'idle',
-	inputs: types<Inputs>(),
-	states: types<States>(),
+	inputs: type<Inputs>(),
+	states: type<States>(),
 
 	transitions: {
 		// A blank username is not an attempt: the row declines, so nothing

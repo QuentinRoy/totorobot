@@ -5,7 +5,7 @@
  * test file.
  */
 
-import { machine, types } from 'totorobot'
+import { machine, type } from 'totorobot'
 
 type ToggleInputs = { type: 'toggle' }
 type ToggleStates = { name: 'off' } | { name: 'on' }
@@ -13,8 +13,8 @@ type ToggleStates = { name: 'off' } | { name: 'on' }
 /** The smallest useful machine: two payload-free states, one input each way. */
 export const toggle = machine({
 	initial: 'off',
-	inputs: types<ToggleInputs>(),
-	states: types<ToggleStates>(),
+	inputs: type<ToggleInputs>(),
+	states: type<ToggleStates>(),
 	transitions: {
 		'off -toggle> on': () => {},
 		'on -toggle> off': () => {},
@@ -55,8 +55,8 @@ type GateStates =
  */
 export const gate = machine({
 	initial: 'draft',
-	inputs: types<GateInputs>(),
-	states: types<GateStates>(),
+	inputs: type<GateInputs>(),
+	states: type<GateStates>(),
 	transitions: {
 		'draft -submit> checking': ({ input }) => ({ quota: input.quota }),
 		'checking -> allowed': ({ state, skip }) =>
@@ -74,8 +74,8 @@ export const gate = machine({
  */
 export const pending = machine({
 	initial: 'draft',
-	inputs: types<{ type: 'submit'; quota: number } | { type: 'cancel' }>(),
-	states: types<
+	inputs: type<{ type: 'submit'; quota: number } | { type: 'cancel' }>(),
+	states: type<
 		| { name: 'draft' }
 		| { name: 'checking'; quota: number }
 		| { name: 'allowed'; quota: number }
@@ -96,8 +96,8 @@ export const pending = machine({
  */
 export const spinner = machine({
 	initial: 'idle',
-	inputs: types<{ type: 'go' } | { type: 'stop' }>(),
-	states: types<{ name: 'idle' } | { name: 'loop'; count: number }>(),
+	inputs: type<{ type: 'go' } | { type: 'stop' }>(),
+	states: type<{ name: 'idle' } | { name: 'loop'; count: number }>(),
 	transitions: {
 		'idle -go> loop': () => ({ count: 0 }),
 		'loop -> loop': ({ state }) => ({ count: state.count + 1 }),
@@ -108,10 +108,8 @@ export const spinner = machine({
 /** A chain of immediate hops, three deep, off one input. */
 export const chain = machine({
 	initial: 'a',
-	inputs: types<{ type: 'go' }>(),
-	states: types<
-		{ name: 'a' } | { name: 'b' } | { name: 'c' } | { name: 'd' }
-	>(),
+	inputs: type<{ type: 'go' }>(),
+	states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' } | { name: 'd' }>(),
 	transitions: {
 		'a -go> b': () => {},
 		'b -> c': () => {},
@@ -121,8 +119,8 @@ export const chain = machine({
 
 export const editor = machine({
 	initial: 'idle',
-	inputs: types<EditorInputs>(),
-	states: types<EditorStates>(),
+	inputs: type<EditorInputs>(),
+	states: type<EditorStates>(),
 	transitions: {
 		'idle -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
 		'draft -revise> draft': ({ state, input }) => ({

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { machine, types } from 'totorobot'
+import { machine, type } from 'totorobot'
 import { toggle } from './fixtures.ts'
 import { cloneDeep } from './helpers.ts'
 
@@ -8,8 +8,8 @@ describe('construction', () => {
 	test('start(data) yields a host whose current is the initial state, tag included', () => {
 		const counter = machine({
 			initial: 'ready',
-			inputs: types<{ type: 'increment' }>(),
-			states: types<{ name: 'ready'; count: number }>(),
+			inputs: type<{ type: 'increment' }>(),
+			states: type<{ name: 'ready'; count: number }>(),
 			transitions: {
 				'ready -increment> ready': ({ state }) => ({
 					count: state.count + 1,
@@ -26,17 +26,17 @@ describe('construction', () => {
 		expect(host.current).toEqual({ name: 'off' })
 	})
 
-	test('types<T>() carries no runtime value and returns undefined', () => {
+	test('type<T>() carries no runtime value and returns undefined', () => {
 		// `undefined` rather than `null` or a marker object is what a caller
 		// observes — docs/api.md is explicit about which of the three it is.
-		expect(types<{ type: 'increment' }>()).toBeUndefined()
-		expect(types<{ name: 'ready'; count: number }>()).toBeUndefined()
+		expect(type<{ type: 'increment' }>()).toBeUndefined()
+		expect(type<{ name: 'ready'; count: number }>()).toBeUndefined()
 	})
 
 	test("start() settles the initial state's immediate rows before returning", () => {
 		const junction = machine({
 			initial: 'checking',
-			states: types<
+			states: type<
 				| { name: 'checking'; quota: number }
 				| { name: 'allowed'; quota: number }
 				| { name: 'denied'; quota: number }
@@ -58,8 +58,8 @@ describe('construction', () => {
 	test('a chain from the initial state settles fully, not one hop', () => {
 		const relay = machine({
 			initial: 'a',
-			inputs: types<{ type: 'go' }>(),
-			states: types<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
+			inputs: type<{ type: 'go' }>(),
+			states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
 			transitions: {
 				'a -> b': () => {},
 				'b -> c': () => {},
@@ -74,8 +74,8 @@ describe('construction', () => {
 	test("the initial state's immediates all skipping leaves the host in the declared initial state", () => {
 		const stalled = machine({
 			initial: 'checking',
-			inputs: types<{ type: 'submit' }>(),
-			states: types<{ name: 'checking' } | { name: 'allowed' }>(),
+			inputs: type<{ type: 'submit' }>(),
+			states: type<{ name: 'checking' } | { name: 'allowed' }>(),
 			transitions: {
 				'checking -> allowed': ({ skip }) => skip(),
 				'checking -submit> allowed': () => {},
@@ -89,7 +89,7 @@ describe('construction', () => {
 	test("start()'s arity still follows the declared initial state: a payload-free initial that settles into a data-carrying state still takes no argument", () => {
 		const promoted = machine({
 			initial: 'start',
-			states: types<{ name: 'start' } | { name: 'ready'; count: number }>(),
+			states: type<{ name: 'start' } | { name: 'ready'; count: number }>(),
 			transitions: {
 				'start -> ready': () => ({ count: 0 }),
 			},
@@ -104,8 +104,8 @@ describe('construction', () => {
 	test('the hop budget spent settling the initial state does not carry over into the first send', () => {
 		const twice = machine({
 			initial: 'a',
-			inputs: types<{ type: 'go' }>(),
-			states: types<
+			inputs: type<{ type: 'go' }>(),
+			states: type<
 				{ name: 'a'; count: number } | { name: 'b'; count: number }
 			>(),
 			transitions: {
@@ -130,7 +130,7 @@ describe('construction', () => {
 	test("a cycle among the initial state's immediates throws RangeError from start(), naming the state it could not settle", () => {
 		const spinningStart = machine({
 			initial: 'loop',
-			states: types<{ name: 'loop'; count: number }>(),
+			states: type<{ name: 'loop'; count: number }>(),
 			transitions: {
 				'loop -> loop': ({ state }) => ({ count: state.count + 1 }),
 			},

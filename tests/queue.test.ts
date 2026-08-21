@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { machine, types } from 'totorobot'
+import { machine, type } from 'totorobot'
 import { spinner, toggle } from './fixtures.ts'
 
 describe('commit ordering', () => {
@@ -47,8 +47,8 @@ describe('commit ordering', () => {
 	test('several queued sends drain first-in-first-out', () => {
 		const counter = machine({
 			initial: 'ready',
-			inputs: types<{ type: 'push'; value: number }>(),
-			states: types<{ name: 'ready'; order: number[] }>(),
+			inputs: type<{ type: 'push'; value: number }>(),
+			states: type<{ name: 'ready'; order: number[] }>(),
 			transitions: {
 				'ready -push> ready': ({ state, input }) => ({
 					order: [...state.order, input.value],
@@ -73,8 +73,8 @@ describe('commit ordering', () => {
 	test('a queued send is evaluated against the state at drain time, so it may correctly find no row and do nothing', () => {
 		const stepper = machine({
 			initial: 'a',
-			inputs: types<{ type: 'go' }>(),
-			states: types<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
+			inputs: type<{ type: 'go' }>(),
+			states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
 			transitions: {
 				'a -go> b': () => {},
 				'b -go> c': () => {},
@@ -178,8 +178,8 @@ describe('commit ordering', () => {
 	test('a send from inside a listener mid-chain waits for the whole chain to settle, not just the current hop', () => {
 		const relay = machine({
 			initial: 'a',
-			inputs: types<{ type: 'go' } | { type: 'peek' }>(),
-			states: types<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
+			inputs: type<{ type: 'go' } | { type: 'peek' }>(),
+			states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
 			transitions: {
 				'a -go> b': () => {},
 				'b -> c': () => {},
@@ -224,8 +224,8 @@ describe('commit ordering', () => {
 	test('an immediate self-loop that rewrites its data and eventually skips terminates normally, well inside the budget', () => {
 		const counter = machine({
 			initial: 'idle',
-			inputs: types<{ type: 'go' }>(),
-			states: types<{ name: 'idle' } | { name: 'counting'; count: number }>(),
+			inputs: type<{ type: 'go' }>(),
+			states: type<{ name: 'idle' } | { name: 'counting'; count: number }>(),
 			transitions: {
 				'idle -go> counting': () => ({ count: 0 }),
 				'counting -> counting': ({ state, skip }) =>
@@ -305,8 +305,8 @@ describe('commit ordering across hosts', () => {
 	test('several sends from listeners across hosts drain first-in-first-out', () => {
 		const counter = machine({
 			initial: 'ready',
-			inputs: types<{ type: 'push'; value: number }>(),
-			states: types<{ name: 'ready'; order: number[] }>(),
+			inputs: type<{ type: 'push'; value: number }>(),
+			states: type<{ name: 'ready'; order: number[] }>(),
 			transitions: {
 				'ready -push> ready': ({ state, input }) => ({
 					order: [...state.order, input.value],
@@ -336,8 +336,8 @@ describe('commit ordering across hosts', () => {
 	test('a send from inside a listener into another host, issued mid-chain, drains only once the chain has settled, never mid-hop', () => {
 		const relay = machine({
 			initial: 'a',
-			inputs: types<{ type: 'go' }>(),
-			states: types<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
+			inputs: type<{ type: 'go' }>(),
+			states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
 			transitions: {
 				'a -go> b': () => {},
 				'b -> c': () => {},
@@ -451,7 +451,7 @@ describe('commit ordering while `start` settles', () => {
 
 		const started = machine({
 			initial: 'a',
-			states: types<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
+			states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
 			transitions: {
 				'a -> b': () => {
 					log.push('hop a->b')
@@ -486,7 +486,7 @@ describe('commit ordering while `start` settles', () => {
 
 		const late = machine({
 			initial: 'a',
-			states: types<{ name: 'a' } | { name: 'b' }>(),
+			states: type<{ name: 'a' } | { name: 'b' }>(),
 			transitions: {
 				'a -> b': () => {
 					sink.send({ type: 'toggle' })
@@ -513,7 +513,7 @@ describe('commit ordering while `start` settles', () => {
 		const sink = toggle.start()
 		const runaway = machine({
 			initial: 'spin',
-			states: types<{ name: 'spin' }>(),
+			states: type<{ name: 'spin' }>(),
 			transitions: {
 				'spin -> spin': () => {
 					sink.send({ type: 'toggle' }) // queued; discarded when the chain overflows

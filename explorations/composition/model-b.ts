@@ -3,7 +3,7 @@
  *
  * The same `machine({…})` call, with two additions and one subtraction.
  *
- *   + `outputs: types<Outputs>()` — a third declared vocabulary, beside
+ *   + `outputs: type<Outputs>()` — a third declared vocabulary, beside
  *     `inputs` and `states`.
  *   + `actions` (docs/api-rationale.md §9: trigger-keyed, a bare state name is
  *     residency and returns its teardown, an arrow key is an edge) whose
@@ -28,7 +28,7 @@ import {
 	type Vocab,
 } from './dsl.ts'
 
-export { types } from '../../src/totorobot.ts'
+export { type } from '../../src/totorobot.ts'
 export { persistent } from './dsl.ts'
 
 /**

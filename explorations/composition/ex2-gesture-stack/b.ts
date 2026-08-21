@@ -18,7 +18,7 @@
  * and the context menu. Compare `a.ts`, where each is one residency listener.
  */
 
-import { machine, types } from '../model-b.ts'
+import { machine, type } from '../model-b.ts'
 import type { Build } from '../scenario.ts'
 import {
 	bind,
@@ -34,19 +34,19 @@ import {
 
 const pointing = machine({
 	initial: 'up',
-	inputs: types<{
+	inputs: type<{
 		press: { point: Point; token: number }
 		move: Point
 		release: Point
 		hold: { token: number }
 	}>(),
-	states: types<{
+	states: type<{
 		up: void
 		down: { origin: Point; token: number }
 		held: { origin: Point }
 		dragging: { origin: Point; last: Point }
 	}>(),
-	outputs: types<{
+	outputs: type<{
 		tap: Point
 		longPress: Point
 		dragged: { from: Point; to: Point }
@@ -108,9 +108,9 @@ type Commands = {
 
 const commanding = machine({
 	initial: 'idle',
-	inputs: types<CommandInputs>(),
-	states: types<Commanding>(),
-	outputs: types<Commands>(),
+	inputs: type<CommandInputs>(),
+	states: type<Commanding>(),
+	outputs: type<Commands>(),
 
 	transitions: {
 		'idle -tap> selected': ({ input, skip }) => {

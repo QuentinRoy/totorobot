@@ -16,7 +16,7 @@
  * outputs plus a variable to re-pair them by hand.
  */
 
-import { machine, persistent, types } from '../model-b.ts'
+import { machine, persistent, type } from '../model-b.ts'
 import type { Build } from '../scenario.ts'
 import { bind, clock, DWELL, far, widget, type Point } from './domain.ts'
 
@@ -46,9 +46,9 @@ type Recognized = {
 
 const recognition = machine({
 	initial: 'idle',
-	inputs: types<PointerInputs>(),
-	states: types<Recognizing>(),
-	outputs: types<Recognized>(),
+	inputs: type<PointerInputs>(),
+	states: type<Recognizing>(),
+	outputs: type<Recognized>(),
 
 	transitions: {
 		'idle -down> startup': ({ input }) => ({ origin: input, stroke: [input] }),
@@ -128,9 +128,9 @@ type Shown = {
 
 const feedback = machine({
 	initial: 'off',
-	inputs: types<FeedbackInputs>(),
-	states: types<Feedback>(),
-	outputs: types<Shown>(),
+	inputs: type<FeedbackInputs>(),
+	states: type<Feedback>(),
+	outputs: type<Shown>(),
 
 	transitions: {
 		'off -begin> trail': ({ input }) => ({ points: input.points }),

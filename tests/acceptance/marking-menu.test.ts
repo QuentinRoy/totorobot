@@ -16,7 +16,7 @@
 
 import { describe, expect, test } from 'vitest'
 
-import { machine, types } from 'totorobot'
+import { machine, type } from 'totorobot'
 
 type Item = { readonly label: string }
 type Menu = {
@@ -67,8 +67,8 @@ const rootMenu: Menu = {
 
 const markingMenu = machine({
 	initial: 'idle',
-	inputs: types<MarkingMenuInputs>(),
-	states: types<MarkingMenuStates>(),
+	inputs: type<MarkingMenuInputs>(),
+	states: type<MarkingMenuStates>(),
 	transitions: {
 		'idle -down> startup': ({ state, input }) => ({
 			origin: input.point,

@@ -19,7 +19,7 @@
  * never reaches `novice`, silently.
  */
 
-import { machine, persistent, types } from '../model-a.ts'
+import { machine, persistent, type } from '../model-a.ts'
 import type { Build } from '../scenario.ts'
 import { bind, clock, DWELL, far, widget, type Point } from './domain.ts'
 
@@ -42,8 +42,8 @@ type Recognizing = {
 
 const recognition = machine({
 	initial: 'idle',
-	inputs: types<PointerInputs>(),
-	states: types<Recognizing>(),
+	inputs: type<PointerInputs>(),
+	states: type<Recognizing>(),
 
 	transitions: {
 		'idle -down> startup': ({ input }) => ({ origin: input, stroke: [input] }),
@@ -90,8 +90,8 @@ type Feedback = {
 
 const feedback = machine({
 	initial: 'off',
-	inputs: types<FeedbackInputs>(),
-	states: types<Feedback>(),
+	inputs: type<FeedbackInputs>(),
+	states: type<Feedback>(),
 
 	transitions: {
 		'off -begin> trail': ({ input }) => ({ points: input.points }),

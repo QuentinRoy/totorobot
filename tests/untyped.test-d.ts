@@ -42,7 +42,7 @@
 
 import { expect, expectTypeOf, test } from 'vitest'
 
-import { machine, types, type Handled } from 'totorobot'
+import { machine, type, type Handled } from 'totorobot'
 
 test('a well-formed table compiles with no vocabulary declared', () => {
 	const untyped = machine({
@@ -105,7 +105,7 @@ test('initial is checked against the declared states and never infers them', () 
 
 	machine({
 		initial: 'off',
-		states: types<States>(),
+		states: type<States>(),
 		transitions: {
 			'off -toggle> on': () => {},
 		},
@@ -114,7 +114,7 @@ test('initial is checked against the declared states and never infers them', () 
 	machine({
 		// @ts-expect-error - 'bogus' is not a declared state
 		initial: 'bogus',
-		states: types<States>(),
+		states: type<States>(),
 		// The rows stay legal and stay checked: were `initial` an inference
 		// site, 'bogus' would become the only known state and this row would
 		// be rejected instead — with the error moving off `initial` and onto
@@ -256,7 +256,7 @@ test('declaring inputs and omitting states checks inputs and infers states from 
 
 	const half = machine({
 		initial: 'off',
-		inputs: types<Inputs>(),
+		inputs: type<Inputs>(),
 		transitions: {
 			'off -toggle> on': ({ state, input }) => {
 				// The declared half is checked; the omitted half is read off the
@@ -283,7 +283,7 @@ test('declaring states and omitting inputs checks states and infers inputs from 
 
 	const half = machine({
 		initial: 'off',
-		states: types<States>(),
+		states: type<States>(),
 		transitions: {
 			'off -toggle> on': ({ state, input }) => {
 				// The declared half is checked, so `state` is exactly what was
@@ -360,7 +360,7 @@ test('a name padded by a leading or trailing space is rejected rather than joini
 test('passing the marker explicitly as undefined behaves as omitting the property does', () => {
 	// `exactOptionalPropertyTypes` makes a bare `inputs: undefined` a
 	// different call from leaving `inputs` out — both are legal writes of
-	// `types()`'s return value, and both must infer the same fallback.
+	// `type()`'s return value, and both must infer the same fallback.
 	const half = machine({
 		initial: 'off',
 		inputs: undefined,
