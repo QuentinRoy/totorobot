@@ -6,11 +6,10 @@ import { expect, expectTypeOf, test } from 'vitest'
 
 import { machine, types } from 'totorobot'
 
-type Inputs = {
-	open: { text: string }
-	submit: { route: 'review' | 'publish' }
-	cancel: void
-}
+type Inputs =
+	| { type: 'open'; text: string }
+	| { type: 'submit'; route: 'review' | 'publish' }
+	| { type: 'cancel' }
 type States =
 	| { name: 'empty' }
 	| { name: 'draft'; text: string }
@@ -64,20 +63,24 @@ test('a bare key names a state and is not a legal pattern', () => {
 	).toThrow(SyntaxError)
 })
 
-test('the transition record is discriminated by its input name, and each end carries its own tag and data', () => {
+test('the transition record carries input, from, to and is discriminated by input.type, with no separate on field', () => {
 	const host = doc.start()
 
 	host.observe('* -> *', (e) => {
-		if (e.on === 'open') {
-			expectTypeOf(e.input).toEqualTypeOf<{ text: string }>()
+		// @ts-expect-error - `on` is removed from the transition record
+		e.on
+
+		if (e.input?.type === 'open') {
+			expectTypeOf(e.input).toEqualTypeOf<{ type: 'open'; text: string }>()
 		}
-		if (e.on === 'submit') {
+		if (e.input?.type === 'submit') {
 			expectTypeOf(e.input).toEqualTypeOf<{
+				type: 'submit'
 				route: 'review' | 'publish'
 			}>()
 		}
-		if (e.on === 'cancel') {
-			expectTypeOf(e.input).toEqualTypeOf<undefined>()
+		if (e.input?.type === 'cancel') {
+			expectTypeOf(e.input).toEqualTypeOf<{ type: 'cancel' }>()
 		}
 
 		if (e.from.name === 'draft') {
@@ -96,8 +99,8 @@ test('the transition record is discriminated by its input name, and each end car
 	})
 })
 
-test('an unlabelled pattern admits on: undefined for an immediate hop; a labelled pattern excludes it', () => {
-	type ImmediateInputs = { open: { text: string } }
+test('an immediate transition is distinguished from a payload-free input by input: undefined, and narrows by optional access, switch, and truthiness', () => {
+	type ImmediateInputs = { type: 'open'; text: string } | { type: 'cancel' }
 	type ImmediateStates = { name: 'empty' } | { name: 'draft'; text: string }
 
 	const withImmediate = machine({
@@ -106,22 +109,41 @@ test('an unlabelled pattern admits on: undefined for an immediate hop; a labelle
 		states: types<ImmediateStates>(),
 		transitions: {
 			'empty -open> draft': ({ input }) => ({ text: input.text }),
+			'draft -cancel> empty': () => {},
 			'draft -> draft': ({ state }) => ({ ...state }),
 		},
 	})
 	const host = withImmediate.start()
 
 	host.observe('* -> *', (e) => {
-		expectTypeOf(e.on).not.toBeAny()
-		expectTypeOf(e.on).toEqualTypeOf<'open' | undefined>()
+		// 1. Optional access
+		if (e.input?.type === 'cancel') {
+			expectTypeOf(e.input).toEqualTypeOf<{ type: 'cancel' }>()
+		}
 
-		if (e.on === undefined) {
+		// 2. Switch including the absent (undefined) case
+		switch (e.input?.type) {
+			case 'open':
+				expectTypeOf(e.input).toEqualTypeOf<{ type: 'open'; text: string }>()
+				break
+			case 'cancel':
+				expectTypeOf(e.input).toEqualTypeOf<{ type: 'cancel' }>()
+				break
+			case undefined:
+				expectTypeOf(e.input).toEqualTypeOf<undefined>()
+				break
+		}
+
+		// 3. Truthiness split
+		if (e.input) {
+			expectTypeOf(e.input).toEqualTypeOf<ImmediateInputs>()
+		} else {
 			expectTypeOf(e.input).toEqualTypeOf<undefined>()
 		}
 	})
 
 	host.observe('* -open> *', (e) => {
-		expectTypeOf(e.on).not.toBeAny()
-		expectTypeOf(e.on).toEqualTypeOf<'open'>()
+		expectTypeOf(e.input).not.toBeAny()
+		expectTypeOf(e.input).toEqualTypeOf<{ type: 'open'; text: string }>()
 	})
 })

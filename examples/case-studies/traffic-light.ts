@@ -8,7 +8,7 @@ import { machine, types } from '../../src/totorobot.ts'
  * `data.blinking` from the `red` or `green` rows is a compile error rather than
  * a nullable field everyone has to check.
  */
-type Inputs = { next: void }
+type Inputs = { type: 'next' }
 
 type States =
 	| { name: 'red'; changes: number }

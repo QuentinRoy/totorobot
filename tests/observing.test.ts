@@ -14,7 +14,7 @@ describe('observing', () => {
 
 		expect(() => off()).not.toThrow()
 
-		doc.send('toggle')
+		doc.send({ type: 'toggle' })
 		expect(log).toEqual([])
 	})
 
@@ -25,7 +25,7 @@ describe('observing', () => {
 		doc.observe('* -> *', () => log.push('first'))
 		doc.observe('* -> *', () => log.push('second'))
 
-		doc.send('toggle')
+		doc.send({ type: 'toggle' })
 		expect(log).toEqual(['first', 'second'])
 	})
 
@@ -39,14 +39,14 @@ describe('observing', () => {
 			seenCurrent = doc.current
 		})
 
-		doc.send('toggle')
+		doc.send({ type: 'toggle' })
 		expect(seenTo).toEqual(seenCurrent)
 	})
 
 	test('* matches any state, an unlabelled arrow matches any input, and a labelled one matches only that input', () => {
 		const fork = machine({
 			initial: 'a',
-			inputs: types<{ x: void; y: void }>(),
+			inputs: types<{ type: 'x' } | { type: 'y' }>(),
 			states: types<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
 			transitions: {
 				'a -x> b': () => {},
@@ -61,7 +61,7 @@ describe('observing', () => {
 		docX.observe('* -> c', () => logX.push('any-state:c'))
 		docX.observe('a -> *', () => logX.push('any-input'))
 		docX.observe('a -x> *', () => logX.push('labelled-x'))
-		docX.send('x')
+		docX.send({ type: 'x' })
 		expect(logX).toEqual(['any-state:b', 'any-input', 'labelled-x'])
 
 		// sending 'y': any-state:c matches, unlabelled matches, labelled-x does not
@@ -71,7 +71,7 @@ describe('observing', () => {
 		docY.observe('* -> c', () => logY.push('any-state:c'))
 		docY.observe('a -> *', () => logY.push('any-input'))
 		docY.observe('a -x> *', () => logY.push('labelled-x'))
-		docY.send('y')
+		docY.send({ type: 'y' })
 		expect(logY).toEqual(['any-state:c', 'any-input'])
 	})
 
@@ -85,7 +85,7 @@ describe('observing', () => {
 			offSecond()
 		})
 		offSecond = docA.observe('* -> *', () => logA.push('second'))
-		docA.send('toggle')
+		docA.send({ type: 'toggle' })
 		expect(logA).toEqual(['first', 'second'])
 
 		// a listener registered during dispatch does not run for the current transition
@@ -95,36 +95,33 @@ describe('observing', () => {
 			logB.push('only')
 			docB.observe('* -> *', () => logB.push('late'))
 		})
-		docB.send('toggle')
+		docB.send({ type: 'toggle' })
 		expect(logB).toEqual(['only'])
 	})
 
-	test("an immediate transition's record carries on: undefined and input: undefined, distinguishable from a void input", () => {
+	test("an immediate transition's record carries input: undefined, distinguishable from a payload-free input", () => {
 		const host = gate.start()
 		const records: unknown[] = []
 		host.observe('* -> *', (e) => records.push(e))
 
 		// draft -submit> checking (input-driven), then checking -> allowed (immediate)
-		host.send('submit', { quota: 1 })
-		// allowed -reset> draft — a void input, not an immediate
-		host.send('reset')
+		host.send({ type: 'submit', quota: 1 })
+		// allowed -reset> draft — a payload-free input, not an immediate
+		host.send({ type: 'reset' })
 
 		expect(records).toEqual([
 			{
-				on: 'submit',
-				input: { quota: 1 },
+				input: { type: 'submit', quota: 1 },
 				from: { name: 'draft' },
 				to: { name: 'checking', quota: 1 },
 			},
 			{
-				on: undefined,
 				input: undefined,
 				from: { name: 'checking', quota: 1 },
 				to: { name: 'allowed', quota: 1 },
 			},
 			{
-				on: 'reset',
-				input: undefined,
+				input: { type: 'reset' },
 				from: { name: 'allowed', quota: 1 },
 				to: { name: 'draft' },
 			},
@@ -142,7 +139,7 @@ describe('observing', () => {
 		// draft -submit> checking (matches only the broad pattern), then
 		// checking -> allowed, immediate (matches entry, exit and broad — never
 		// the labelled pattern, even though its state coordinates would).
-		host.send('submit', { quota: 1 })
+		host.send({ type: 'submit', quota: 1 })
 
 		expect(log).toEqual(['broad', 'entry', 'exit', 'broad'])
 	})
@@ -157,7 +154,7 @@ describe('observing', () => {
 			})
 		})
 
-		host.send('go')
+		host.send({ type: 'go' })
 
 		expect(seen).toEqual([
 			{ to: 'b', agreesWithCurrent: true },
@@ -177,7 +174,7 @@ describe('observing', () => {
 		// a -go> b, then b -> c and c -> d immediately: 'c' is occupied only
 		// mid-chain, and residency must still see both the arrival and the
 		// departure.
-		host.send('go')
+		host.send({ type: 'go' })
 
 		expect(log).toEqual(['setup', 'teardown'])
 	})
@@ -185,7 +182,7 @@ describe('observing', () => {
 	test('a self-transition matches both the exit pattern and the entry pattern', () => {
 		const pinger = machine({
 			initial: 'idle',
-			inputs: types<{ ping: void }>(),
+			inputs: types<{ type: 'ping' }>(),
 			states: types<{ name: 'idle' }>(),
 			transitions: {
 				'idle -ping> idle': () => {},
@@ -197,7 +194,7 @@ describe('observing', () => {
 		doc.observe('idle -> *', () => log.push('exit'))
 		doc.observe('* -> idle', () => log.push('entry'))
 
-		doc.send('ping')
+		doc.send({ type: 'ping' })
 		expect(log).toEqual(['exit', 'entry'])
 	})
 })

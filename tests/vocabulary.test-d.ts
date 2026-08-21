@@ -14,11 +14,10 @@ import {
 	type StatesOf,
 } from 'totorobot'
 
-type Inputs = {
-	open: { text: string }
-	revise: { text: string }
-	cancel: void
-}
+type Inputs =
+	| { type: 'open'; text: string }
+	| { type: 'revise'; text: string }
+	| { type: 'cancel' }
 type States =
 	{ name: 'empty' } | { name: 'draft'; text: string; revision: number }
 
@@ -92,7 +91,7 @@ test("a handler's state is the full source state, tag included, and its input is
 		transitions: {
 			'empty -open> draft': ({ state, input }) => {
 				expectTypeOf(state).toEqualTypeOf<{ name: 'empty' }>()
-				expectTypeOf(input).toEqualTypeOf<{ text: string }>()
+				expectTypeOf(input).toEqualTypeOf<{ type: 'open'; text: string }>()
 				return { text: input.text, revision: 0 }
 			},
 			'draft -revise> draft': ({ state, input }) => {
@@ -101,7 +100,7 @@ test("a handler's state is the full source state, tag included, and its input is
 					text: string
 					revision: number
 				}>()
-				expectTypeOf(input).toEqualTypeOf<{ text: string }>()
+				expectTypeOf(input).toEqualTypeOf<{ type: 'revise'; text: string }>()
 				return { text: input.text, revision: state.revision + 1 }
 			},
 			'draft -cancel> empty': ({ state, input }) => {
@@ -110,7 +109,7 @@ test("a handler's state is the full source state, tag included, and its input is
 					text: string
 					revision: number
 				}>()
-				expectTypeOf(input).toEqualTypeOf<undefined>()
+				expectTypeOf(input).toEqualTypeOf<{ type: 'cancel' }>()
 			},
 		},
 	})
@@ -126,16 +125,16 @@ test('start() takes no argument when the initial state carries no payload, and r
 	withData.start()
 })
 
-test('send needs no payload for a void input, and requires one otherwise', () => {
+test('send needs no extra fields for a payload-free input, and requires them otherwise', () => {
 	const host = doc.start()
 
-	host.send('cancel')
-	// @ts-expect-error - cancel's input is void; send() takes no payload
-	host.send('cancel', { text: 'x' })
+	host.send({ type: 'cancel' })
+	// @ts-expect-error - cancel carries no extra payload
+	host.send({ type: 'cancel', text: 'x' })
 
-	host.send('open', { text: 'x' })
+	host.send({ type: 'open', text: 'x' })
 	// @ts-expect-error - open's input requires a payload
-	host.send('open')
+	host.send({ type: 'open' })
 })
 
 test('an input name outside the declared vocabulary is rejected at send', () => {
@@ -145,7 +144,7 @@ test('an input name outside the declared vocabulary is rejected at send', () => 
 	// than throwing — is asserted from plain JavaScript in `untyped.test.js`,
 	// where no cast is needed to reach it.
 	// @ts-expect-error - 'bogus' is not a declared input name
-	host.send('bogus')
+	host.send({ type: 'bogus' })
 })
 
 test('InputsOf, StatesOf, Handled and Sources resolve correctly over a machine type', () => {

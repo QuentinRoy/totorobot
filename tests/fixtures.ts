@@ -7,7 +7,7 @@
 
 import { machine, types } from 'totorobot'
 
-type ToggleInputs = { toggle: void }
+type ToggleInputs = { type: 'toggle' }
 type ToggleStates = { name: 'off' } | { name: 'on' }
 
 /** The smallest useful machine: two payload-free states, one input each way. */
@@ -21,14 +21,13 @@ export const toggle = machine({
 	},
 })
 
-type EditorInputs = {
-	open: { text: string }
-	revise: { text: string }
-	touch: void
-	submit: { route: 'review' | 'publish' }
-	poke: void
-	lock: void
-}
+type EditorInputs =
+	| { type: 'open'; text: string }
+	| { type: 'revise'; text: string }
+	| { type: 'touch' }
+	| { type: 'submit'; route: 'review' | 'publish' }
+	| { type: 'poke' }
+	| { type: 'lock' }
 type EditorStates =
 	| { name: 'idle' }
 	| { name: 'draft'; text: string; revision: number }
@@ -42,7 +41,7 @@ type EditorStates =
  * (`poke`), a self-transition (`revise`) and `locked` has no outgoing rows at
  * all.
  */
-type GateInputs = { submit: { quota: number }; reset: void }
+type GateInputs = { type: 'submit'; quota: number } | { type: 'reset' }
 type GateStates =
 	| { name: 'draft' }
 	| { name: 'checking'; quota: number }
@@ -75,7 +74,7 @@ export const gate = machine({
  */
 export const pending = machine({
 	initial: 'draft',
-	inputs: types<{ submit: { quota: number }; cancel: void }>(),
+	inputs: types<{ type: 'submit'; quota: number } | { type: 'cancel' }>(),
 	states: types<
 		| { name: 'draft' }
 		| { name: 'checking'; quota: number }
@@ -97,7 +96,7 @@ export const pending = machine({
  */
 export const spinner = machine({
 	initial: 'idle',
-	inputs: types<{ go: void; stop: void }>(),
+	inputs: types<{ type: 'go' } | { type: 'stop' }>(),
 	states: types<{ name: 'idle' } | { name: 'loop'; count: number }>(),
 	transitions: {
 		'idle -go> loop': () => ({ count: 0 }),
@@ -109,7 +108,7 @@ export const spinner = machine({
 /** A chain of immediate hops, three deep, off one input. */
 export const chain = machine({
 	initial: 'a',
-	inputs: types<{ go: void }>(),
+	inputs: types<{ type: 'go' }>(),
 	states: types<
 		{ name: 'a' } | { name: 'b' } | { name: 'c' } | { name: 'd' }
 	>(),

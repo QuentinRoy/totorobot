@@ -12,11 +12,10 @@ import { machine, types } from '../../src/totorobot.ts'
  * `send`. That is also what makes a stale result free — a `succeed` arriving
  * after we have already left `authenticating` matches no row and does nothing.
  */
-type Inputs = {
-	login: { username: string; password: string }
-	succeed: { token: string }
-	fail: { reason: string }
-}
+type Inputs =
+	| { type: 'login'; username: string; password: string }
+	| { type: 'succeed'; token: string }
+	| { type: 'fail'; reason: string }
 
 type States =
 	| { name: 'idle'; error: string | null; attempts: number }
@@ -80,12 +79,13 @@ export async function signIn(
 	host: ReturnType<typeof authMachine.start>,
 	credentials: Credentials,
 ): Promise<void> {
-	host.send('login', credentials)
+	host.send({ type: 'login', ...credentials })
 	if (host.current.name !== 'authenticating') return
 	try {
-		host.send('succeed', await fakeLogin(credentials))
+		host.send({ type: 'succeed', ...(await fakeLogin(credentials)) })
 	} catch (error) {
-		host.send('fail', {
+		host.send({
+			type: 'fail',
 			reason: error instanceof Error ? error.message : String(error),
 		})
 	}

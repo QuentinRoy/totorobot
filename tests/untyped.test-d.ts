@@ -56,8 +56,10 @@ test('a well-formed table compiles with no vocabulary declared', () => {
 				expectTypeOf(state.name).toEqualTypeOf<'off'>()
 				expectTypeOf(state['anything']).not.toBeAny()
 				expectTypeOf(state['anything']).toEqualTypeOf<unknown>()
-				expectTypeOf(input).not.toBeAny()
-				expectTypeOf(input).toEqualTypeOf<unknown>()
+				expectTypeOf(input.type).not.toBeAny()
+				expectTypeOf(input.type).toEqualTypeOf<'toggle'>()
+				expectTypeOf(input['anything']).not.toBeAny()
+				expectTypeOf(input['anything']).toEqualTypeOf<unknown>()
 			},
 		},
 	})
@@ -66,7 +68,9 @@ test('a well-formed table compiles with no vocabulary declared', () => {
 	expectTypeOf(host.current.name).toEqualTypeOf<'off' | 'on'>()
 	expectTypeOf(host.current['anything']).not.toBeAny()
 	expectTypeOf(host.current['anything']).toEqualTypeOf<unknown>()
-	expectTypeOf(host.send).parameter(0).toEqualTypeOf<'toggle'>()
+	expectTypeOf(host.send)
+		.parameter(0)
+		.toEqualTypeOf<{ readonly type: 'toggle' } & Record<string, unknown>>()
 })
 
 test('initial must be a state transitions mentions when no states are declared', () => {
@@ -174,7 +178,13 @@ test('a state reachable only as a target is still inferred, in a table larger th
 	>()
 	expectTypeOf(host.send)
 		.parameter(0)
-		.toEqualTypeOf<'open' | 'revise' | 'cancel' | 'submit' | 'approve'>()
+		.toEqualTypeOf<
+			| ({ readonly type: 'open' } & Record<string, unknown>)
+			| ({ readonly type: 'revise' } & Record<string, unknown>)
+			| ({ readonly type: 'cancel' } & Record<string, unknown>)
+			| ({ readonly type: 'submit' } & Record<string, unknown>)
+			| ({ readonly type: 'approve' } & Record<string, unknown>)
+		>()
 	// published is terminal: no row starts there, so it has nothing to send.
 	expectTypeOf<Handled<typeof flow, 'published'>>().toEqualTypeOf<never>()
 })
@@ -236,11 +246,13 @@ test('an immediate row is legal with no vocabulary declared, and contributes no 
 		'draft' | 'checking' | 'settled'
 	>()
 	// the immediate row must not leak '' into the inferred input vocabulary
-	expectTypeOf(host.send).parameter(0).toEqualTypeOf<'submit'>()
+	expectTypeOf(host.send)
+		.parameter(0)
+		.toEqualTypeOf<{ readonly type: 'submit' } & Record<string, unknown>>()
 })
 
 test('declaring inputs and omitting states checks inputs and infers states from the table', () => {
-	type Inputs = { toggle: void }
+	type Inputs = { type: 'toggle' }
 
 	const half = machine({
 		initial: 'off',
@@ -250,7 +262,7 @@ test('declaring inputs and omitting states checks inputs and infers states from 
 				// The declared half is checked; the omitted half is read off the
 				// table, with unknown (not `any` — see `not.toBeAny()` above)
 				// fields since nothing declares what they are.
-				expectTypeOf(input).toEqualTypeOf<undefined>()
+				expectTypeOf(input).toEqualTypeOf<{ type: 'toggle' }>()
 				expectTypeOf(state.name).not.toBeAny()
 				expectTypeOf(state.name).toEqualTypeOf<'off'>()
 				expectTypeOf(state['anything']).not.toBeAny()
@@ -263,7 +275,7 @@ test('declaring inputs and omitting states checks inputs and infers states from 
 
 	const host = half.start()
 	expectTypeOf(host.current.name).toEqualTypeOf<'off' | 'on'>()
-	expectTypeOf(host.send).parameter(0).toEqualTypeOf<'toggle'>()
+	expectTypeOf(host.send).parameter(0).toEqualTypeOf<Inputs>()
 })
 
 test('declaring states and omitting inputs checks states and infers inputs from the table', () => {
@@ -278,8 +290,10 @@ test('declaring states and omitting inputs checks states and infers inputs from 
 				// declared for 'off'; the omitted half is read off the table, with
 				// unknown (not `any`) data since nothing declares what it is.
 				expectTypeOf(state).toEqualTypeOf<{ name: 'off' }>()
-				expectTypeOf(input).not.toBeAny()
-				expectTypeOf(input).toEqualTypeOf<unknown>()
+				expectTypeOf(input.type).not.toBeAny()
+				expectTypeOf(input.type).toEqualTypeOf<'toggle'>()
+				expectTypeOf(input['anything']).not.toBeAny()
+				expectTypeOf(input['anything']).toEqualTypeOf<unknown>()
 			},
 			// @ts-expect-error - 'undeclared' is not a declared state
 			'undeclared -toggle> on': () => {},
@@ -288,7 +302,9 @@ test('declaring states and omitting inputs checks states and infers inputs from 
 
 	const host = half.start()
 	expectTypeOf(host.current.name).toEqualTypeOf<'off' | 'on'>()
-	expectTypeOf(host.send).parameter(0).toEqualTypeOf<'toggle'>()
+	expectTypeOf(host.send)
+		.parameter(0)
+		.toEqualTypeOf<{ readonly type: 'toggle' } & Record<string, unknown>>()
 })
 
 test('`*` in a key position is rejected rather than joining the inferred vocabulary (#22)', () => {
@@ -355,13 +371,17 @@ test('passing the marker explicitly as undefined behaves as omitting the propert
 				expectTypeOf(state.name).toEqualTypeOf<'off'>()
 				expectTypeOf(state['anything']).not.toBeAny()
 				expectTypeOf(state['anything']).toEqualTypeOf<unknown>()
-				expectTypeOf(input).not.toBeAny()
-				expectTypeOf(input).toEqualTypeOf<unknown>()
+				expectTypeOf(input.type).not.toBeAny()
+				expectTypeOf(input.type).toEqualTypeOf<'toggle'>()
+				expectTypeOf(input['anything']).not.toBeAny()
+				expectTypeOf(input['anything']).toEqualTypeOf<unknown>()
 			},
 		},
 	})
 
 	const host = half.start()
 	expectTypeOf(host.current.name).toEqualTypeOf<'off' | 'on'>()
-	expectTypeOf(host.send).parameter(0).toEqualTypeOf<'toggle'>()
+	expectTypeOf(host.send)
+		.parameter(0)
+		.toEqualTypeOf<{ readonly type: 'toggle' } & Record<string, unknown>>()
 })

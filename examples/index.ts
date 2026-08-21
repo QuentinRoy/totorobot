@@ -8,13 +8,13 @@ const traffic = trafficLight.start({ changes: 0 })
 // Observation is on the host, never the definition: an imported definition
 // stays inert. `*` matches any state, and the unlabelled arrow any input.
 traffic.observe('* -> *', (e) => {
-	console.log(`  ${e.from.name} -${e.on}> ${e.to.name}`, e.to)
+	console.log(`  ${e.from.name} -${e.input?.type}> ${e.to.name}`, e.to)
 })
 traffic.observe('* -> yellow', () => console.log('    (blinking)'))
 
-traffic.send('next')
-traffic.send('next')
-traffic.send('next')
+traffic.send({ type: 'next' })
+traffic.send({ type: 'next' })
+traffic.send({ type: 'next' })
 
 console.log('\n--- Auth machine (declining rows + an asynchronous result) ---')
 

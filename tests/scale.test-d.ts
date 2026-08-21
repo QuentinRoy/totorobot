@@ -19,11 +19,8 @@ import { expectTypeOf, test } from 'vitest'
 
 import { machine, types, type Handled } from 'totorobot'
 
-type Inputs = {
-	next: { delta: number }
-	reset: void
-	skip: void
-}
+type Inputs =
+	{ type: 'next'; delta: number } | { type: 'reset' } | { type: 'skip' }
 type States =
 	| { name: 's00'; visits: number; owner: 's00' }
 	| { name: 's01'; visits: number; owner: 's01' }
@@ -232,7 +229,7 @@ test('handler state and input are inferred with no annotations, at this scale', 
 					visits: number
 					owner: 's00'
 				}>()
-				expectTypeOf(input).toEqualTypeOf<{ delta: number }>()
+				expectTypeOf(input).toEqualTypeOf<{ type: 'next'; delta: number }>()
 				return { visits: state.visits + input.delta, owner: 's01' }
 			},
 			's19 -next> s00': ({ state, input }) => {
