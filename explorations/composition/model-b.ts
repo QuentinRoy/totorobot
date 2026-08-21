@@ -28,7 +28,7 @@ import {
 	type Vocab,
 } from './dsl.ts'
 
-export { types } from '../../src/totorobot.ts'
+export { type } from '../../src/totorobot.ts'
 export { persistent } from './dsl.ts'
 
 /**

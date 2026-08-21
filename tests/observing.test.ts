@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { machine, types } from 'totorobot'
+import { machine, type } from 'totorobot'
 import { chain, gate, toggle } from './fixtures.ts'
 import { residency } from './helpers.ts'
 
@@ -46,8 +46,8 @@ describe('observing', () => {
 	test('* matches any state, an unlabelled arrow matches any input, and a labelled one matches only that input', () => {
 		const fork = machine({
 			initial: 'a',
-			inputs: types<{ type: 'x' } | { type: 'y' }>(),
-			states: types<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
+			inputs: type<{ type: 'x' } | { type: 'y' }>(),
+			states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
 			transitions: {
 				'a -x> b': () => {},
 				'a -y> c': () => {},
@@ -182,8 +182,8 @@ describe('observing', () => {
 	test('a self-transition matches both the exit pattern and the entry pattern', () => {
 		const pinger = machine({
 			initial: 'idle',
-			inputs: types<{ type: 'ping' }>(),
-			states: types<{ name: 'idle' }>(),
+			inputs: type<{ type: 'ping' }>(),
+			states: type<{ name: 'idle' }>(),
 			transitions: {
 				'idle -ping> idle': () => {},
 			},

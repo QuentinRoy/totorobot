@@ -18,7 +18,7 @@
  * bug nothing stops anyone writing.
  */
 
-import { machine, types } from '../model-a.ts'
+import { machine, type } from '../model-a.ts'
 import type { Build } from '../scenario.ts'
 import {
 	bind,
@@ -48,8 +48,8 @@ type Pointing = {
 
 const pointing = machine({
 	initial: 'up',
-	inputs: types<PointerInputs>(),
-	states: types<Pointing>(),
+	inputs: type<PointerInputs>(),
+	states: type<Pointing>(),
 
 	transitions: {
 		'up -press> down': ({ input }) => ({
@@ -86,8 +86,8 @@ type Commanding = {
 
 const commanding = machine({
 	initial: 'idle',
-	inputs: types<CommandInputs>(),
-	states: types<Commanding>(),
+	inputs: type<CommandInputs>(),
+	states: type<Commanding>(),
 
 	transitions: {
 		'idle -tap> selected': ({ input, skip }) => {

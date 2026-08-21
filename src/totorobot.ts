@@ -3,8 +3,8 @@
  *
  *     const publication = machine({
  *       initial: 'empty',
- *       inputs: types<Inputs>(),
- *       states: types<States>(),
+ *       inputs: type<Inputs>(),
+ *       states: type<States>(),
  *       transitions: {
  *         'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
  *         'draft -cancel> empty': () => {},
@@ -22,7 +22,7 @@
  * ## On what is exported
  *
  * An exported type is a promise, so the list is the one `docs/api.md` publishes
- * and nothing more: `machine`, `types`, the derived `InputsOf`, `StatesOf`,
+ * and nothing more: `machine`, `type`, the derived `InputsOf`, `StatesOf`,
  * `Handled` and `Sources`, and `Skip`, which is unavoidably public because it
  * is in every handler's return type.
  *
@@ -235,7 +235,7 @@ type RoundTrips<N extends string> = N extends '*' | ` ${string}` | `${string} `
  * out of the *inferred* vocabulary before the mapped type is built, so a key
  * that mints one fails `Key` and is rejected on its own row, the same as any
  * other unknown name — see `RoundTrips`. A vocabulary declared through
- * `types<T>()` is untouched: only what gets inferred from a key is filtered,
+ * `type<T>()` is untouched: only what gets inferred from a key is filtered,
  * never `InputType` itself.
  */
 type InputsFromKeys<K extends string> = {
@@ -615,7 +615,7 @@ type Immediates = Record<string, Row[] | undefined>
  * takes over and that half simply widens — the same surface omitting it
  * gives.
  */
-export const types = <T>(): T | undefined => undefined
+export const type = <T>(): T | undefined => undefined
 
 /**
  * One queue and one draining flag for every host, not one per host. Two
@@ -746,7 +746,7 @@ export function machine<
 	S extends StateVocab = Declared<RawS, StatesFromKeys<K>>,
 >(definition: {
 	readonly initial: Init & StateName<NoInfer<S>>
-	// `| undefined` is what `types()` returns, and inference subtracts it: the
+	// `| undefined` is what `type()` returns, and inference subtracts it: the
 	// vocabulary lands as `RawI` rather than `RawI | undefined`, so nothing
 	// downstream carries an undefined it would have to strip again. Spelled
 	// out rather than left to `?:` alone because `exactOptionalPropertyTypes`

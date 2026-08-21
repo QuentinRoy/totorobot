@@ -11,7 +11,7 @@
  *     mirroring the state plus a shadow copy at the consumer.
  */
 
-import { machine, types } from '../model-b.ts'
+import { machine, type } from '../model-b.ts'
 import type { Build } from '../scenario.ts'
 import { bind, body, labels } from './domain.ts'
 
@@ -23,9 +23,9 @@ type Published = { opened: void; closed: void }
 
 const disclosure = machine({
 	initial: 'closed',
-	inputs: types<DisclosureInputs>(),
-	states: types<Disclosure>(),
-	outputs: types<Published>(),
+	inputs: type<DisclosureInputs>(),
+	states: type<Disclosure>(),
+	outputs: type<Published>(),
 
 	transitions: {
 		'closed -toggle> open': () => {},

@@ -4,7 +4,7 @@
 
 import { expect, expectTypeOf, test } from 'vitest'
 
-import { machine, types } from 'totorobot'
+import { machine, type } from 'totorobot'
 
 type Inputs =
 	| { type: 'open'; text: string }
@@ -18,8 +18,8 @@ type States =
 
 const doc = machine({
 	initial: 'empty',
-	inputs: types<Inputs>(),
-	states: types<States>(),
+	inputs: type<Inputs>(),
+	states: type<States>(),
 	transitions: {
 		'empty -open> draft': ({ input }) => ({ text: input.text }),
 		'draft -submit> review': ({ state, input, skip }) =>
@@ -105,8 +105,8 @@ test('an immediate transition is distinguished from a payload-free input by inpu
 
 	const withImmediate = machine({
 		initial: 'empty',
-		inputs: types<ImmediateInputs>(),
-		states: types<ImmediateStates>(),
+		inputs: type<ImmediateInputs>(),
+		states: type<ImmediateStates>(),
 		transitions: {
 			'empty -open> draft': ({ input }) => ({ text: input.text }),
 			'draft -cancel> empty': () => {},

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { machine, types } from 'totorobot'
+import { machine, type } from 'totorobot'
 import { chain, editor, gate, pending } from './fixtures.ts'
 
 describe('sending', () => {
@@ -54,8 +54,8 @@ describe('sending', () => {
 	test('with several rows for one source/input pair, the first that does not decline wins', () => {
 		const priority = machine({
 			initial: 'start',
-			inputs: types<{ type: 'go' }>(),
-			states: types<
+			inputs: type<{ type: 'go' }>(),
+			states: type<
 				{ name: 'start' } | { name: 'first' } | { name: 'second' }
 			>(),
 			transitions: {
@@ -114,8 +114,8 @@ describe('sending', () => {
 		const received: unknown[] = []
 		const probe = machine({
 			initial: 'ready',
-			inputs: types<{ type: 'act'; n: number } | { type: 'ping' }>(),
-			states: types<{ name: 'ready'; count: number }>(),
+			inputs: type<{ type: 'act'; n: number } | { type: 'ping' }>(),
+			states: type<{ name: 'ready'; count: number }>(),
 			transitions: {
 				'ready -act> ready': ({ state, input }) => {
 					received.push([state, input])
@@ -163,8 +163,8 @@ describe('sending', () => {
 		test('entering a state by an input runs its immediate row and lands in its target', () => {
 			const relay = machine({
 				initial: 'draft',
-				inputs: types<{ type: 'submit' }>(),
-				states: types<
+				inputs: type<{ type: 'submit' }>(),
+				states: type<
 					| { name: 'draft' }
 					| { name: 'checking' }
 					| { name: 'settled'; via: string }

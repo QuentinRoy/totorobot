@@ -9,7 +9,7 @@
  * nothing about accordions, and that it did not have to.
  */
 
-import { machine, types } from '../model-a.ts'
+import { machine, type } from '../model-a.ts'
 import type { Build } from '../scenario.ts'
 import { bind, body, labels } from './domain.ts'
 
@@ -20,8 +20,8 @@ type Disclosure = { closed: void; open: void }
 
 const disclosure = machine({
 	initial: 'closed',
-	inputs: types<DisclosureInputs>(),
-	states: types<Disclosure>(),
+	inputs: type<DisclosureInputs>(),
+	states: type<Disclosure>(),
 
 	transitions: {
 		'closed -toggle> open': () => {},
