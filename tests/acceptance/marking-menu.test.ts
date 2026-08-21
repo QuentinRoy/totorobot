@@ -26,13 +26,12 @@ type Menu = {
 type Point = { x: number; y: number }
 type Stroke = readonly Point[]
 
-type MarkingMenuInputs = {
-	down: { point: Point }
-	move: { point: Point }
-	dwellElapsed: { token: number }
-	up: { point: Point }
-	cancel: { point: Point }
-}
+type MarkingMenuInputs =
+	| { type: 'down'; point: Point }
+	| { type: 'move'; point: Point }
+	| { type: 'dwellElapsed'; token: number }
+	| { type: 'up'; point: Point }
+	| { type: 'cancel'; point: Point }
 type MarkingMenuStates =
 	| { name: 'idle'; nextToken: number }
 	| {
@@ -127,7 +126,7 @@ describe('acceptance: Reduced Marking Menu', () => {
 			log.push(`schedule:${e.to.timerToken}`),
 		)
 
-		doc.send('down', { point: p0 })
+		doc.send({ type: 'down', point: p0 })
 
 		expect(doc.current).toEqual({
 			name: 'startup',
@@ -141,9 +140,9 @@ describe('acceptance: Reduced Marking Menu', () => {
 
 	test('trace 2: a nearby move commits a same-state stroke update, then a matching dwellElapsed enters novice and reports open', () => {
 		const doc = markingMenu.start({ nextToken: 0 })
-		doc.send('down', { point: p0 }) // -> startup(timerToken: 0, nextToken: 1)
+		doc.send({ type: 'down', point: p0 }) // -> startup(timerToken: 0, nextToken: 1)
 
-		doc.send('move', { point: p1Near })
+		doc.send({ type: 'move', point: p1Near })
 		expect(doc.current).toEqual({
 			name: 'startup',
 			origin: p0,
@@ -155,7 +154,7 @@ describe('acceptance: Reduced Marking Menu', () => {
 		const log: string[] = []
 		doc.observe('startup -dwellElapsed> novice', () => log.push('open'))
 
-		doc.send('dwellElapsed', { token: 0 }) // matches the scheduled token
+		doc.send({ type: 'dwellElapsed', token: 0 }) // matches the scheduled token
 
 		expect(doc.current).toEqual({
 			name: 'novice',
@@ -169,14 +168,14 @@ describe('acceptance: Reduced Marking Menu', () => {
 
 	test('trace 3 (fresh execution): a far move enters expert and cancels the dwell token; a later stale dwellElapsed does not enter novice', () => {
 		const doc = markingMenu.start({ nextToken: 0 })
-		doc.send('down', { point: p0 }) // -> startup(timerToken: 0, nextToken: 1)
+		doc.send({ type: 'down', point: p0 }) // -> startup(timerToken: 0, nextToken: 1)
 
 		const log: string[] = []
 		doc.observe('startup -move> expert', (e) =>
 			log.push(`cancel:${e.from.timerToken}`),
 		)
 
-		doc.send('move', { point: p2Far })
+		doc.send({ type: 'move', point: p2Far })
 		expect(doc.current).toEqual({
 			name: 'expert',
 			stroke: [p0, p2Far],
@@ -185,14 +184,14 @@ describe('acceptance: Reduced Marking Menu', () => {
 		expect(log).toEqual(['cancel:0'])
 
 		const before = doc.current
-		doc.send('dwellElapsed', { token: 0 }) // stale: token 0 was already cancelled
+		doc.send({ type: 'dwellElapsed', token: 0 }) // stale: token 0 was already cancelled
 		expect(doc.current).toEqual(before)
 		expect(doc.current.name).not.toBe('novice')
 	})
 
 	test('trace 4: cancel from startup returns to idle, cancels the dwell token, and reports cancellation', () => {
 		const doc = markingMenu.start({ nextToken: 0 })
-		doc.send('down', { point: p0 }) // -> startup(timerToken: 0, nextToken: 1)
+		doc.send({ type: 'down', point: p0 }) // -> startup(timerToken: 0, nextToken: 1)
 
 		const log: string[] = []
 		doc.observe('startup -cancel> idle', (e) => {
@@ -200,7 +199,7 @@ describe('acceptance: Reduced Marking Menu', () => {
 			log.push('report:cancel')
 		})
 
-		doc.send('cancel', { point: p0 })
+		doc.send({ type: 'cancel', point: p0 })
 
 		expect(doc.current).toEqual({ name: 'idle', nextToken: 1 })
 		expect(log).toEqual(['cancel:0', 'report:cancel'])
@@ -212,7 +211,7 @@ describe('acceptance: Reduced Marking Menu', () => {
 		const log: string[] = []
 		doc.observe('* -> *', () => log.push('fired'))
 
-		doc.send('move', { point: p1Near }) // idle has no row for move
+		doc.send({ type: 'move', point: p1Near }) // idle has no row for move
 
 		expect(doc.current).toEqual(before)
 		expect(log).toEqual([])

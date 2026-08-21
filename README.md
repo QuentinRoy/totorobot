@@ -18,12 +18,11 @@ TypeScript enforce while keeping a compact, Robot-inspired creation API?
 ```ts
 import { machine, types } from 'totorobot'
 
-type Inputs = {
-	open: { text: string }
-	revise: { text: string }
-	submit: { route: 'review' | 'publish'; reviewer?: string }
-	cancel: void
-}
+type Inputs =
+	| { type: 'open'; text: string }
+	| { type: 'revise'; text: string }
+	| { type: 'submit'; route: 'review' | 'publish'; reviewer?: string }
+	| { type: 'cancel' }
 type States =
 	| { name: 'empty' }
 	| { name: 'draft'; text: string; revision: number }
@@ -49,7 +48,7 @@ export const publication = machine({
 
 const doc = publication.start()
 doc.observe('* -> published', (e) => notify(e.to))
-doc.send('open', { text: 'hello' })
+doc.send({ type: 'open', text: 'hello' })
 ```
 
 | part          | answers                               |
@@ -62,14 +61,6 @@ doc.send('open', { text: 'hello' })
 
 Read [the API](docs/api.md) for the full design, and
 [the design record](docs/api-rationale.md) for why it looks this way.
-
-> [!NOTE]
-> The example above is what `src/` implements today, and one part of it is
-> already decided against. Settling where a machine's boundary goes calls for
-> inputs to become a tagged union too and for a field to drop from the
-> transition record — before v1 tags, while nothing depends on them. States
-> already made this move. See
-> [Changing before v1](docs/api.md#changing-before-v1).
 
 ## What is checked
 

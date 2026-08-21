@@ -8,7 +8,7 @@ describe('construction', () => {
 	test('start(data) yields a host whose current is the initial state, tag included', () => {
 		const counter = machine({
 			initial: 'ready',
-			inputs: types<{ increment: void }>(),
+			inputs: types<{ type: 'increment' }>(),
 			states: types<{ name: 'ready'; count: number }>(),
 			transitions: {
 				'ready -increment> ready': ({ state }) => ({
@@ -29,7 +29,7 @@ describe('construction', () => {
 	test('types<T>() carries no runtime value and returns undefined', () => {
 		// `undefined` rather than `null` or a marker object is what a caller
 		// observes — docs/api.md is explicit about which of the three it is.
-		expect(types<{ increment: void }>()).toBeUndefined()
+		expect(types<{ type: 'increment' }>()).toBeUndefined()
 		expect(types<{ name: 'ready'; count: number }>()).toBeUndefined()
 	})
 
@@ -58,7 +58,7 @@ describe('construction', () => {
 	test('a chain from the initial state settles fully, not one hop', () => {
 		const relay = machine({
 			initial: 'a',
-			inputs: types<{ go: void }>(),
+			inputs: types<{ type: 'go' }>(),
 			states: types<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
 			transitions: {
 				'a -> b': () => {},
@@ -74,7 +74,7 @@ describe('construction', () => {
 	test("the initial state's immediates all skipping leaves the host in the declared initial state", () => {
 		const stalled = machine({
 			initial: 'checking',
-			inputs: types<{ submit: void }>(),
+			inputs: types<{ type: 'submit' }>(),
 			states: types<{ name: 'checking' } | { name: 'allowed' }>(),
 			transitions: {
 				'checking -> allowed': ({ skip }) => skip(),
@@ -104,7 +104,7 @@ describe('construction', () => {
 	test('the hop budget spent settling the initial state does not carry over into the first send', () => {
 		const twice = machine({
 			initial: 'a',
-			inputs: types<{ go: void }>(),
+			inputs: types<{ type: 'go' }>(),
 			states: types<
 				{ name: 'a'; count: number } | { name: 'b'; count: number }
 			>(),
@@ -123,7 +123,7 @@ describe('construction', () => {
 		const host = twice.start({ count: 0 })
 		expect(host.current).toEqual({ name: 'a', count: 60_000 })
 
-		host.send('go')
+		host.send({ type: 'go' })
 		expect(host.current).toEqual({ name: 'b', count: 60_000 })
 	})
 
@@ -145,7 +145,7 @@ describe('construction', () => {
 		const hostA = toggle.start()
 		const hostB = toggle.start()
 
-		hostA.send('toggle')
+		hostA.send({ type: 'toggle' })
 
 		expect(hostA.current).toEqual({ name: 'on' })
 		expect(hostB.current).toEqual({ name: 'off' })
@@ -158,7 +158,7 @@ describe('construction', () => {
 		const log: string[] = []
 		hostA.observe('* -> *', () => log.push('a'))
 
-		hostB.send('toggle')
+		hostB.send({ type: 'toggle' })
 
 		expect(log).toEqual([])
 	})
@@ -168,8 +168,8 @@ describe('construction', () => {
 
 		const host = toggle.start()
 		host.observe('* -> *', () => {})
-		host.send('toggle')
-		host.send('toggle')
+		host.send({ type: 'toggle' })
+		host.send({ type: 'toggle' })
 
 		expect(toggle).toStrictEqual(before)
 	})

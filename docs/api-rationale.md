@@ -36,30 +36,31 @@
 
 Twenty axes. All twenty were closed. **§16 and §17 then reopened two of them (7, 2),
 renamed one (16) and reshaped one without changing its answer (6)** — decided after the
-rest of this record, and none of it built.
+rest of this record: states, inputs, `observe`, and the 3-field transition record are
+shipped; outputs and `emit` remain unbuilt.
 
-| #   | Axis                       | Answer                                                                                                  | §      |
-| --- | -------------------------- | ------------------------------------------------------------------------------------------------------- | ------ |
-| 1   | Overall layout             | string keys, input as arrow label — `'draft -submit> review'`                                           | 4      |
-| 2   | Data-free states           | ~~`void` in the vocabulary~~ — **reopened**, §17 deletes `void` for states, **shipped**; inputs unbuilt | 5, 17  |
-| 3   | Entry / exit actions       | edge patterns with one end pinned; no keyword                                                           | 9      |
-| 4   | Re-entry vs stay           | dissolved — it is an action's restart policy                                                            | 9      |
-| 5   | Self-transition spelling   | `'draft -revise> draft'`, an ordinary row                                                               | 5      |
-| 6   | Input vocabulary           | declared — **answer stands, shape changed** to unions by §17                                            | 5, 17  |
-| 7   | Returned commands (`emit`) | ~~out~~ — **reopened** as `emit` in `actions`, §16                                                      | 6, 16  |
-| 8   | Fall-through refusal       | no `else` and no warning — a decline is silent                                                          | 4      |
-| 9   | Async / work-in-flight     | subsumed by axis 10                                                                                     | 8      |
-| 10  | Actions in the machine     | `actions:`, keyed by trigger, wrappers for policy                                                       | 9      |
-| 11  | The word for what you send | `inputs`, not `events` — the core is not a mailbox                                                      | 5      |
-| 12  | Typed send site            | **dropped** — broad `send` only; reversible later                                                       | 11     |
-| 13  | Composition                | **deferred from v1** — shape unsettled; a design to return to                                           | 10     |
-| 14  | Actions in v1              | **deferred** — v1 has no effect mechanism at all                                                        | 9      |
-| 15  | Immediate transitions      | `'from -> to'`, no input — **shipped**, chained, budget-guarded                                         | 7      |
-| 16  | Observation                | on the host, patterns, no residency key — **shipped as** `observe`                                      | 12, 16 |
-| 17  | Commit ordering            | a chain per input, FIFO; commit, notify in order, queue                                                 | 12     |
-| 18  | Definition and instance    | **split kept** — `publication.start(data)`                                                              | 12     |
-| 19  | Disposal and errors        | no `stop()` — the host owns nothing; a throw propagates                                                 | 12     |
-| 20  | What `send` returns        | **nothing** — additive to add later, breaking to remove                                                 | 12     |
+| #   | Axis                       | Answer                                                                                             | §      |
+| --- | -------------------------- | -------------------------------------------------------------------------------------------------- | ------ |
+| 1   | Overall layout             | string keys, input as arrow label — `'draft -submit> review'`                                      | 4      |
+| 2   | Data-free states           | ~~`void` in the vocabulary~~ — **reopened**, §17 deletes `void` for states and inputs, **shipped** | 5, 17  |
+| 3   | Entry / exit actions       | edge patterns with one end pinned; no keyword                                                      | 9      |
+| 4   | Re-entry vs stay           | dissolved — it is an action's restart policy                                                       | 9      |
+| 5   | Self-transition spelling   | `'draft -revise> draft'`, an ordinary row                                                          | 5      |
+| 6   | Input vocabulary           | declared — **answer stands, shape changed** to unions by §17                                       | 5, 17  |
+| 7   | Returned commands (`emit`) | ~~out~~ — **reopened** as `emit` in `actions`, §16                                                 | 6, 16  |
+| 8   | Fall-through refusal       | no `else` and no warning — a decline is silent                                                     | 4      |
+| 9   | Async / work-in-flight     | subsumed by axis 10                                                                                | 8      |
+| 10  | Actions in the machine     | `actions:`, keyed by trigger, wrappers for policy                                                  | 9      |
+| 11  | The word for what you send | `inputs`, not `events` — the core is not a mailbox                                                 | 5      |
+| 12  | Typed send site            | **dropped** — broad `send` only; reversible later                                                  | 11     |
+| 13  | Composition                | **deferred from v1** — shape unsettled; a design to return to                                      | 10     |
+| 14  | Actions in v1              | **deferred** — v1 has no effect mechanism at all                                                   | 9      |
+| 15  | Immediate transitions      | `'from -> to'`, no input — **shipped**, chained, budget-guarded                                    | 7      |
+| 16  | Observation                | on the host, patterns, no residency key — **shipped as** `observe`                                 | 12, 16 |
+| 17  | Commit ordering            | a chain per input, FIFO; commit, notify in order, queue                                            | 12     |
+| 18  | Definition and instance    | **split kept** — `publication.start(data)`                                                         | 12     |
+| 19  | Disposal and errors        | no `stop()` — the host owns nothing; a throw propagates                                            | 12     |
+| 20  | What `send` returns        | **nothing** — additive to add later, breaking to remove                                            | 12     |
 
 The axes are not independent. Declaring the vocabulary (§5) settles 2, 5 and 6 in
 one move. Removing entry/exit settles 3, which makes 4 and 5 unobservable and
@@ -2555,15 +2556,8 @@ pinned) · a class or `new` for instantiation.
   candidate rows are tried is invisible. It stops being invisible the moment
   anything puts effects back in a handler — true of all three layouts.
 
-Opened by §16 and §17, which are decided but unbuilt:
+Opened by §16 and §17 (outputs, actions, and policy remain open):
 
-- **The untyped path is the one place the map had the easier job.** Omitting
-  `inputs`/`states` today infers _names_ from `transitions` while data stays
-  `unknown` — a guarantee, held by `tests/untyped.test.js` and observable behaviour
-  38–41. With a map that synthesis is `Record<N, unknown>`; with a union (§17) it has
-  to synthesise arms, and it is not known to land as cleanly. Candidate-sized, and
-  `scripts/check-candidates.ts` is where it goes, with the negative result pinned as
-  `MUST_FAIL`.
 - **How policy is spelled**, for `observe` and `actions` alike: a wrapper
   (`persistent(fn)`, §9's answer) or a third argument of options in the
   `addEventListener` shape. Options uniquely admit `signal: AbortSignal`, which is not
@@ -2581,10 +2575,10 @@ Opened by §16 and §17, which are decided but unbuilt:
 
 ## 16. The composition boundary
 
-> **Decided after v1's surface was written, and it changes that surface.** None of it
-> is built. Axis 7 is reopened, axis 16 is renamed, and §17 carries the shape changes
-> that fell out of this one. Recorded here rather than edited into the sections that
-> concluded otherwise.
+> **Decided after v1's surface was written, and it changes that surface.** Outputs and
+> `emit` (axis 7) remain unbuilt and deferred past v1; `observe` (axis 16) is shipped,
+> and §17's state/input shapes and 3-field transition record are shipped. Recorded here
+> rather than edited into the sections that concluded otherwise.
 
 [Issue #24](https://github.com/QuentinRoy/totorobot/issues/24) asked where the
 boundary of a machine goes, and offered two answers:
@@ -2708,12 +2702,10 @@ consumers. It does not close it.
 
 ## 17. The shape of a named thing
 
-> **Decided with §16. States are built; inputs and outputs are unbuilt like §16.**
-> Reopens axis 2 for states — `void` leaves the state half of the vocabulary entirely —
-> and changes the shape axis 6 settled, though not its answer: the vocabulary is still
-> declared. The input half of the same reshape, and the transition record's fourth
-> field it frees up, remain decided and unbuilt — `docs/api.md`,
-> [Changing before v1](api.md#changing-before-v1).
+> **Decided with §16. States and inputs are built; outputs are unbuilt like §16.**
+> Reopens axis 2 — `void` leaves the vocabulary entirely — and changes the shape axis 6
+> settled, though not its answer: the vocabulary is still declared. The transition
+> record's fourth field is freed up and the record carries `{ input, from, to }`.
 
 ### The collision that started it
 
@@ -2746,8 +2738,7 @@ states: types<{ name: 'empty' } | { name: 'draft'; text: string; revision: numbe
 - **States are tagged `name`, and are free to differ, because states never travel.**
   The whole object is the state, so it has a name; `name` rather than `state` is what
   keeps `e.to.name` reading as "the target's name" instead of the state's state.
-- **`send` takes one argument**: `send({ type: 'move', x, y })` — decided for inputs,
-  unbuilt; `states` has no `send`-equivalent call site to change.
+- **`send` takes one argument**: `send({ type: 'move', x, y })`.
 - **A handler still does not restate its target.** It returns the target's payload
   minus the tag, which the library injects — spread in _last_, so a handler that
   spreads its source into the return cannot leave the source's tag on the committed
@@ -2780,15 +2771,14 @@ narrowed end is `Extract<S, { name: N }>`. And **`void` leaves the state half of
 vocabulary**: `{ name: 'empty' }` needs no sentinel, so axis 2's answer is deleted rather
 than reworded, for states.
 
-**Deleted for inputs, still ahead.** `Dispatch<I>` goes entirely once inputs are tagged
-— `send` becomes `(input: I) => void`, because arity no longer follows the payload
+**Deleted for inputs, built.** `Dispatch<I>` goes entirely once inputs are tagged —
+`send` becomes `(input: I) => void`, because arity no longer follows the payload
 argument. `void` leaves the input half of the vocabulary the same way it left the state
 half.
 
 **Survives.** `Start<S, Init>` still needs "no payload, no argument", with its condition
 changed from `[S[Init]] extends [void]` to `keyof Payload extends never` — built, for the
-initial state. `send`'s arity keeps the analogous three-way test — `void`, unknown,
-required — until inputs are tagged and the whole conditional goes with `Dispatch<I>`.
+initial state.
 
 ### Measured, not assumed
 

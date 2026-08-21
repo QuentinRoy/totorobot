@@ -7,15 +7,14 @@ import { expect, expectTypeOf, test } from 'vitest'
 
 import { machine, types } from 'totorobot'
 
-type Inputs = {
-	open: { text: string }
-	revise: { text: string }
-	cancel: void
-}
+type Inputs =
+	| { type: 'open'; text: string }
+	| { type: 'revise'; text: string }
+	| { type: 'cancel' }
 type States =
 	{ name: 'empty' } | { name: 'draft'; text: string; revision: number }
 
-type SkipInputs = { revise: { text: string }; cancel: void }
+type SkipInputs = { type: 'revise'; text: string } | { type: 'cancel' }
 type SkipStates = { name: 'draft'; text: string } | { name: 'empty' }
 
 test('a handler returning the wrong shape for its target state is rejected', () => {
@@ -186,7 +185,7 @@ test('a declared vocabulary may still name `*` or a padded name explicitly (#22)
 	// or '*' by hand is deliberate in a way a doubled space in a key never is
 	// — so neither is filtered here.
 	type OddStates = { name: 'off' } | { name: '*' } | { name: ' padded' }
-	type OddInputs = { go: void }
+	type OddInputs = { type: 'go' }
 
 	machine({
 		initial: 'off',

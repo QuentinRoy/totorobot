@@ -23,10 +23,10 @@ describe('the untyped path', () => {
 
 		expect(host.current).toEqual({ name: 'off' })
 
-		host.send('toggle')
+		host.send({ type: 'toggle' })
 		expect(host.current).toEqual({ name: 'on' })
 
-		host.send('toggle')
+		host.send({ type: 'toggle' })
 		expect(host.current).toEqual({ name: 'off' })
 
 		expect(log).toEqual(['off->on', 'on->off'])
@@ -45,7 +45,7 @@ describe('the untyped path', () => {
 		const log = []
 		host.observe('* -> *', () => log.push('fired'))
 
-		host.send('bogus')
+		host.send({ type: 'bogus' })
 
 		expect(host.current).toEqual({ name: 'off' })
 		expect(log).toEqual([])
@@ -67,7 +67,7 @@ describe('the untyped path', () => {
 			host.observe('bogus -> *', () => log.push('fired')),
 		).not.toThrow()
 
-		host.send('toggle')
+		host.send({ type: 'toggle' })
 
 		expect(log).toEqual([])
 	})
@@ -83,7 +83,7 @@ describe('the untyped path', () => {
 			})
 
 			const host = untyped.start()
-			host.send('submit')
+			host.send({ type: 'submit' })
 
 			expect(host.current).toEqual({
 				name: 'settled',
@@ -110,7 +110,7 @@ describe('the untyped path', () => {
 			const log = []
 			host.observe('* -> *', () => log.push('fired'))
 
-			host.send('')
+			host.send({ type: '' })
 
 			expect(host.current).toEqual(before)
 			expect(log).toEqual([])
