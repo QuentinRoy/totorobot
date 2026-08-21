@@ -13,7 +13,7 @@
 ## The whole thing at a glance
 
 ```ts
-import { machine, types } from 'totorobot'
+import { machine, type } from 'totorobot'
 
 type Inputs =
 	| { type: 'open'; text: string }
@@ -28,8 +28,8 @@ type States =
 
 export const publication = machine({
 	initial: 'empty',
-	inputs: types<Inputs>(),
-	states: types<States>(),
+	inputs: type<Inputs>(),
+	states: type<States>(),
 
 	transitions: {
 		'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
@@ -67,7 +67,7 @@ Everything the package exports, and everything a host has:
 | name                                                        | is                                                         |
 | ----------------------------------------------------------- | ---------------------------------------------------------- |
 | `machine({ initial, inputs?, states?, transitions })`       | a **definition** — inert data, never mutated               |
-| `types<T>()`                                                | a declaration carrying `T`; returns `undefined` at runtime |
+| `type<T>()`                                                 | a declaration carrying `T`; returns `undefined` at runtime |
 | `definition.start(data?)`                                   | a **host** — the only mutable object in the design         |
 | `host.current`                                              | the current state, tag included                            |
 | `host.send(input)`                                          | a dispatch; returns nothing                                |
@@ -80,24 +80,24 @@ Everything the package exports, and everything a host has:
 ## `inputs` and `states` — the vocabulary
 
 ```ts
-inputs: types<{ type: 'submit'; route: string } | { type: 'cancel' }>(),
-states: types<{ name: 'empty' } | { name: 'draft'; text: string; revision: number }>(),
+inputs: type<{ type: 'submit'; route: string } | { type: 'cancel' }>(),
+states: type<{ name: 'empty' } | { name: 'draft'; text: string; revision: number }>(),
 ```
 
 Both are **declared tagged unions**. `inputs` is discriminated by `type`, and `states`
 by `name`. There is no `void` sentinel on either side — a payload-free member is a union
 member with nothing but its tag, e.g. `{ type: 'cancel' }` and `{ name: 'empty' }`.
 
-`types<T>()` exists only to carry `T`; it carries no runtime value, and **returns
+`type<T>()` exists only to carry `T`; it carries no runtime value, and **returns
 `undefined`** — that is what a caller observes, rather than a marker object. Nothing
 reads it, so both fields are inert at runtime, and passing the return value explicitly is
 the same as omitting the field.
 
 - Each is an ordinary type, so it can be named, exported, imported, generated, made
-  generic, or built with `Omit`/`&`/`|`. **Name them.** Writing `types<Inputs>()` rather
-  than `types<{ … }>()` keeps hover text and error messages from inlining the whole
+  generic, or built with `Omit`/`&`/`|`. **Name them.** Writing `type<Inputs>()` rather
+  than `type<{ … }>()` keeps hover text and error messages from inlining the whole
   literal. A single `Publication = { inputs; states }` still works if you want one
-  exported name — pass `types<Publication['inputs']>()`.
+  exported name — pass `type<Publication['inputs']>()`.
 - Extraction goes through named helpers rather than the value's type:
   `InputsOf<typeof publication>`, `StatesOf<typeof publication>` — the same family as
   `Handled<M, 'draft'>` and `Sources<M, 'review'>`, which take the machine type as `M`.
@@ -121,7 +121,7 @@ key: `*` is already how a pattern spells "any state," and a leading or trailing 
 the grammar's own delimiter, so `'a -x>  b'` does not fail to parse, it quietly mints a
 state no other key can spell the same way twice. A key that mints one is rejected on its
 own row, `not a transition: '…'`, the same as any other unknown name. **A declared
-vocabulary is untouched** — `types<{ type: '*' }>()` or a state tagged `{ name: ' b' }`
+vocabulary is untouched** — `type<{ type: '*' }>()` or a state tagged `{ name: ' b' }`
 still work, since declaring an odd name by hand is deliberate in a way a doubled space in
 a key never is.
 
@@ -698,7 +698,7 @@ the vocabulary, `emit` reaches actions the way `send` does, and the freed `.on`
 subscribes by output name:
 
 ```ts
-outputs: types<{ type: 'opened'; center: Point } | { type: 'ended' }>(),
+outputs: type<{ type: 'opened'; center: Point } | { type: 'ended' }>(),
 
 actions: {
 	novice: persistent(({ data, emit }) => emit({ type: 'opened', center: data.origin })),

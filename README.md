@@ -16,7 +16,7 @@ TypeScript enforce while keeping a compact, Robot-inspired creation API?
 ## Example
 
 ```ts
-import { machine, types } from 'totorobot'
+import { machine, type } from 'totorobot'
 
 type Inputs =
 	| { type: 'open'; text: string }
@@ -31,8 +31,8 @@ type States =
 
 export const publication = machine({
 	initial: 'empty',
-	inputs: types<Inputs>(),
-	states: types<States>(),
+	inputs: type<Inputs>(),
+	states: type<States>(),
 
 	transitions: {
 		'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),

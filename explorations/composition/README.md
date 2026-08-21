@@ -31,7 +31,7 @@ instantiates the machine.
 ```ts
 machine({
 	initial, inputs, states,
-	outputs: types<Outputs>(),
+	outputs: type<Outputs>(),
 	transitions: { … },
 	actions: {
 		loading: ({ data, send, emit }) => { … },      // residency, per §9

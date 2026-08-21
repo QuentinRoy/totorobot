@@ -35,9 +35,9 @@ const root = fileURLToPath(new URL('../..', import.meta.url))
 /* ------------------------------------------------------------- 1. shipped */
 
 const entries = {
-	core: `export { machine, types } from ${JSON.stringify(join(root, 'src/totorobot.ts'))}`,
-	A: `export { machine, types } from ${JSON.stringify(join(here, 'model-a.ts'))}`,
-	B: `export { machine, types } from ${JSON.stringify(join(here, 'model-b.ts'))}`,
+	core: `export { machine, type } from ${JSON.stringify(join(root, 'src/totorobot.ts'))}`,
+	A: `export { machine, type } from ${JSON.stringify(join(here, 'model-a.ts'))}`,
+	B: `export { machine, type } from ${JSON.stringify(join(here, 'model-b.ts'))}`,
 }
 
 const scratch = mkdtempSync(join(tmpdir(), 'totorobot-size-'))
