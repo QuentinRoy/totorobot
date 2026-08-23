@@ -64,16 +64,17 @@ doc.send({ type: 'open', text: 'hello' })
 
 Everything the package exports, and everything a host has:
 
-| name                                                        | is                                                         |
-| ----------------------------------------------------------- | ---------------------------------------------------------- |
-| `machine({ initial, inputs?, states?, transitions })`       | a **definition** — inert data, never mutated               |
-| `type<T>()`                                                 | a declaration carrying `T`; returns `undefined` at runtime |
-| `definition.start(data?)`                                   | a **host** — the only mutable object in the design         |
-| `host.current`                                              | the current state, tag included                            |
-| `host.send(input)`                                          | a dispatch; returns nothing                                |
-| `host.observe(pattern, listener)`                           | a subscription; returns an unsubscribe function            |
-| a handler's `{ state, input, skip }`                        | the source state, the input, and the way to decline        |
-| `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>` | derived types, over `M = typeof publication`               |
+| name                                                        | is                                                                |
+| ----------------------------------------------------------- | ----------------------------------------------------------------- |
+| `machine({ initial, inputs?, states?, transitions })`       | a **definition** — inert data, never mutated                      |
+| `type<T>()`                                                 | a declaration carrying `T`; returns `undefined` at runtime        |
+| `definition.start(data?)`                                   | a **host** — the only mutable object in the design                |
+| `host.current`                                              | the current state, tag included                                   |
+| `host.send(input)`                                          | a dispatch; returns nothing                                       |
+| `host.observe(pattern, listener)`                           | a subscription; returns an unsubscribe function                   |
+| a handler's `{ state, input, skip }`                        | the source state, the input, and the way to decline               |
+| `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>` | derived types, over `M = typeof publication`                      |
+| `Skip`                                                      | what `skip()` returns — it appears in every handler's return type |
 
 ---
 
@@ -87,6 +88,20 @@ states: type<{ name: 'empty' } | { name: 'draft'; text: string; revision: number
 Both are **declared tagged unions**. `inputs` is discriminated by `type`, and `states`
 by `name`. There is no `void` sentinel on either side — a payload-free member is a union
 member with nothing but its tag, e.g. `{ type: 'cancel' }` and `{ name: 'empty' }`.
+
+**`data` is a convention, not a rule** — for both halves of the vocabulary. A payload
+that is not a record, or that wants a field called `type` or `name`, nests it:
+
+```ts
+{ type: 'tick', data: 5 } // an input
+{ name: 'editing', data: { name: 'foo' } } // a state
+```
+
+Nothing in the library requires or inspects `data` — it is an ordinary field, and any
+other name works. It is the recommended shape whenever a tag would collide or a payload
+is not an object, and it is worth reaching for deliberately: a state or input that
+carries its own `name`/`type` field is ordinary enough that meeting the collision by
+accident is the thing to avoid.
 
 `type<T>()` exists only to carry `T`; it carries no runtime value, and **returns
 `undefined`** — that is what a caller observes, rather than a marker object. Nothing
@@ -467,7 +482,7 @@ implementation to be driven from.
    naming the key — `not a transition: '<key>'`, the same wording the type layer
    reports on the offending row. Well formed means exactly one arrow, with a
    non-empty source and a non-empty target; the label between the two separators may
-   be empty, which is the unlabelled arrow (18).
+   be empty, which is the unlabelled arrow (19).
 2. `start(data)` yields a host whose `current` is the initial state, tag included, `data`
    spread in — or, if the initial state's own immediate rows settle it further, whatever
    state that chain lands in. `start()`'s arity always follows the **declared** initial
@@ -625,37 +640,6 @@ Not oversights. What to reach for instead, and where the argument is:
 
 ---
 
-## Changing before v1
-
-Settling the composition boundary
-([rationale §16](api-rationale.md#16-the-composition-boundary)) reached back into the
-surface above. All planned changes are **already shipped**:
-
-1. **The transition record carries three fields**: `{ input, from, to }`. `e.input?.type === 'submit'` narrows `e.input`, and an immediate transition says so with `input: undefined`.
-2. **The input and state vocabularies are tagged unions**: inputs tagged `type`, states tagged `name`.
-3. **`send` takes one argument**: `send({ type: 'move', x, y })`.
-4. **`.on` became `observe`**, leaving `.on` unclaimed for a future output channel.
-
-**`data` is a convention, not a rule** — for both halves of the vocabulary. A payload
-that is not a record, or that wants a field called `type` or `name`, nests it:
-
-```ts
-{ type: 'tick', data: 5 } // an input
-{ name: 'editing', data: { name: 'foo' } } // a state
-```
-
-Nothing in the library requires or inspects `data` — it is an ordinary field, and any
-other name works. It is the recommended shape whenever a tag would collide or a payload
-is not an object, and it is worth reaching for deliberately: a state or input that
-carries its own `name`/`type` field is ordinary enough that meeting the collision by
-accident is the thing to avoid.
-
-_Why, what was measured, and the rejected alternatives:_
-[rationale §16](api-rationale.md#16-the-composition-boundary) and
-[§17](api-rationale.md#17-the-shape-of-a-named-thing).
-
----
-
 ## Designed, not in v1
 
 Two directions v1 leaves room for, argued in the rationale and neither built. Sketches
@@ -694,8 +678,8 @@ _Full argument: [rationale §9](api-rationale.md#9-actions)._
 ### `emit` — a declared output channel
 
 A machine may declare what it announces, separately from what it _is_. `outputs` names
-the vocabulary, `emit` reaches actions the way `send` does, and the freed `.on`
-subscribes by output name:
+the vocabulary, `emit` reaches actions the way `send` does, and a second subscription —
+spelled `.on` below — subscribes by output name:
 
 ```ts
 outputs: type<{ type: 'opened'; center: Point } | { type: 'ended' }>(),
