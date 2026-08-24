@@ -31,8 +31,8 @@ head?
 - [Install](#install)
 - [Example](#example)
 - [The surface](#the-surface)
-- [`initial`: where a host starts](#initial-where-a-host-starts)
 - [`inputs` and `states`: the vocabulary](#inputs-and-states-the-vocabulary)
+- [`initial`: where a host starts](#initial-where-a-host-starts)
 - [`transitions`: the table](#transitions-the-table)
   - [The key language](#the-key-language)
   - [The handler decides and projects](#the-handler-decides-and-projects)
@@ -120,23 +120,6 @@ Everything the package exports:
 | `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>` | derived types, over `M = typeof publication`                      |
 | `Skip`                                                      | what `skip()` returns — it appears in every handler's return type |
 
-## `initial`: where a host starts
-
-`initial` names the state a new host begins in, and it has to be one of the
-declared states: anything else is a compile error on the `initial` line.
-
-That state alone decides whether `.start()` takes an argument. `empty` above
-carries no payload, so `publication.start()` takes none; an initial state that
-does carry data makes its payload a required argument, as in
-`counter.start({ count: 0 })`.
-
-Nothing announces the state a host starts in. Listeners are attached to the host
-`.start()` hands back, so the first thing they can see is the first transition.
-If the initial state has
-[immediate rows](#immediate-transitions-an-edge-with-no-input) they run before
-the host comes back, and `.start()`'s argument still follows the declared
-initial state rather than wherever that chain lands.
-
 ## `inputs` and `states`: the vocabulary
 
 ```ts
@@ -174,6 +157,23 @@ a payload is not an object.
 
 Both keys are optional. Omitting them reads the names off `transitions` and
 gives you the [untyped path](#the-untyped-path).
+
+## `initial`: where a host starts
+
+`initial` names the state a new host begins in, and it has to be one of the
+declared states: anything else is a compile error on the `initial` line.
+
+That state alone decides whether `.start()` takes an argument. `empty` above
+carries no payload, so `publication.start()` takes none; an initial state that
+does carry data makes its payload a required argument, as in
+`counter.start({ count: 0 })`.
+
+Nothing announces the state a host starts in. Listeners are attached to the host
+`.start()` hands back, so the first thing they can see is the first transition.
+If the initial state has
+[immediate rows](#immediate-transitions-an-edge-with-no-input) they run before
+the host comes back, and `.start()`'s argument still follows the declared
+initial state rather than wherever that chain lands.
 
 ## `transitions`: the table
 
