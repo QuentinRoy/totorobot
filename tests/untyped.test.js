@@ -73,12 +73,16 @@ describe('the untyped path', () => {
 	})
 
 	describe('immediate transitions', () => {
-		test('an immediate row fires on entry with no vocabulary declared', () => {
+		test('an immediate row fires on entry with no vocabulary declared, and its handler receives input as undefined', () => {
+			let receivedInput = 'unset'
 			const untyped = machine({
 				initial: 'draft',
 				transitions: {
 					'draft -submit> checking': () => ({ via: 'submit' }),
-					'checking -> settled': () => ({ via: 'immediate' }),
+					'checking -> settled': ({ input }) => {
+						receivedInput = input
+						return { via: 'immediate' }
+					},
 				},
 			})
 
@@ -89,6 +93,7 @@ describe('the untyped path', () => {
 				name: 'settled',
 				via: 'immediate',
 			})
+			expect(receivedInput).toBeUndefined()
 		})
 	})
 
