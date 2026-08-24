@@ -1,8 +1,18 @@
 {
 	"name": "totorobot",
-	"version": "0.0.1",
-	"private": true,
+	"version": "1.0.0",
 	"description": "Experimental type-safe finite state machines with per-state context",
+	"license": "BlueOak-1.0.0",
+	"author": "Quentin Roy <quentin@quentinroy.fr>",
+	"keywords": [
+		"finite-state-machine",
+		"fsm",
+		"state-machine",
+		"typescript",
+		"type-safe",
+		"state",
+		"statechart"
+	],
 	"type": "module",
 	"exports": {
 		".": {
