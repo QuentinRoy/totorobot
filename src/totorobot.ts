@@ -871,6 +871,9 @@ export function machine(definition: any): any {
 			const settle = (): void => {
 				let hops = 0
 				while (step(immediates[current.name])) {
+					// Sized far above any real chain rather than tightly: `'a -> a'` is
+					// legal, and a handler that rewrites its own data until it declines
+					// is a terminating loop this must not cut short.
 					if (hops++ >= 1e5) {
 						throw new RangeError(
 							`maximum transitions reached in '${current.name}'`,

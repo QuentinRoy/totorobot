@@ -904,10 +904,7 @@ input edges out of that state (`'loading.ok -cancel> empty'`) become meaningful.
   catches the bug, it does not make the big step provably terminate, and nothing
   here should be read as a solution to the thing F6 names. It is mitigation, spent
   once, knowingly, because composition needs the same mechanism (§10) and paying
-  for it twice was never on the table. The budget is set high for a reason:
-  `'a -> a'` is legal, and a handler that rewrites its own data until it declines
-  is a _terminating_ loop, which the budget must not cut short. See
-  [§12](#12-the-host) for the mechanism.
+  for it twice was never on the table. See [§12](#12-the-host) for the mechanism.
 - **Run-to-completion stopped being avoidable, as expected.** One `send` can now
   cause a chain, so Big-Step Maximality resolved to chaining and Order of Small
   Steps resolved to FIFO (§12), on top of the queue v1 already had.
