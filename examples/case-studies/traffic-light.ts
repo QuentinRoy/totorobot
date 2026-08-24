@@ -16,9 +16,9 @@ type States =
 	| { name: 'yellow'; changes: number; blinking: boolean }
 
 export const trafficLight = machine({
-	initial: 'red',
 	inputs: type<Inputs>(),
 	states: type<States>(),
+	initial: 'red',
 
 	transitions: {
 		'red -next> green': ({ state }) => ({ changes: state.changes + 1 }),

@@ -69,8 +69,6 @@ ESM, ships its own type declarations, and wants Node 26 or newer.
 import { machine, type } from 'totorobot'
 
 export const publication = machine({
-	initial: 'empty',
-
 	inputs: type<
 		| { type: 'open'; text: string }
 		| { type: 'revise'; text: string }
@@ -85,6 +83,8 @@ export const publication = machine({
 		| { name: 'review'; text: string; revision: number; reviewer: string }
 		| { name: 'published'; text: string; revision: number }
 	>(),
+
+	initial: 'empty',
 
 	transitions: {
 		'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
@@ -115,7 +115,7 @@ Everything the package exports:
 
 | export                                                      | is                                                                |
 | ----------------------------------------------------------- | ----------------------------------------------------------------- |
-| `machine({ initial, inputs?, states?, transitions })`       | a definition: inert data, never mutated                           |
+| `machine({ inputs?, states?, initial, transitions })`       | a definition: inert data, never mutated                           |
 | `type<T>()`                                                 | a declaration carrying `T`; returns `undefined` at runtime        |
 | `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>` | derived types, over `M = typeof publication`                      |
 | `Skip`                                                      | what `skip()` returns — it appears in every handler's return type |
