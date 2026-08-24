@@ -28,7 +28,7 @@ describe('construction', () => {
 
 	test('type<T>() carries no runtime value and returns undefined', () => {
 		// `undefined` rather than `null` or a marker object is what a caller
-		// observes — docs/api.md is explicit about which of the three it is.
+		// observes — the README is explicit about which of the three it is.
 		expect(type<{ type: 'increment' }>()).toBeUndefined()
 		expect(type<{ name: 'ready'; count: number }>()).toBeUndefined()
 	})

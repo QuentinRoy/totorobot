@@ -15,13 +15,13 @@
  *     doc.observe('* -> published', (e) => notify(e.to))
  *     doc.send({ type: 'open', text: 'hello' })
  *
- * The API is specified in `docs/api.md` and argued in `docs/api-rationale.md`.
+ * The API is specified in `README.md` and argued in `docs/api-rationale.md`.
  * This module is the whole library: one definition builder, one host, and no
  * dependencies.
  *
  * ## On what is exported
  *
- * An exported type is a promise, so the list is the one `docs/api.md` publishes
+ * An exported type is a promise, so the list is the one `README.md` publishes
  * and nothing more: `machine`, `type`, the derived `InputsOf`, `StatesOf`,
  * `Handled` and `Sources`, and `Skip`, which is unavoidably public because it
  * is in every handler's return type.
@@ -34,7 +34,7 @@
  * what it came from — `typeof publication`,
  * `ReturnType<typeof publication.start>` — rather than through a type whose
  * parameter list would then be frozen. Adding an `export` here widens the API;
- * do it deliberately, and say so in `docs/api.md`.
+ * do it deliberately, and say so in `README.md`.
  *
  * ## On size
  *
@@ -620,7 +620,7 @@ export const type = <T>(): T | undefined => undefined
 /**
  * One queue and one draining flag for every host, not one per host. Two
  * machines wired to each other are how peer composition works today, before
- * any composition feature exists, and commit ordering's rule 4 — `docs/api.md`
+ * any composition feature exists, and commit ordering's rule 4 — `README.md`
  * — has to hold across that wiring the same way it holds within one host —
  * see `docs/api-rationale.md`, "Module scope, not per host".
  *
@@ -871,6 +871,9 @@ export function machine(definition: any): any {
 			const settle = (): void => {
 				let hops = 0
 				while (step(immediates[current.name])) {
+					// Sized far above any real chain rather than tightly: `'a -> a'` is
+					// legal, and a handler that rewrites its own data until it declines
+					// is a terminating loop this must not cut short.
 					if (hops++ >= 1e5) {
 						throw new RangeError(
 							`maximum transitions reached in '${current.name}'`,

@@ -18,7 +18,7 @@
 import { assertType, type Equal } from './config-object-kit.ts'
 
 // ---------------------------------------------------------------------------
-// The fixture: the publication machine of api.md, restated in the §17 shape.
+// The fixture: the publication machine of the README, restated in the §17 shape.
 // ---------------------------------------------------------------------------
 
 type Inputs =

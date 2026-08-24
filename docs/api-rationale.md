@@ -1,10 +1,10 @@
 # Design record
 
-> The design itself is in [api.md](api.md). This document is the evidence behind
-> it: what was considered, what was rejected, and why. It is organised by
-> question, not by the order the questions were asked — where a position was
-> reversed, only the surviving argument and the reason the other one failed are
-> kept.
+> The design itself is in [the README](../README.md). This document is the
+> evidence behind it: what was considered, what was rejected, and why. It is
+> organised by question, not by the order the questions were asked — where a
+> position was reversed, only the surviving argument and the reason the other one
+> failed are kept.
 >
 > Prior-art research is separate and still current: [`research/`](research/) —
 > ten notes on automata theory, execution semantics, HCI state machines,

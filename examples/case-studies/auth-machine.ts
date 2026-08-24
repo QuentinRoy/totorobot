@@ -28,9 +28,9 @@ type States =
 	| { name: 'authenticated'; username: string; token: string }
 
 export const authMachine = machine({
-	initial: 'idle',
 	inputs: type<Inputs>(),
 	states: type<States>(),
+	initial: 'idle',
 
 	transitions: {
 		// A blank username is not an attempt: the row declines, so nothing

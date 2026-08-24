@@ -5,10 +5,10 @@
  *
  * The case is specified in terms of effects — "reports start", "schedules
  * dwell", "cancels token", "opens a menu" — but v1 owns no effects; `actions`
- * is deferred (docs/api.md, "Designed, not in v1"). Every effect below is
- * therefore re-expressed as a caller-side `.observe()` listener, which is v1's
- * documented answer: "the caller writes a function". This shape is a
- * deferral decided in the design, not a limitation discovered here.
+ * is deferred (docs/roadmap.md). Every effect below is therefore re-expressed
+ * as a caller-side `.observe()` listener, which is v1's documented answer:
+ * "the caller writes a function". This shape is a deferral decided in the
+ * design, not a limitation discovered here.
  *
  * Distance calculation, stroke append and the menu itself are ordinary
  * domain helpers, per the spec, rather than library features.

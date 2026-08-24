@@ -8,7 +8,7 @@
  *
  * A bare state name is residency. The listener runs on every arrival, its
  * returned teardown runs on every departure, and a self-transition tears down
- * before it sets up — the `docs/api.md:347` recipe, promoted into `.on`.
+ * before it sets up — the residency recipe of `README.md`, promoted into `.on`.
  * Arrow-bearing keys keep meaning transitions, unchanged.
  *
  * Everything a peer needs is here and nothing is declared for it: effects and
