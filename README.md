@@ -98,6 +98,7 @@ the states where the field would be meaningless.
   - [Observing](#observing)
   - [Residency](#residency)
   - [Commit ordering](#commit-ordering)
+- [A worked example](#a-worked-example)
 - [What the types check](#what-the-types-check)
 - [Guarantees and absences](#guarantees-and-absences)
 - [The untyped path](#the-untyped-path)
@@ -280,25 +281,15 @@ record carries `input: undefined` too, which is the discriminant that tells an
 immediate apart from a payload-free input, whose record carries its tag.
 
 **A chain that never settles throws.** After 1e5 consecutive hops the machine
-raises `RangeError`, `maximum transitions reached in '<state>'`, naming a state
-inside the cycle. There is no rollback: listeners have already seen every hop
-that committed, and the host stays usable afterwards.
+raises `RangeError`, naming a state inside the cycle. There is no rollback:
+listeners keep every hop that committed, and the host stays usable.
 
 **`.start()` settles the initial state's immediates too**, chain and all, before
-the host is handed back. "On entering" includes the first entering. If every
-candidate skips, the host comes back in the declared initial state. Two things
-follow when the chain does move it:
-
-- **The settling hops are unobservable.** Nobody has subscribed yet, so only the
-  state the chain lands in is visible. If you need to observe an arrival, do not
-  make it the initial state.
-- **`.start()` can throw.** A cycle among the initial state's immediates raises
-  the same `RangeError` from `.start()` rather than from `send`.
-
-What does not change is `.start()`'s argument, which follows the **declared**
-initial state's payload rather than the settled one's. An initial state declared
-with no payload still takes no argument even when settling carries it into a
-state that has data.
+the host is handed back, so those hops are unobservable: nobody has subscribed
+yet. If you need to observe an arrival, do not make it the initial state. The
+argument still follows the **declared** initial state's payload rather than the
+settled one's, and a cycle among those rows throws from `.start()` instead of
+from `send` ([rationale §7](docs/api-rationale.md#what-it-forces-open)).
 
 ### What the table gives you for free
 
@@ -431,7 +422,7 @@ and `tests/helpers.ts` carries it as working code.
 
 ### Commit ordering
 
-Five rules, and they are the whole execution model:
+Three rules cover everything a listener sees:
 
 1. **One input yields at most one chain.** The input causes at most one
    transition, but arriving somewhere with immediate rows continues on hop after
@@ -442,29 +433,94 @@ Five rules, and they are the whole execution model:
    snapshotted before the dispatch, so one unsubscribed by an earlier listener
    still runs for the current transition, and one registered during a dispatch
    does not.
-4. **A send from inside a dispatch is queued, unconditionally, across every
-   host.** The queue and its draining flag are shared by every machine in the
-   process, so this holds whether the listener sends to its own host or to
-   another one. It drains before the outermost `send` returns, first in first
-   out, never on a microtask and never nested. Three things follow: a listener is
-   never re-entered while an earlier call is still running; the listeners after
-   it are never told about a transition their machine has already left; and a
-   queued send waits for the whole chain to settle rather than landing mid-hop.
-   Each queued send is evaluated against the state at drain time, so one may find
-   no row and do nothing.
-5. **`send` returns nothing**, including when it was queued.
 
-**A throwing listener ends the drain, wherever it sits.** The error unwinds out
-of the outermost `send`, the one that started the chain, which is not necessarily
-the one on the host whose listener threw. Everything still queued at that moment
-is discarded across every host in the chain; leaving it in place would let an
-unrelated later send pick it up at an arbitrary time. The listeners after the
-throwing one do not run, the transition stays committed, and every host works
-normally afterwards. A runaway immediate chain's `RangeError` behaves
-identically.
+Re-entrancy is two more. **A send from inside a dispatch is queued**, across
+every host in the process, and the queue drains first in first out before the
+outermost `send` returns, never on a microtask and never nested. **`send` returns
+nothing**, including when it was queued. So a listener is never re-entered, and a
+queued send waits for the whole chain to settle rather than landing mid-hop,
+where it is evaluated against the state at drain time and may find no row.
 
-**There is no `stop()`.** Disposal is unsubscribing your listeners and not
-sending any more; the host holds nothing else.
+A throwing listener ends the drain and discards what was queued, but the
+transition stays committed and every host works normally afterwards. There is no
+`stop()`: disposal is unsubscribing your listeners and not sending any more, and
+the host holds nothing else. The argument for all of it, the cross-host case
+included, is [rationale §12](docs/api-rationale.md#queue-not-stack).
+
+## A worked example
+
+A search box, where a slow response must not overwrite a newer one. Each run
+takes the next id, and a result carrying a stale one declines:
+
+```ts
+import { machine, type } from 'totorobot'
+
+declare const api: { search(query: string): Promise<string[]> }
+
+const search = machine({
+	inputs: type<
+		| { type: 'run'; query: string }
+		| { type: 'resolved'; id: number; hits: string[] }
+		| { type: 'rejected'; id: number; reason: string }
+		| { type: 'clear' }
+	>(),
+
+	states: type<
+		| { name: 'idle'; nextId: number }
+		| { name: 'running'; id: number; query: string; nextId: number }
+		| { name: 'done'; hits: string[]; nextId: number }
+		| { name: 'failed'; reason: string; nextId: number }
+	>(),
+
+	initial: 'idle',
+
+	transitions: {
+		'idle -run> running': ({ state, input }) => ({
+			id: state.nextId,
+			query: input.query,
+			nextId: state.nextId + 1,
+		}),
+		'running -resolved> done': ({ state, input, skip }) =>
+			input.id === state.id
+				? { hits: input.hits, nextId: state.nextId }
+				: skip(),
+		'running -rejected> failed': ({ state, input, skip }) =>
+			input.id === state.id
+				? { reason: input.reason, nextId: state.nextId }
+				: skip(),
+		'done -clear> idle': ({ state }) => ({ nextId: state.nextId }),
+		'failed -clear> idle': ({ state }) => ({ nextId: state.nextId }),
+	},
+})
+
+const box = search.start({ nextId: 0 })
+box.observe('* -> failed', (e) => console.error(e.to.reason))
+
+async function run(query: string) {
+	box.send({ type: 'run', query })
+	const started = box.current
+	if (started.name !== 'running') return
+	try {
+		box.send({
+			type: 'resolved',
+			id: started.id,
+			hits: await api.search(query),
+		})
+	} catch (err) {
+		box.send({ type: 'rejected', id: started.id, reason: String(err) })
+	}
+}
+```
+
+Four things are doing work here. `started` is narrowed to `running`, so
+`started.id` exists to close over; the same read on `idle` would not compile.
+Awaiting after that read is safe because a value read from `current` never
+changes underneath you. The two `skip()` rows are the whole staleness policy, so
+an overtaken response finds no row and does nothing. And `e.to.reason` is
+readable in the listener only because the pattern pins the target to `failed`.
+
+Nothing here schedules or cancels the request. The machine records which one it
+is waiting for; starting and abandoning the work stays the caller's.
 
 ## What the types check
 
