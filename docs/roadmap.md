@@ -54,8 +54,8 @@ _Argued in: [rationale §16](api-rationale.md#16-the-composition-boundary)._
 ## Residency — a recipe today, maybe declared later
 
 Scoping setup and teardown to "while resident in a state" already works as a
-[caller-side recipe](api.md#residency-is-a-recipe-not-a-feature) over two `observe`
-patterns; the bare key in the key language is reserved for it. If `actions` lands, the
+[caller-side recipe](../README.md#residency) over two `observe` patterns; the
+bare key in the key language is reserved for it. If `actions` lands, the
 same scoping could be declared directly instead of assembled by hand — the
 `// residency` comment on `loading`, above, is what that would look like.
 

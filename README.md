@@ -1,17 +1,33 @@
 # Totorobot
 
-> [!WARNING]
-> Totorobot is an experimental work in progress. It is not published to npm,
-> its API may change without notice, and it should not be used in production.
+Totorobot is a small TypeScript finite-state-machine library. A machine is a
+declared vocabulary of inputs and states over a flat transition table whose keys
+carry all four coordinates of an edge on one line:
 
-Totorobot is a small TypeScript finite-state-machine library built around a
-declared vocabulary and a flat, string-keyed transition table with the input
-as an arrow label. Definitions are inert data; a host created by `.start()` is
-the only mutable object, and listeners are attached by whoever runs the
+```
+from -input> to
+```
+
+A definition is inert data. `.start()` returns a host, the only mutable object
+in the design, and listeners are attached to that host by whoever runs the
 machine.
 
 The project asks a specific question: how much state-machine correctness can
 TypeScript enforce while keeping a compact, Robot-inspired creation API?
+
+> [!WARNING]
+> **Status.** Totorobot is an experimental design prototype at version 0.0.1.
+> It is not on npm yet, so the install below is what the first publish will
+> support. The API may change without notice, there is no stability guarantee
+> or compatibility promise, and it is not ready for production.
+
+## Install
+
+```bash
+npm install totorobot
+```
+
+The package is ESM and ships its own type declarations. Node 26 or newer.
 
 ## Example
 
@@ -21,8 +37,10 @@ import { machine, type } from 'totorobot'
 type Inputs =
 	| { type: 'open'; text: string }
 	| { type: 'revise'; text: string }
-	| { type: 'submit'; route: 'review' | 'publish'; reviewer?: string }
+	| { type: 'submit'; reviewer: string }
+	| { type: 'publish' }
 	| { type: 'cancel' }
+
 type States =
 	| { name: 'empty' }
 	| { name: 'draft'; text: string; revision: number }
@@ -36,12 +54,14 @@ export const publication = machine({
 
 	transitions: {
 		'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
-		'draft -submit> review': ({ state, input, skip }) =>
-			input.route === 'review'
-				? { ...state, reviewer: input.reviewer! }
-				: skip(),
-		'draft -submit> published': ({ state, input, skip }) =>
-			input.route === 'publish' ? { ...state } : skip(),
+		'draft -submit> review': ({ state, input }) => ({
+			...state,
+			reviewer: input.reviewer,
+		}),
+		'review -publish> published': ({ state }) => ({
+			text: state.text,
+			revision: state.revision,
+		}),
 		'draft -cancel> empty': () => {},
 	},
 })
@@ -51,82 +71,481 @@ doc.observe('* -> published', (e) => notify(e.to))
 doc.send({ type: 'open', text: 'hello' })
 ```
 
-| part          | answers                               |
-| ------------- | ------------------------------------- |
-| `initial`     | where a new host starts               |
-| `inputs`      | what can happen                       |
-| `states`      | what we can be                        |
-| `transitions` | how we move, and what the new data is |
-| `observe()`   | what the outside world does about it  |
+`review` carries a `reviewer` that `draft` does not have and `published` sheds
+again. Narrowing the state narrows its data, so there is no nullable padding on
+the states where the field would be meaningless.
 
-Read [the API](docs/api.md) for the full design, and
-[the design record](docs/api-rationale.md) for why it looks this way.
+## The four keys
 
-## What is checked
+`machine()` takes one configuration object:
+
+| key           | answers                                          |
+| ------------- | ------------------------------------------------ |
+| `initial`     | where a new host starts                          |
+| `inputs`      | what can happen                                  |
+| `states`      | what we can be                                   |
+| `transitions` | how we move, and what data the new state carries |
+
+And this is everything the package exports:
+
+| export                                                      | is                                                                |
+| ----------------------------------------------------------- | ----------------------------------------------------------------- |
+| `machine({ initial, inputs?, states?, transitions })`       | a definition: inert data, never mutated                           |
+| `type<T>()`                                                 | a declaration carrying `T`; returns `undefined` at runtime        |
+| `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>` | derived types, over `M = typeof publication`                      |
+| `Skip`                                                      | what `skip()` returns — it appears in every handler's return type |
+
+## `inputs` and `states`: the vocabulary
+
+```ts
+inputs: type<{ type: 'submit'; reviewer: string } | { type: 'cancel' }>(),
+states: type<{ name: 'empty' } | { name: 'draft'; text: string; revision: number }>(),
+```
+
+Both are declared tagged unions. `inputs` is discriminated by `type` and
+`states` by `name`. There is no `void` sentinel on either side: a payload-free
+member is a union member carrying nothing but its tag, such as
+`{ type: 'cancel' }` and `{ name: 'empty' }`.
+
+`type<T>()` exists only to carry `T`. It returns `undefined`, nothing reads it,
+and passing the return value explicitly is the same as omitting the field.
+
+**Name the unions.** Writing `type<Inputs>()` rather than `type<{ … }>()` keeps
+hover text and error messages from inlining the whole literal. Each is an
+ordinary type, so it can be exported, imported, generated, made generic, or
+built with `Omit`/`&`/`|`. Extraction goes through the named helpers:
+`InputsOf<typeof publication>`, `StatesOf<typeof publication>`.
+
+**`data` is a convention rather than a rule**, on both halves of the vocabulary.
+A payload that is not a record, or that wants a field called `type` or `name`,
+nests it:
+
+```ts
+{ type: 'tick', data: 5 } // an input
+{ name: 'editing', data: { name: 'foo' } } // a state
+```
+
+Nothing in the library requires or inspects `data`; it is an ordinary field and
+any other name works. Reach for it deliberately whenever a tag would collide or
+a payload is not an object.
+
+Both keys are optional. Omitting them reads the names off `transitions` and
+gives you the [untyped path](#the-untyped-path).
+
+## `transitions`: the table
+
+One row per edge, with all four coordinates at fixed positions no formatter can
+move.
+
+### The key language
+
+```
+from -input> to
+```
+
+The input is the arrow's label, and three rules govern the spelling:
+
+- **Whitespace is load-bearing.** Exactly one space before the `-`, one after
+  the `>`. Any other spelling is a compile error, which also puts the source at
+  column 1 on every row.
+- **An edge always contains an arrow, so a key with no arrow names a state.**
+  Bare keys are reserved for [residency](#residency) and rejected both in
+  `transitions` and in `observe()` patterns. The two halves of the grammar are
+  therefore decidable from the string alone.
+- **An arrow with no label is an
+  [immediate transition](#immediate-transitions-an-edge-with-no-input)**:
+  `'checking -> allowed'`. The edge has no input at all, which differs from a
+  pattern's unlabelled arrow, where the same absence means the input is
+  unconstrained.
+
+A malformed key is reported as `not a transition: '…'` on its own line at
+compile time. **The grammar is enforced at runtime too**: `machine()` throws
+`SyntaxError` for a malformed key and `observe()` throws the same way for a
+malformed pattern, naming the offending string. That is what catches a typo in
+plain JavaScript, where nothing else checks the shape of what was written.
+
+### The handler decides and projects
+
+A handler receives the source state whole, tag included, under `state`, plus the
+input, and returns the target state's payload with its tag left off. The library
+adds the tag back:
+
+```ts
+'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
+```
+
+Carrying the tag lets one handler shared across several rows tell which state it
+is leaving: `state.name` narrows `state` the same way narrowing `current` does.
+It also makes spreading the source into a target payload safe. The library
+spreads the target's tag in last, so a source tag carried along by the spread
+can never survive onto the committed state.
+
+### Declining, and row precedence
+
+`skip()` declines the row, and the next row declared for the same source and
+input is tried. **Declaration order is priority order.** That is how one input
+reaches two states:
+
+```ts
+'draft -submit> review': ({ state, input, skip }) =>
+	input.reviewer ? { ...state, reviewer: input.reviewer } : skip(),
+'draft -submit> published': ({ state }) => ({
+	text: state.text,
+	revision: state.revision,
+}),
+```
+
+A submission naming a reviewer goes to `review`; one that names nobody skips that
+row and publishes directly.
+
+If every candidate skips, the machine declines the input: nothing changes and no
+listener fires. So does an input the current state has no row for. Both are
+normal outcomes rather than faults, they are indistinguishable, and nothing
+reports either one.
+
+A row that always declines under some condition is an ordinary way to express
+"this input does not apply right now":
+
+```ts
+'draft -revise> draft': ({ state, input, skip }) =>
+	input.text === state.text
+		? skip()
+		: { text: input.text, revision: state.revision + 1 },
+```
+
+That row is also a **self-transition**, a row whose target is its source. It
+commits and notifies like any other row.
+
+### Immediate transitions: an edge with no input
+
+A row whose arrow carries no label fires on **entering** its source state, tried
+in declaration order alongside every other immediate row declared for that
+state:
+
+```ts
+'draft -submit> checking': ({ input }) => ({ quota: input.quota }),
+'checking -> allowed': ({ state, skip }) =>
+	state.quota > 0 ? { quota: state.quota } : skip(),
+'checking -> denied': ({ state }) => ({ quota: state.quota }),
+```
+
+Sending `submit` from `draft` lands in `checking`, which immediately tries its
+own rows and continues on to `allowed` or `denied` without anyone sending
+anything. `skip()` falls through to the next candidate exactly as it does on an
+input-driven row, so a guarded choice needs no `cond` and no junction
+pseudostate. If every candidate skips the machine stays in `checking` and
+`checking`'s input rows stay live, which covers "the condition is not met yet".
+
+**Chains settle before anything else runs.** Landing somewhere that itself has
+immediate rows continues the chain hop after hop, each one committing and
+notifying before the next is tried, until the machine stops moving on its own.
+Only then is the next queued input taken; see
+[commit ordering](#commit-ordering).
+
+**The handler receives no input.** `input` is `undefined`, typed that way rather
+than absent, so reading it is as ordinary as on any other row. The transition
+record carries `input: undefined` too, which is the discriminant that tells an
+immediate apart from a payload-free input, whose record carries its tag.
+
+**A chain that never settles throws.** After 1e5 consecutive hops the machine
+raises `RangeError` — `maximum transitions reached in '<state>'` — naming a
+state inside the cycle. There is no rollback: listeners have already seen every
+hop that committed, and the host stays usable afterwards. The budget is high on
+purpose, because `'a -> a'` is legal and a handler that rewrites its own data
+until it declines is a terminating loop the budget must not interrupt.
+
+**`.start()` settles the initial state's immediates too**, chain and all, before
+the host is handed back. "On entering" includes the first entering. If every
+candidate skips, the host comes back in the declared initial state. Two things
+follow when the chain does move it:
+
+- **The settling hops are unobservable.** Nobody has subscribed yet, so only the
+  state the chain lands in is visible. If you need to observe an arrival, do not
+  make it the initial state.
+- **`.start()` can throw.** A cycle among the initial state's immediates raises
+  the same `RangeError` from `.start()` rather than from `send`.
+
+What does not change is `.start()`'s argument, which follows the **declared**
+initial state's payload rather than the settled one's. An initial state declared
+with no payload still takes no argument even when settling carries it into a
+state that has data.
+
+### What the table gives you for free
+
+The table is one flat block of string keys, so all three topology questions are
+an exact text search, and the reverse index is derivable:
+
+| question                          | search     | derived type           |
+| --------------------------------- | ---------- | ---------------------- |
+| what can I do in `draft`?         | `'draft -` | `Handled<M, 'draft'>`  |
+| where can I `submit`?             | `-submit>` | —                      |
+| how does anything reach `review`? | `> review` | `Sources<M, 'review'>` |
+
+## The host
+
+`definition.start(data)` returns the stateful thing that owns the current state
+and dispatches to listeners. One host per independent use: two hosts over one
+definition share no state and no listeners, and neither mutates the definition.
+
+| member                            | is                                                                  |
+| --------------------------------- | ------------------------------------------------------------------- |
+| `definition.start(data?)`         | creates a host; `data` follows the declared initial state's payload |
+| `host.current`                    | the current state, tag included                                     |
+| `host.send(input)`                | a dispatch; returns nothing                                         |
+| `host.observe(pattern, listener)` | a subscription; returns an unsubscribe function                     |
+
+```ts
+const doc = publication.start() // `empty` carries no payload, so no argument
+doc.send({ type: 'open', text: 'hello' })
+
+doc.current // { name: 'draft', text: 'hello', revision: 0 }
+```
+
+### Reading
+
+`current` is the state itself, plain data, tag included. **A value read from it
+stays valid and unchanged across later transitions**, which is what makes it
+safe to compare, serialise, or hold in component state. Nothing is frozen:
+immutability is `readonly` in the types plus a promise not to mutate, not a
+runtime guard.
+
+Narrowing `current` on its tag narrows its fields with it, which is the half of
+typestate the project claims:
+
+```ts
+const now = doc.current
+if (now.name === 'draft') {
+	now.revision // number, with no nullable padding
+}
+```
+
+### Sending
+
+`send` takes the input as a single argument, an ordinary tagged object, so a
+payload-free input is `doc.send({ type: 'cancel' })`. It returns nothing; what
+happened is `doc.current`.
+
+**Sending is broad: every declared input is accepted from every state.** One the
+current state does not handle changes nothing. It does not throw, corrupt, or
+half-apply, which is also how a stale asynchronous result lands harmlessly.
+
+**A send issued while a dispatch is in progress is queued**, whether it comes
+from a listener or from a hop `.start()` is settling, and whether it targets the
+dispatching host or an unrelated one. The queue is shared by every machine in
+the process and drains before the outermost `send` returns, synchronously. So a
+send is immediate exactly when no dispatch is in progress anywhere; otherwise it
+takes effect once the dispatch in progress settles, and a machine's `current`
+read right after such a send still shows the state it had before it. See
+[commit ordering](#commit-ordering) rule 4.
+
+**There is no typed send site.** `doc.send({ type: 'publish' })` compiles in
+`draft` and does nothing at runtime. Per-state capabilities are not enforced by
+the compiler. This is a deliberate drop, because the narrow-then-send shape is
+unsound in TypeScript, and a sound variant stays addable later without breaking
+anything ([rationale §11](docs/api-rationale.md#11-sending-inputs)).
+
+### Observing
+
+```ts
+const off = doc.observe('* -> published', (e) => notify(e.to))
+doc.observe('draft -cancel> *', () => track('cancelled'))
+```
+
+Listeners go on the host, never on the definition, which is inert. `observe()`
+returns an unsubscribe function.
+
+**The listener receives the transition record**, `{ input, from, to }`,
+discriminated by `input?.type` or by `if (e.input)`. `e.from` and `e.to` are
+each their end's state, tag included, so narrowing on `e.from.name` or
+`e.to.name` narrows the rest of the fields the way `current` does. An immediate
+transition carries `input: undefined`.
+
+**Patterns are the key language with coordinates left open.** `*` stands for any
+state and an unlabelled arrow means any input, or none:
+
+```ts
+'* -> loading' //     entry: every arrival, including re-entry
+'draft -> *' //       exit:  every departure, however caused
+'draft -submit> *' // narrower: departures caused by `submit`
+'* -submit> *' //     every `submit` edge, wherever it goes
+```
+
+There is no `-*>`. `*` appears only in state positions, so the input coordinate
+is either a name or absent. The unlabelled form is the broad one: it matches
+input-driven edges **and**
+[immediate transitions](#immediate-transitions-an-edge-with-no-input), which
+have no input at all. A labelled pattern never matches an immediate. A bare key
+is not legal here either, for the reason the [key language](#the-key-language)
+gives.
+
+### Residency
+
+Scoping something to "while we are in `draft`", with a teardown, is derivable
+today from two patterns and needs nothing the host does not already provide.
+Observe `'draft -> *'` to tear down and `'* -> draft'` to set up, registering
+the exit listener **first** so that a self-transition tears down before it sets
+up again, and run the setup once at registration if the host is already in the
+state, since nothing will announce a state you are already in. A self-transition
+matches both patterns, so restart-on-re-entry falls out for free, and the
+policy variants come along too: `persistent` is `if (e.to.name !== e.from.name)`
+in the exit handler, and `keyed` compares a key computed from each end.
+
+Declaring it in the definition instead of assembling it by hand is
+[a roadmap direction](docs/roadmap.md#residency--a-recipe-today-maybe-declared-later).
+The full recipe, with the argument for leaving it to the caller today, is in
+[rationale §12](docs/api-rationale.md#residency-is-derivable-not-a-host-feature),
+and `tests/helpers.ts` carries it as working code.
+
+### Commit ordering
+
+Five rules, and they are the whole execution model:
+
+1. **One input yields at most one chain.** The input causes at most one
+   transition, but arriving somewhere with immediate rows continues on hop after
+   hop until the machine stops moving on its own.
+2. **Commit, then notify.** A listener always sees a fully committed machine, so
+   `e.to` and `doc.current` agree, for every listener, on every hop.
+3. **Listeners fire in registration order**, on every hop. The listener list is
+   snapshotted before the dispatch, so one unsubscribed by an earlier listener
+   still runs for the current transition, and one registered during a dispatch
+   does not.
+4. **A send from inside a dispatch is queued, unconditionally, across every
+   host.** The queue and its draining flag are shared by every machine in the
+   process, so this holds whether the listener sends to its own host or to a
+   different one, and the queue drains before the outermost `send` returns,
+   never on a microtask and never nested. A listener is therefore never
+   re-entered while an earlier call is still running, the listeners after it are
+   never told about a transition their machine has already left, and a queued
+   send waits for the whole chain to settle rather than landing mid-hop. Queued
+   sends drain first-in-first-out, and each is evaluated against the state at
+   drain time, so one may find no row and do nothing.
+5. **`send` returns nothing**, including when it was queued.
+
+**A throwing listener ends the drain, wherever it sits.** The error unwinds out
+of the `send` that started the chain, which is the outermost call rather than
+necessarily the one on whose host the listener threw. Everything still queued at
+that moment is discarded across every host in that chain, since leaving it in
+place would let an unrelated later send pick it up at an arbitrary time. The
+listeners after the throwing one do not run, the transition stays committed, and
+every host in the chain works normally afterwards. A runaway immediate chain's
+`RangeError` behaves identically.
+
+**There is no `stop()`.** Disposal is unsubscribing your listeners and not
+sending any more; the host holds nothing else.
+
+## What the types check
 
 - **Per-state data.** Narrowing the state narrows its data, with no nullable
   padding in states that logically guarantee a field.
 - Unknown state or input names anywhere in a transition key or a pattern.
-- A handler returning the wrong shape for its target state.
+- **A handler returning the wrong shape for its target state, for every state
+  without exception.** A target with no payload accepts only nothing or `{}`. A
+  fresh literal carrying extra properties, a wider-typed variable, an
+  interface-typed value, and a spread of a wider state are all rejected the way
+  an ordinary target's wrong shape is.
 - Reads of source data the source state does not have.
-- Malformed keys — wrong spacing included — reported as
-  `not a transition: '…'` on the offending line.
+- Malformed keys, wrong spacing included, reported as `not a transition: '…'` on
+  the offending line.
 
-What is **not** checked: the send site. Per-state capabilities are not
-enforced by the compiler.
+Errors land on the bad line, from a single declaration site, and no handler
+needs a type annotation.
 
-## Status and limitations
+**What is not checked is the send site**, as [Sending](#sending) describes.
+Per-state capabilities are not enforced by the compiler.
 
-This repository is a design prototype, not a released library. There is no
-stability guarantee, compatibility promise, or npm release yet.
+## What is claimed, and what is deliberately absent
 
-`actions` is designed but not part of v1 — see
-[Designed, not in v1](docs/api.md#designed-not-in-v1). Composition and further
-effect directions are a prospective plan, not a promise — see
-[the roadmap](docs/roadmap.md). The design is also flat: no hierarchy, no
-parallel regions.
+- **A transition is pure.** Given a state and an input it yields either the next
+  state or a refusal, and it neither performs nor schedules anything.
+- **Big steps terminate**, because one input causes at most one transition.
+- **Stale results are free.** A `loaded` arriving after we left `loading`
+  matches no row and does nothing. That is ignoring a result rather than
+  cancelling work; cancelling is the caller's.
+- **States have no runtime existence.** The definition carries transition keys
+  rather than a list of states, so there is no source for a visualiser or a
+  "valid states are …" message, and a state with no transitions is invisible at
+  runtime.
+- The design is flat, with no hierarchy and no parallel regions. It is an EFSM,
+  so reachability and "this guard can never fire" are out of reach and are not
+  claimed.
+
+The absences below are all deliberate. What to reach for instead, and where the
+argument is:
+
+| absent                      | instead                                                                                                               |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `enter` / `exit`            | patterns with one end pinned ([§9](docs/api-rationale.md#9-actions))                                                  |
+| `keep` / `repeat` / `stay`  | an ordinary self-transition row ([§6](docs/api-rationale.md#6-self-transitions))                                      |
+| `else`                      | declining is a normal outcome, and silent ([§4](docs/api-rationale.md#two-decisions-that-fell-out-of-the-comparison)) |
+| a `send` return value       | `current` ([§12](docs/api-rationale.md#send-returns-nothing))                                                         |
+| `stop()`                    | unsubscribe, and stop sending ([§12](docs/api-rationale.md#no-disposal-and-a-listener-that-throws))                   |
+| typed `send`                | nothing at runtime either; recorded but unbuilt ([§11](docs/api-rationale.md#if-it-comes-back-it-comes-back-as-s12))  |
+| hierarchy, parallel regions | out of scope ([§10](docs/api-rationale.md#what-the-rest-of-the-record-forbids))                                       |
+
+## The untyped path
+
+`inputs` and `states` are both optional, so a JavaScript caller writes
+`machine({ initial, transitions })` and gets a working machine:
+
+```js
+const toggle = machine({
+	initial: 'off',
+	transitions: {
+		'off -flip> on': () => {},
+		'on -flip> off': () => {},
+	},
+})
+```
+
+Omitting a vocabulary infers **names** from `transitions`, not data. The state
+and input names become exactly the ones the table mentions rather than widening
+to `string`, while each inferred member's fields beyond its tag read as
+`unknown` and accept anything written back, since nothing declares them.
+Declaring one vocabulary and omitting the other checks that half and reads the
+other's names off the table.
+
+**The key grammar is enforced either way**, and a malformed key still lands on
+its own row. What an omitted vocabulary will not infer is a name a key cannot
+round-trip: `*` is already how a pattern spells "any state", and a leading or
+trailing space is the grammar's own delimiter, so `'a -x>  b'` would quietly
+mint a state no other key can spell the same way twice. A row that mints one is
+rejected the way a malformed key is. A **declared** vocabulary is untouched by
+this, since declaring an odd name by hand is deliberate in a way a doubled space
+never is.
+
+## Beyond v1
+
+`actions`, a declared `emit` channel, residency as a declared feature, and
+horizontal composition are sketched in [the roadmap](docs/roadmap.md), and none
+of it is promised.
 
 ## Documentation
 
-- [The API](docs/api.md) — the design: the blocks, the key language, what is
-  checked, what is deliberately absent, and what is deferred past v1.
-- [Roadmap](docs/roadmap.md) — the prospective plan past v1: effects, a
-  declared output channel, residency, and composition, none of it promised.
-- [Design record](docs/api-rationale.md) — the decision ledger, what was
-  considered and rejected and on what evidence, and the reusable TypeScript
+- [Roadmap](docs/roadmap.md) — the prospective plan past v1: effects, a declared
+  output channel, residency, and composition.
+- [Design record](docs/api-rationale.md) — the decision ledger: what was
+  considered and rejected, on what evidence, plus the reusable TypeScript
   findings.
-- [FSM library requirements](docs/requirements.md) prioritizes the target
-  behavior, type guarantees, design latitude, and non-goals.
-- [FSM API acceptance cases](docs/acceptance-cases.md) defines the pinned
-  Marking Menu fixture and shared comparison tasks for coherent candidates.
 - [Research notes](docs/research/) — ten prior-art notes on automata theory,
   execution semantics, HCI state machines, typestate, TypeScript type
   engineering, and the JS FSM landscape.
-- [Explorations](explorations/README.md) holds the compilable prototypes behind
-  the findings, including one built over Robot3 itself. They are type-checked
-  and the Robot3 one is tested, so a rejected option that starts working again
-  fails the build rather than going unnoticed.
+- [Explorations](explorations/README.md) — the compilable prototypes behind the
+  findings, including one built over Robot3 itself. They are type-checked, and
+  the Robot3 one is tested, so a rejected option that starts working again fails
+  the build rather than going unnoticed.
 
-## Repository layout
+Background, from the round that preceded v1:
 
-- `src/totorobot.ts` — the library implementation and public API.
-- `examples/case-studies/` — traffic-light and asynchronous-auth examples.
-- `examples/index.ts` — runs both case studies.
-- `tests/` — the v1 test suite: runtime tests (`*.test.ts`), type tests
-  (`*.test-d.ts`) and the plain-JavaScript untyped path (`untyped.test.js`).
-- `docs/api.md` — the shipped design.
-- `docs/api-rationale.md` — the evidence behind that design.
-- `docs/roadmap.md` — the prospective plan past v1, not promised.
-- `explorations/` — prototypes of alternative API shapes, kept compiling as
-  evidence for that history. Not part of the library.
-- `explorations/candidates/` — the notation candidates and the three rival
-  baselines they were measured against.
+- [FSM library requirements](docs/requirements.md) prioritizes the target
+  behavior, type guarantees, design latitude, and non-goals.
+- [FSM API acceptance cases](docs/acceptance-cases.md) defines the pinned
+  Marking Menu fixture and the shared comparison tasks for coherent candidates.
 
 ## Development
 
-Requires Node.js 26 or newer and pnpm. Node runs the TypeScript sources
-directly for development; `pnpm build` produces the published ESM bundle and
-type declarations in `dist/`.
+Requires Node.js 26 or newer and pnpm. Node runs the TypeScript sources directly
+for development; `pnpm build` produces the published ESM bundle and type
+declarations in `dist/`.
 
 ```bash
 pnpm install
@@ -135,22 +554,16 @@ pnpm test
 pnpm examples
 ```
 
-`pnpm test` runs the runtime tests, type tests, and the plain-JavaScript
-untyped path in `tests/` against the shipped API. `pnpm typecheck` covers
-`src/`, `examples/` and `explorations/`.
-
-### CI
-
-Pull requests run `pnpm test` and `pnpm test:dist`, then get a brotli size
-diff on `dist/totorobot.js` from
-[`compressed-size-action`](https://github.com/preactjs/compressed-size-action).
-The action measures with node's zlib at brotli defaults, the same as
-`pnpm size` — no committed baseline, no size gate, the diff only reports.
-The action cannot comment on pull requests from forks; it prints the diff to
-the job log instead.
+`pnpm test` runs the runtime tests, the type tests, and the plain-JavaScript
+untyped path against the shipped API. `pnpm typecheck` covers `src/`,
+`examples/` and `explorations/`.
 
 ## Relationship to Robot3
 
 Totorobot was inspired by [Robot3](https://thisrobot.life/) and deliberately
-keeps parts of its small functional vocabulary. It is an independent
-experiment, not a fork, drop-in replacement, or compatibility layer.
+keeps parts of its small functional vocabulary. It is an independent experiment
+rather than a fork, drop-in replacement, or compatibility layer.
+
+## License
+
+[Blue Oak Model License 1.0.0](LICENSE).
