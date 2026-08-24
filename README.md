@@ -1,16 +1,18 @@
 # Totorobot
 
-Totorobot is a small TypeScript finite-state-machine library. A machine is a
-declared vocabulary of inputs and states over a flat transition table whose keys
-carry all four coordinates of an edge on one line:
+Totorobot is a small TypeScript state-machine library. One line declares one
+transition, and the line looks like the edge it declares:
 
 ```
-from -input> to
+'draft -submit> review'
 ```
 
-A definition is inert data. `.start()` returns a host, the only mutable object
-in the design, and listeners are attached to that host by whoever runs the
-machine.
+Source state, input, target state: that is the whole notation. Every state
+carries its own data, so `review` can require a reviewer that `draft` does not
+have, and reading a field from a state that does not have it is a compile error.
+
+Definitions are plain data. `.start()` hands you a running host to send inputs
+to and observe, and nothing else in the design is mutable.
 
 The project asks a specific question: how much state-machine correctness can
 TypeScript enforce while keeping a compact, Robot-inspired creation API?
