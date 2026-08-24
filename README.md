@@ -139,18 +139,11 @@ the whole literal out of hover text and error messages. Either way, extraction
 goes through the named helpers: `InputsOf<typeof publication>`,
 `StatesOf<typeof publication>`.
 
-**`data` is a convention rather than a rule**, on both halves of the vocabulary.
-A payload that is not a record, or that wants a field called `type` or `name`,
-nests it:
-
-```ts
-{ type: 'tick', data: 5 } // an input
-{ name: 'editing', data: { name: 'foo' } } // a state
-```
-
-Nothing in the library requires or inspects `data`; it is an ordinary field, and
-any other name works. Reach for it when a tag name would collide or a payload is
-not an object.
+**`data` is a convention rather than a rule.** A payload that is not a record, or
+that wants a field called `type` or `name`, nests it under one:
+`{ type: 'tick', data: 5 }`. Nothing in the library requires or inspects `data`,
+and any other name works
+([rationale §17](docs/api-rationale.md#data-is-a-convention-not-a-rule)).
 
 Both keys are optional. Omitting them reads the names off `transitions` and
 gives you the [untyped path](#the-untyped-path).
@@ -289,9 +282,7 @@ immediate apart from a payload-free input, whose record carries its tag.
 **A chain that never settles throws.** After 1e5 consecutive hops the machine
 raises `RangeError`, `maximum transitions reached in '<state>'`, naming a state
 inside the cycle. There is no rollback: listeners have already seen every hop
-that committed, and the host stays usable afterwards. The budget is deliberately
-high, since `'a -> a'` is legal and a handler that rewrites its own data until it
-declines is a terminating loop the budget must not cut short.
+that committed, and the host stays usable afterwards.
 
 **`.start()` settles the initial state's immediates too**, chain and all, before
 the host is handed back. "On entering" includes the first entering. If every
@@ -312,13 +303,16 @@ state that has data.
 ### What the table gives you for free
 
 The table is one flat block of string keys, so all three topology questions are
-an exact text search, and the reverse index is derivable:
+an exact text search:
 
-| question                          | search     | derived type           |
-| --------------------------------- | ---------- | ---------------------- |
-| what can I do in `draft`?         | `'draft -` | `Handled<M, 'draft'>`  |
-| where can I `submit`?             | `-submit>` | —                      |
-| how does anything reach `review`? | `> review` | `Sources<M, 'review'>` |
+| question                          | search     |
+| --------------------------------- | ---------- |
+| what can I do in `draft`?         | `'draft -` |
+| where can I `submit`?             | `-submit>` |
+| how does anything reach `review`? | `> review` |
+
+Two of the three are derivable as types as well: `Handled<M, 'draft'>` and
+`Sources<M, 'review'>`, so the reverse index never has to be maintained by hand.
 
 ## The host
 
@@ -569,13 +563,6 @@ of it is promised.
   findings, including one built over Robot3 itself. They are type-checked, and
   the Robot3 one is tested, so a rejected option that starts working again fails
   the build rather than going unnoticed.
-
-Background, from the round that preceded v1:
-
-- [FSM library requirements](docs/requirements.md) prioritizes the target
-  behavior, type guarantees, design latitude, and non-goals.
-- [FSM API acceptance cases](docs/acceptance-cases.md) defines the pinned
-  Marking Menu fixture and the shared comparison tasks for coherent candidates.
 
 ## Development
 
