@@ -30,8 +30,7 @@ head?
 npm install totorobot
 ```
 
-v1 is not out yet; the package reaches npm with that release. It is ESM, ships
-its own type declarations, and needs Node 26 or newer.
+It is ESM and ships its own type declarations.
 
 ## Example
 
