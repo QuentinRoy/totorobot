@@ -21,6 +21,33 @@ TypeScript enforce while keeping a compact, Robot-inspired creation API?
 > support. The API may change without notice, there is no stability guarantee
 > or compatibility promise, and it is not ready for production.
 
+## Contents
+
+- [Install](#install)
+- [Example](#example)
+- [The four keys](#the-four-keys)
+- [`inputs` and `states`: the vocabulary](#inputs-and-states-the-vocabulary)
+- [`transitions`: the table](#transitions-the-table)
+  - [The key language](#the-key-language)
+  - [The handler decides and projects](#the-handler-decides-and-projects)
+  - [Declining, and row precedence](#declining-and-row-precedence)
+  - [Immediate transitions: an edge with no input](#immediate-transitions-an-edge-with-no-input)
+  - [What the table gives you for free](#what-the-table-gives-you-for-free)
+- [The host](#the-host)
+  - [Reading](#reading)
+  - [Sending](#sending)
+  - [Observing](#observing)
+  - [Residency](#residency)
+  - [Commit ordering](#commit-ordering)
+- [What the types check](#what-the-types-check)
+- [What is claimed, and what is deliberately absent](#what-is-claimed-and-what-is-deliberately-absent)
+- [The untyped path](#the-untyped-path)
+- [Beyond v1](#beyond-v1)
+- [Documentation](#documentation)
+- [Development](#development)
+- [Relationship to Robot3](#relationship-to-robot3)
+- [License](#license)
+
 ## Install
 
 ```bash
