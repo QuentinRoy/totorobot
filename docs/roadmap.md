@@ -19,9 +19,9 @@ actions: {
 ```
 
 One action per trigger — a state name for entry, or a transition key for an edge. The
-default is to restart on every entry; policy is a wrapper rather than syntax:
-`persistent`, and later `keyed`, `once`, `debounced`. An action's `send` accepts only
-already-declared inputs, so `actions` adds nothing to the vocabulary.
+default is to restart on every entry; policy is a wrapper rather than syntax, the way
+`persistent` is above. An action's `send` accepts only already-declared inputs, so
+`actions` adds nothing to the vocabulary.
 
 It comes first among the directions here because `emit`, below, has nowhere to live
 without it: a handler may `skip()`, and declaration order is priority order, so a
