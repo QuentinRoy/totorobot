@@ -10,49 +10,19 @@ transition, and the line looks like the edge it declares:
 Source state, input, target state: that is the whole notation.
 
 **Each state carries its own data, and the compiler knows which state you are
-in.** `review` can require a `reviewer` that `draft` does not have; narrow the
-current state on its name and its fields narrow with it. Most libraries hand you
-one flat context object shared by every state, where a field only some states
-have has to be optional everywhere and checked everywhere. Here it exists
-exactly where it is meaningful, and reading it anywhere else is a compile error.
-That is typestate on the data, which is the half of typestate TypeScript can
-enforce soundly.
+in.** `review` requires a `reviewer` that `draft` does not have. Narrow the
+current state on its name and its fields narrow with it, so reading `reviewer`
+anywhere but `review` is a compile error. Most libraries share one context
+object across every state, which forces any field that only some states carry to
+be optional everywhere and checked everywhere.
 
-Definitions are plain data. `.start()` hands you a running host to send inputs
-to and observe, and nothing else in the design is mutable. The whole library is
-1.1 kB minified, 580 bytes over the wire, and depends on nothing.
+A definition is inert data. `.start()` hands you a running host to send inputs to
+and observe, and that host is the only thing that ever changes. The whole library
+is 1.1 kB minified, 580 bytes over the wire, with no dependencies.
 
-The project asks a specific question: how much state-machine correctness can
-TypeScript enforce while keeping the creation API small enough to hold in your
+The design keeps asking one question: how much state-machine correctness can
+TypeScript enforce while the creation API stays small enough to hold in your
 head?
-
-## Contents
-
-- [Install](#install)
-- [Example](#example)
-- [The surface](#the-surface)
-- [`inputs` and `states`: the vocabulary](#inputs-and-states-the-vocabulary)
-- [`initial`: where a host starts](#initial-where-a-host-starts)
-- [`transitions`: the table](#transitions-the-table)
-  - [The key language](#the-key-language)
-  - [The handler decides and projects](#the-handler-decides-and-projects)
-  - [Declining, and row precedence](#declining-and-row-precedence)
-  - [Immediate transitions: an edge with no input](#immediate-transitions-an-edge-with-no-input)
-  - [What the table gives you for free](#what-the-table-gives-you-for-free)
-- [The host](#the-host)
-  - [Reading](#reading)
-  - [Sending](#sending)
-  - [Observing](#observing)
-  - [Residency](#residency)
-  - [Commit ordering](#commit-ordering)
-- [What the types check](#what-the-types-check)
-- [What is claimed, and what is deliberately absent](#what-is-claimed-and-what-is-deliberately-absent)
-- [The untyped path](#the-untyped-path)
-- [Beyond v1](#beyond-v1)
-- [Documentation](#documentation)
-- [Development](#development)
-- [Relationship to Robot3](#relationship-to-robot3)
-- [License](#license)
 
 ## Install
 
@@ -60,8 +30,8 @@ head?
 npm install totorobot
 ```
 
-v1 is close but not out: the package publishes to npm with that release. It is
-ESM, ships its own type declarations, and wants Node 26 or newer.
+v1 is not out yet; the package reaches npm with that release. It is ESM, ships
+its own type declarations, and needs Node 26 or newer.
 
 ## Example
 
@@ -109,16 +79,44 @@ doc.send({ type: 'open', text: 'hello' })
 again. Narrowing the state narrows its data, so there is no nullable padding on
 the states where the field would be meaningless.
 
+## Contents
+
+- [Install](#install)
+- [Example](#example)
+- [The surface](#the-surface)
+- [`inputs` and `states`: the vocabulary](#inputs-and-states-the-vocabulary)
+- [`initial`: where a host starts](#initial-where-a-host-starts)
+- [`transitions`: the table](#transitions-the-table)
+  - [The key language](#the-key-language)
+  - [The handler decides and projects](#the-handler-decides-and-projects)
+  - [Declining, and row precedence](#declining-and-row-precedence)
+  - [Immediate transitions: an edge with no input](#immediate-transitions-an-edge-with-no-input)
+  - [What the table gives you for free](#what-the-table-gives-you-for-free)
+- [The host](#the-host)
+  - [Reading](#reading)
+  - [Sending](#sending)
+  - [Observing](#observing)
+  - [Residency](#residency)
+  - [Commit ordering](#commit-ordering)
+- [What the types check](#what-the-types-check)
+- [Guarantees and absences](#guarantees-and-absences)
+- [The untyped path](#the-untyped-path)
+- [Beyond v1](#beyond-v1)
+- [Documentation](#documentation)
+- [Development](#development)
+- [Relationship to Robot3](#relationship-to-robot3)
+- [License](#license)
+
 ## The surface
 
 Everything the package exports:
 
-| export                                                      | is                                                                |
-| ----------------------------------------------------------- | ----------------------------------------------------------------- |
-| `machine({ inputs?, states?, initial, transitions })`       | a definition: inert data, never mutated                           |
-| `type<T>()`                                                 | a declaration carrying `T`; returns `undefined` at runtime        |
-| `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>` | derived types, over `M = typeof publication`                      |
-| `Skip`                                                      | what `skip()` returns — it appears in every handler's return type |
+| export                                                      | is                                                               |
+| ----------------------------------------------------------- | ---------------------------------------------------------------- |
+| `machine({ inputs?, states?, initial, transitions })`       | a definition: inert data, never mutated                          |
+| `type<T>()`                                                 | a declaration carrying `T`; returns `undefined` at runtime       |
+| `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>` | derived types, over `M = typeof publication`                     |
+| `Skip`                                                      | what `skip()` returns; it appears in every handler's return type |
 
 ## `inputs` and `states`: the vocabulary
 
@@ -127,20 +125,19 @@ inputs: type<{ type: 'submit'; reviewer: string } | { type: 'cancel' }>(),
 states: type<{ name: 'empty' } | { name: 'draft'; text: string; revision: number }>(),
 ```
 
-Both are declared tagged unions. `inputs` is discriminated by `type` and
-`states` by `name`. There is no `void` sentinel on either side: a payload-free
-member is a union member carrying nothing but its tag, such as
-`{ type: 'cancel' }` and `{ name: 'empty' }`.
+Both are tagged unions: `inputs` is discriminated by `type`, `states` by `name`.
+A member with no payload carries nothing but its tag, as `{ type: 'cancel' }` and
+`{ name: 'empty' }` do. There is no `void` sentinel on either side.
 
-`type<T>()` exists only to carry `T`. It returns `undefined`, nothing reads it,
-and passing the return value explicitly is the same as omitting the field.
+`type<T>()` exists only to carry `T`. It returns `undefined`, and nothing reads
+it.
 
 **Inline is fine; naming scales better.** Each is an ordinary type, so either
 union can be pulled out, exported, imported, generated, made generic, or built
-with `Omit`/`&`/`|`. Once a vocabulary grows past a handful of members, writing
-`type<Inputs>()` keeps hover text and error messages from inlining the whole
-literal. Extraction goes through the named helpers either way:
-`InputsOf<typeof publication>`, `StatesOf<typeof publication>`.
+with `Omit`/`&`/`|`. Past a handful of members, writing `type<Inputs>()` keeps
+the whole literal out of hover text and error messages. Either way, extraction
+goes through the named helpers: `InputsOf<typeof publication>`,
+`StatesOf<typeof publication>`.
 
 **`data` is a convention rather than a rule**, on both halves of the vocabulary.
 A payload that is not a record, or that wants a field called `type` or `name`,
@@ -151,9 +148,9 @@ nests it:
 { name: 'editing', data: { name: 'foo' } } // a state
 ```
 
-Nothing in the library requires or inspects `data`; it is an ordinary field and
-any other name works. Reach for it deliberately whenever a tag would collide or
-a payload is not an object.
+Nothing in the library requires or inspects `data`; it is an ordinary field, and
+any other name works. Reach for it when a tag name would collide or a payload is
+not an object.
 
 Both keys are optional. Omitting them reads the names off `transitions` and
 gives you the [untyped path](#the-untyped-path).
@@ -164,21 +161,21 @@ gives you the [untyped path](#the-untyped-path).
 declared states: anything else is a compile error on the `initial` line.
 
 That state alone decides whether `.start()` takes an argument. `empty` above
-carries no payload, so `publication.start()` takes none; an initial state that
+carries no payload, so `publication.start()` takes none. An initial state that
 does carry data makes its payload a required argument, as in
 `counter.start({ count: 0 })`.
 
-Nothing announces the state a host starts in. Listeners are attached to the host
-`.start()` hands back, so the first thing they can see is the first transition.
-If the initial state has
+Nothing announces the state a host starts in. Listeners attach to the host that
+`.start()` hands back, so the earliest thing they can see is the first
+transition. If the initial state has
 [immediate rows](#immediate-transitions-an-edge-with-no-input) they run before
 the host comes back, and `.start()`'s argument still follows the declared
 initial state rather than wherever that chain lands.
 
 ## `transitions`: the table
 
-One row per edge, with all four coordinates at fixed positions no formatter can
-move.
+One row per edge: the key names it, the value handles it. Source, input and
+target sit at fixed positions no formatter can move.
 
 ### The key language
 
@@ -189,23 +186,22 @@ from -input> to
 The input is the arrow's label, and three rules govern the spelling:
 
 - **Whitespace is load-bearing.** Exactly one space before the `-`, one after
-  the `>`. Any other spelling is a compile error, which also puts the source at
-  column 1 on every row.
+  the `>`; any other spelling is a compile error. The payoff is that the source
+  name sits at column 1 on every row.
 - **An edge always contains an arrow, so a key with no arrow names a state.**
-  Bare keys are reserved for [residency](#residency) and rejected both in
-  `transitions` and in `observe()` patterns. The two halves of the grammar are
-  therefore decidable from the string alone.
+  Bare keys are reserved for [residency](#residency) and rejected in
+  `transitions` and in `observe()` patterns alike. The string alone therefore
+  says which of the two you wrote.
 - **An arrow with no label is an
   [immediate transition](#immediate-transitions-an-edge-with-no-input)**:
-  `'checking -> allowed'`. The edge has no input at all, which differs from a
-  pattern's unlabelled arrow, where the same absence means the input is
-  unconstrained.
+  `'checking -> allowed'`. That edge has no input at all. A pattern's unlabelled
+  arrow means something different: there, the input is simply unconstrained.
 
-A malformed key is reported as `not a transition: '…'` on its own line at
-compile time. **The grammar is enforced at runtime too**: `machine()` throws
-`SyntaxError` for a malformed key and `observe()` throws the same way for a
-malformed pattern, naming the offending string. That is what catches a typo in
-plain JavaScript, where nothing else checks the shape of what was written.
+A malformed key is reported at compile time as `not a transition: '…'`, on its
+own line. **The grammar is enforced at runtime too**: `machine()` throws
+`SyntaxError` for a malformed key, `observe()` does the same for a malformed
+pattern, and both name the offending string. That is what catches a typo in plain
+JavaScript, where nothing else checks what was written.
 
 ### The handler decides and projects
 
@@ -217,11 +213,11 @@ adds the tag back:
 'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
 ```
 
-Carrying the tag lets one handler shared across several rows tell which state it
-is leaving: `state.name` narrows `state` the same way narrowing `current` does.
-It also makes spreading the source into a target payload safe. The library
-spreads the target's tag in last, so a source tag carried along by the spread
-can never survive onto the committed state.
+The tag lets a handler shared across several rows tell which state it is leaving:
+`state.name` narrows `state` the same way narrowing `current` does. It also makes
+it safe to spread the source into a target payload, because the library spreads
+the target's tag in last, so a source tag caught up in the spread never survives
+onto the committed state.
 
 ### Declining, and row precedence
 
@@ -242,9 +238,9 @@ A submission naming a reviewer goes to `review`; one that names nobody skips tha
 row and publishes directly.
 
 If every candidate skips, the machine declines the input: nothing changes and no
-listener fires. So does an input the current state has no row for. Both are
-normal outcomes rather than faults, they are indistinguishable, and nothing
-reports either one.
+listener fires. An input the current state has no row for is declined the same
+way. Both are normal outcomes rather than faults, both are silent, and nothing
+tells them apart.
 
 A row that always declines under some condition is an ordinary way to express
 "this input does not apply right now":
@@ -272,12 +268,12 @@ state:
 'checking -> denied': ({ state }) => ({ quota: state.quota }),
 ```
 
-Sending `submit` from `draft` lands in `checking`, which immediately tries its
-own rows and continues on to `allowed` or `denied` without anyone sending
-anything. `skip()` falls through to the next candidate exactly as it does on an
+Sending `submit` from `draft` lands in `checking`, which tries its own rows at
+once and continues on to `allowed` or `denied` without anyone sending anything.
+`skip()` falls through to the next candidate exactly as it does on an
 input-driven row, so a guarded choice needs no `cond` and no junction
-pseudostate. If every candidate skips the machine stays in `checking` and
-`checking`'s input rows stay live, which covers "the condition is not met yet".
+pseudostate. If every candidate skips, the machine stays in `checking` with its
+input rows still live, which covers "the condition is not met yet".
 
 **Chains settle before anything else runs.** Landing somewhere that itself has
 immediate rows continues the chain hop after hop, each one committing and
@@ -291,11 +287,11 @@ record carries `input: undefined` too, which is the discriminant that tells an
 immediate apart from a payload-free input, whose record carries its tag.
 
 **A chain that never settles throws.** After 1e5 consecutive hops the machine
-raises `RangeError` — `maximum transitions reached in '<state>'` — naming a
-state inside the cycle. There is no rollback: listeners have already seen every
-hop that committed, and the host stays usable afterwards. The budget is high on
-purpose, because `'a -> a'` is legal and a handler that rewrites its own data
-until it declines is a terminating loop the budget must not interrupt.
+raises `RangeError`, `maximum transitions reached in '<state>'`, naming a state
+inside the cycle. There is no rollback: listeners have already seen every hop
+that committed, and the host stays usable afterwards. The budget is deliberately
+high, since `'a -> a'` is legal and a handler that rewrites its own data until it
+declines is a terminating loop the budget must not cut short.
 
 **`.start()` settles the initial state's immediates too**, chain and all, before
 the host is handed back. "On entering" includes the first entering. If every
@@ -369,23 +365,21 @@ payload-free input is `doc.send({ type: 'cancel' })`. It returns nothing; what
 happened is `doc.current`.
 
 **Sending is broad: every declared input is accepted from every state.** One the
-current state does not handle changes nothing. It does not throw, corrupt, or
-half-apply, which is also how a stale asynchronous result lands harmlessly.
+current state does not handle changes nothing; it does not throw, corrupt, or
+half-apply. That is also how a stale asynchronous result lands harmlessly.
 
 **A send issued while a dispatch is in progress is queued**, whether it comes
 from a listener or from a hop `.start()` is settling, and whether it targets the
-dispatching host or an unrelated one. The queue is shared by every machine in
-the process and drains before the outermost `send` returns, synchronously. So a
-send is immediate exactly when no dispatch is in progress anywhere; otherwise it
-takes effect once the dispatch in progress settles, and a machine's `current`
-read right after such a send still shows the state it had before it. See
-[commit ordering](#commit-ordering) rule 4.
+dispatching host or an unrelated one. So a send takes effect immediately only
+when no dispatch is running anywhere; otherwise it waits for the one in progress
+to settle, and `current` read right after such a send still shows the earlier
+state. [Commit ordering](#commit-ordering) rule 4 has the mechanics.
 
 **There is no typed send site.** `doc.send({ type: 'publish' })` compiles in
-`draft` and does nothing at runtime. Per-state capabilities are not enforced by
-the compiler. This is a deliberate drop, because the narrow-then-send shape is
-unsound in TypeScript, and a sound variant stays addable later without breaking
-anything ([rationale §11](docs/api-rationale.md#11-sending-inputs)).
+`draft` and does nothing at runtime, so per-state capabilities go unchecked. That
+is a deliberate drop: the narrow-then-send shape is unsound in TypeScript, and a
+sound variant stays addable later without breaking anything
+([rationale §11](docs/api-rationale.md#11-sending-inputs)).
 
 ### Observing
 
@@ -398,10 +392,10 @@ Listeners go on the host, never on the definition, which is inert. `observe()`
 returns an unsubscribe function.
 
 **The listener receives the transition record**, `{ input, from, to }`,
-discriminated by `input?.type` or by `if (e.input)`. `e.from` and `e.to` are
-each their end's state, tag included, so narrowing on `e.from.name` or
-`e.to.name` narrows the rest of the fields the way `current` does. An immediate
-transition carries `input: undefined`.
+discriminated by `input?.type` or by `if (e.input)`. `e.from` and `e.to` are the
+states at each end, tags included, so narrowing on `e.from.name` or `e.to.name`
+narrows their fields the way `current` does. An immediate transition carries
+`input: undefined`.
 
 **Patterns are the key language with coordinates left open.** `*` stands for any
 state and an unlabelled arrow means any input, or none:
@@ -423,15 +417,17 @@ gives.
 
 ### Residency
 
-Scoping something to "while we are in `draft`", with a teardown, is derivable
+Scoping something to "while we are in `draft`", teardown included, is derivable
 today from two patterns and needs nothing the host does not already provide.
-Observe `'draft -> *'` to tear down and `'* -> draft'` to set up, registering
-the exit listener **first** so that a self-transition tears down before it sets
-up again, and run the setup once at registration if the host is already in the
-state, since nothing will announce a state you are already in. A self-transition
-matches both patterns, so restart-on-re-entry falls out for free, and the
-policy variants come along too: `persistent` is `if (e.to.name !== e.from.name)`
-in the exit handler, and `keyed` compares a key computed from each end.
+Observe `'draft -> *'` to tear down and `'* -> draft'` to set up. Register the
+exit listener **first**, so a self-transition tears down before it sets up again,
+and run the setup once at registration if the host is already in the state, since
+nothing will announce a state you are already in.
+
+A self-transition matches both patterns, so restart-on-re-entry falls out for
+free, and the policy variants come along too: `persistent` is
+`if (e.to.name !== e.from.name)` in the exit handler, and `keyed` compares a key
+computed from each end.
 
 Declaring it in the definition instead of assembling it by hand is
 [a roadmap direction](docs/roadmap.md#residency--a-recipe-today-maybe-declared-later).
@@ -454,24 +450,24 @@ Five rules, and they are the whole execution model:
    does not.
 4. **A send from inside a dispatch is queued, unconditionally, across every
    host.** The queue and its draining flag are shared by every machine in the
-   process, so this holds whether the listener sends to its own host or to a
-   different one, and the queue drains before the outermost `send` returns,
-   never on a microtask and never nested. A listener is therefore never
-   re-entered while an earlier call is still running, the listeners after it are
-   never told about a transition their machine has already left, and a queued
-   send waits for the whole chain to settle rather than landing mid-hop. Queued
-   sends drain first-in-first-out, and each is evaluated against the state at
-   drain time, so one may find no row and do nothing.
+   process, so this holds whether the listener sends to its own host or to
+   another one. It drains before the outermost `send` returns, first in first
+   out, never on a microtask and never nested. Three things follow: a listener is
+   never re-entered while an earlier call is still running; the listeners after
+   it are never told about a transition their machine has already left; and a
+   queued send waits for the whole chain to settle rather than landing mid-hop.
+   Each queued send is evaluated against the state at drain time, so one may find
+   no row and do nothing.
 5. **`send` returns nothing**, including when it was queued.
 
 **A throwing listener ends the drain, wherever it sits.** The error unwinds out
-of the `send` that started the chain, which is the outermost call rather than
-necessarily the one on whose host the listener threw. Everything still queued at
-that moment is discarded across every host in that chain, since leaving it in
-place would let an unrelated later send pick it up at an arbitrary time. The
-listeners after the throwing one do not run, the transition stays committed, and
-every host in the chain works normally afterwards. A runaway immediate chain's
-`RangeError` behaves identically.
+of the outermost `send`, the one that started the chain, which is not necessarily
+the one on the host whose listener threw. Everything still queued at that moment
+is discarded across every host in the chain; leaving it in place would let an
+unrelated later send pick it up at an arbitrary time. The listeners after the
+throwing one do not run, the transition stays committed, and every host works
+normally afterwards. A runaway immediate chain's `RangeError` behaves
+identically.
 
 **There is no `stop()`.** Disposal is unsubscribing your listeners and not
 sending any more; the host holds nothing else.
@@ -481,11 +477,10 @@ sending any more; the host holds nothing else.
 - **Per-state data.** Narrowing the state narrows its data, with no nullable
   padding in states that logically guarantee a field.
 - Unknown state or input names anywhere in a transition key or a pattern.
-- **A handler returning the wrong shape for its target state, for every state
-  without exception.** A target with no payload accepts only nothing or `{}`. A
-  fresh literal carrying extra properties, a wider-typed variable, an
-  interface-typed value, and a spread of a wider state are all rejected the way
-  an ordinary target's wrong shape is.
+- **A handler returning the wrong shape for its target state, with no
+  exceptions.** A target with no payload accepts only nothing or `{}`. A fresh
+  literal with extra properties, a wider-typed variable, an interface-typed
+  value, and a spread of a wider state are all rejected.
 - Reads of source data the source state does not have.
 - Malformed keys, wrong spacing included, reported as `not a transition: '…'` on
   the offending line.
@@ -496,20 +491,20 @@ needs a type annotation.
 **What is not checked is the send site**, as [Sending](#sending) describes.
 Per-state capabilities are not enforced by the compiler.
 
-## What is claimed, and what is deliberately absent
+## Guarantees and absences
 
 - **A transition is pure.** Given a state and an input it yields either the next
   state or a refusal, and it neither performs nor schedules anything.
 - **Big steps terminate**, because one input causes at most one transition.
 - **Stale results are free.** A `loaded` arriving after we left `loading`
-  matches no row and does nothing. That is ignoring a result rather than
-  cancelling work; cancelling is the caller's.
+  matches no row and does nothing. That ignores the result; cancelling the work
+  is still the caller's job.
 - **States have no runtime existence.** The definition carries transition keys
   rather than a list of states, so there is no source for a visualiser or a
   "valid states are …" message, and a state with no transitions is invisible at
   runtime.
 - The design is flat, with no hierarchy and no parallel regions. It is an EFSM,
-  so reachability and "this guard can never fire" are out of reach and are not
+  so reachability and "this guard can never fire" are beyond it, and neither is
   claimed.
 
 The absences below are all deliberate. What to reach for instead, and where the
@@ -540,21 +535,19 @@ const toggle = machine({
 })
 ```
 
-Omitting a vocabulary infers **names** from `transitions`, not data. The state
+Omitting a vocabulary infers **names** from `transitions`, never data. The state
 and input names become exactly the ones the table mentions rather than widening
-to `string`, while each inferred member's fields beyond its tag read as
-`unknown` and accept anything written back, since nothing declares them.
-Declaring one vocabulary and omitting the other checks that half and reads the
-other's names off the table.
+to `string`, while every field beyond a tag reads as `unknown` and accepts
+anything written back, since nothing declares it. Declaring one vocabulary and
+omitting the other checks that half and reads the other's names off the table.
 
 **The key grammar is enforced either way**, and a malformed key still lands on
-its own row. What an omitted vocabulary will not infer is a name a key cannot
-round-trip: `*` is already how a pattern spells "any state", and a leading or
-trailing space is the grammar's own delimiter, so `'a -x>  b'` would quietly
-mint a state no other key can spell the same way twice. A row that mints one is
-rejected the way a malformed key is. A **declared** vocabulary is untouched by
-this, since declaring an odd name by hand is deliberate in a way a doubled space
-never is.
+its own row. What inference will not accept is a name a key cannot round-trip.
+`*` is already how a pattern spells "any state", and a leading or trailing space
+is the grammar's own delimiter, so `'a -x>  b'` would quietly mint a state no
+other key can spell the same way twice; such a row is rejected the way a
+malformed key is. A **declared** vocabulary is untouched by this, since declaring
+an odd name by hand is deliberate in a way a doubled space never is.
 
 ## Beyond v1
 
