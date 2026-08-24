@@ -150,6 +150,22 @@ describe('sending', () => {
 		expect(host.current).toEqual({ name: 'locked' })
 	})
 
+	test('a handler whose target carries no payload may also return {}', () => {
+		const relay = machine({
+			initial: 'a',
+			inputs: type<{ type: 'go' }>(),
+			states: type<{ name: 'a' } | { name: 'b' }>(),
+			transitions: {
+				'a -go> b': () => ({}),
+			},
+		})
+
+		const host = relay.start()
+		host.send({ type: 'go' })
+
+		expect(host.current).toEqual({ name: 'b' })
+	})
+
 	test('send returns undefined, always', () => {
 		const host = editor.start()
 
@@ -197,11 +213,38 @@ describe('sending', () => {
 			expect(denied.current).toEqual({ name: 'denied', quota: 0 })
 		})
 
-		test('a state whose immediate rows all skip stays put', () => {
+		test('an immediate row receives input as undefined, not the input that entered the state', () => {
+			const received: unknown[] = []
+			const relay = machine({
+				initial: 'draft',
+				inputs: type<{ type: 'submit' }>(),
+				states: type<
+					{ name: 'draft' } | { name: 'checking' } | { name: 'settled' }
+				>(),
+				transitions: {
+					'draft -submit> checking': () => {},
+					'checking -> settled': ({ input }) => {
+						received.push(input)
+					},
+				},
+			})
+
+			const host = relay.start()
+			host.send({ type: 'submit' })
+
+			expect(received).toEqual([undefined])
+		})
+
+		test('a state whose immediate rows all skip stays put, its input rows still live', () => {
 			const host = pending.start()
 			host.send({ type: 'submit', quota: 0 })
 
 			expect(host.current).toEqual({ name: 'checking', quota: 0 })
+
+			// the immediate row skipping does not disable 'checking's ordinary
+			// input rows — 'cancel' still fires from here.
+			host.send({ type: 'cancel' })
+			expect(host.current).toEqual({ name: 'draft' })
 		})
 
 		test('a chain of several immediate hops settles fully before send returns', () => {

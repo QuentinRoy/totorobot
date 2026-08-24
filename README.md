@@ -91,7 +91,7 @@ parallel regions.
 - [The API](docs/api.md) — the design: the blocks, the key language, what is
   checked, what is deliberately absent, and what is deferred past v1.
 - [Roadmap](docs/roadmap.md) — the prospective plan past v1: effects, a
-  declared output channel, and composition, none of it promised.
+  declared output channel, residency, and composition, none of it promised.
 - [Design record](docs/api-rationale.md) — the decision ledger, what was
   considered and rejected and on what evidence, and the reusable TypeScript
   findings.

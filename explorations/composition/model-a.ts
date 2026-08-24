@@ -54,7 +54,7 @@ type Raw = {
 	readonly current: { readonly state: string; readonly data: unknown }
 	readonly available: readonly string[]
 	readonly send: (...args: any[]) => void
-	readonly on: (pattern: string, listener: (e: any) => void) => () => void
+	readonly observe: (pattern: string, listener: (e: any) => void) => () => void
 }
 
 export function machine<
@@ -78,14 +78,14 @@ export function machine<
 			const host = built.start(...(args as unknown[]))
 
 			const on = (trigger: string, listener: (arg: any) => unknown) => {
-				if (isEdge(trigger)) return host.on(trigger, listener)
+				if (isEdge(trigger)) return host.observe(trigger, listener)
 
 				// Residency. Exit is registered first, so a self-transition tears
 				// down before it sets up — unless the resident is `persistent`,
 				// which skips both halves of a self-transition.
 				const stays = isPersistent(listener)
 				let teardown: (() => void) | void
-				const offExit = host.on(
+				const offExit = host.observe(
 					`${trigger} -> *`,
 					(e: { to: { state: string } }) => {
 						if (stays && e.to.state === trigger) return
@@ -93,7 +93,7 @@ export function machine<
 						teardown = undefined
 					},
 				)
-				const offEnter = host.on(
+				const offEnter = host.observe(
 					`* -> ${trigger}`,
 					(e: { from: { state: string }; to: unknown }) => {
 						if (stays && e.from.state === trigger) return
