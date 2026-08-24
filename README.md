@@ -104,7 +104,7 @@ the states where the field would be meaningless.
 - [Beyond v1](#beyond-v1)
 - [Documentation](#documentation)
 - [Development](#development)
-- [Relationship to Robot3](#relationship-to-robot3)
+- [Thanks](#thanks)
 - [License](#license)
 
 ## The surface
@@ -581,13 +581,12 @@ pnpm examples
 untyped path against the shipped API. `pnpm typecheck` covers `src/`,
 `examples/` and `explorations/`.
 
-## Relationship to Robot3
+## Thanks
 
-The design work started from [Robot3](https://thisrobot.life/), whose small
-functional vocabulary set the size Totorobot was aiming for. None of that API
-survived: the notation, the vocabulary and the host are Totorobot's own, and no
-Robot3 code, idiom or type carries over. It is an independent library, not a
-fork, drop-in replacement, or compatibility layer.
+To the libraries this one learned from, and takes no code from:
+[Robot3](https://thisrobot.life/),
+[XState](https://github.com/statelyai/xstate), and
+[yay-machine](https://yay-machine.js.org/).
 
 ## License
 
