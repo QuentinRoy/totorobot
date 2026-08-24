@@ -1,27 +1,30 @@
 # Totorobot
 
-Totorobot is a small TypeScript state-machine library. One line declares one
+Totorobot is a tiny TypeScript state-machine library. One line declares one
 transition, and the line looks like the edge it declares:
 
 ```
 'draft -submit> review'
 ```
 
-Source state, input, target state: that is the whole notation. Every state
-carries its own data, so `review` can require a reviewer that `draft` does not
-have, and reading a field from a state that does not have it is a compile error.
+Source state, input, target state: that is the whole notation.
+
+**Each state carries its own data, and the compiler knows which state you are
+in.** `review` can require a `reviewer` that `draft` does not have; narrow the
+current state on its name and its fields narrow with it. Most libraries hand you
+one flat context object shared by every state, where a field only some states
+have has to be optional everywhere and checked everywhere. Here it exists
+exactly where it is meaningful, and reading it anywhere else is a compile error.
+That is typestate on the data, which is the half of typestate TypeScript can
+enforce soundly.
 
 Definitions are plain data. `.start()` hands you a running host to send inputs
-to and observe, and nothing else in the design is mutable.
+to and observe, and nothing else in the design is mutable. The whole library is
+1.1 kB minified, 580 bytes over the wire, and depends on nothing.
 
 The project asks a specific question: how much state-machine correctness can
-TypeScript enforce while keeping a compact, Robot-inspired creation API?
-
-> [!WARNING]
-> **Status.** Totorobot is an experimental design prototype at version 0.0.1.
-> It is not on npm yet, so the install below is what the first publish will
-> support. The API may change without notice, there is no stability guarantee
-> or compatibility promise, and it is not ready for production.
+TypeScript enforce while keeping the creation API small enough to hold in your
+head?
 
 ## Contents
 
@@ -56,7 +59,8 @@ TypeScript enforce while keeping a compact, Robot-inspired creation API?
 npm install totorobot
 ```
 
-The package is ESM and ships its own type declarations. Node 26 or newer.
+v1 is close but not out: the package publishes to npm with that release. It is
+ESM, ships its own type declarations, and wants Node 26 or newer.
 
 ## Example
 
@@ -589,9 +593,11 @@ untyped path against the shipped API. `pnpm typecheck` covers `src/`,
 
 ## Relationship to Robot3
 
-Totorobot was inspired by [Robot3](https://thisrobot.life/) and deliberately
-keeps parts of its small functional vocabulary. It is an independent experiment
-rather than a fork, drop-in replacement, or compatibility layer.
+The design work started from [Robot3](https://thisrobot.life/), whose small
+functional vocabulary set the size Totorobot was aiming for. None of that API
+survived: the notation, the vocabulary and the host are Totorobot's own, and no
+Robot3 code, idiom or type carries over. It is an independent library, not a
+fork, drop-in replacement, or compatibility layer.
 
 ## License
 
