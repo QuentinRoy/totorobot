@@ -74,7 +74,7 @@ export type Host<I extends Vocab, O extends Vocab> = {
 type Raw = {
 	readonly current: { readonly state: string; readonly data: unknown }
 	readonly send: (...args: any[]) => void
-	readonly on: (pattern: string, listener: (e: any) => void) => () => void
+	readonly observe: (pattern: string, listener: (e: any) => void) => () => void
 }
 
 export function machine<
@@ -117,7 +117,7 @@ export function machine<
 				const action = actions[trigger] as (arg: unknown) => unknown
 
 				if (isEdge(trigger)) {
-					host.on(trigger, (e: object) => {
+					host.observe(trigger, (e: object) => {
 						action({ ...e, ...bag })
 					})
 					continue
@@ -125,12 +125,12 @@ export function machine<
 
 				const stays = isPersistent(action)
 				let teardown: unknown
-				host.on(`${trigger} -> *`, (e: { to: { state: string } }) => {
+				host.observe(`${trigger} -> *`, (e: { to: { state: string } }) => {
 					if (stays && e.to.state === trigger) return
 					if (typeof teardown === 'function') teardown()
 					teardown = undefined
 				})
-				host.on(
+				host.observe(
 					`* -> ${trigger}`,
 					(e: { from: { state: string }; to: { data: unknown } }) => {
 						if (stays && e.from.state === trigger) return
