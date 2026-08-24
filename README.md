@@ -583,7 +583,7 @@ untyped path against the shipped API. `pnpm typecheck` covers `src/`,
 
 ## Thanks
 
-To the libraries this one learned from, and takes no code from:
+To the libraries this one learned from:
 [Robot3](https://thisrobot.life/),
 [XState](https://github.com/statelyai/xstate), and
 [yay-machine](https://yay-machine.js.org/).
