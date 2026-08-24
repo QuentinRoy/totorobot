@@ -33,6 +33,9 @@ describe('construction', () => {
 		expect(type<{ name: 'ready'; count: number }>()).toBeUndefined()
 	})
 
+	// The hops settled here are unobservable by construction (item 6): there is
+	// no host to call `.observe()` on until `start()` returns, so that half of
+	// item 6 has no public entry point to exercise.
 	test("start() settles the initial state's immediate rows before returning", () => {
 		const junction = machine({
 			initial: 'checking',
