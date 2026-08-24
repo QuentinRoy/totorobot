@@ -30,7 +30,8 @@ head?
 
 - [Install](#install)
 - [Example](#example)
-- [The four keys](#the-four-keys)
+- [The surface](#the-surface)
+- [`initial`: where a host starts](#initial-where-a-host-starts)
 - [`inputs` and `states`: the vocabulary](#inputs-and-states-the-vocabulary)
 - [`transitions`: the table](#transitions-the-table)
   - [The key language](#the-key-language)
@@ -67,23 +68,23 @@ ESM, ships its own type declarations, and wants Node 26 or newer.
 ```ts
 import { machine, type } from 'totorobot'
 
-type Inputs =
-	| { type: 'open'; text: string }
-	| { type: 'revise'; text: string }
-	| { type: 'submit'; reviewer: string }
-	| { type: 'publish' }
-	| { type: 'cancel' }
-
-type States =
-	| { name: 'empty' }
-	| { name: 'draft'; text: string; revision: number }
-	| { name: 'review'; text: string; revision: number; reviewer: string }
-	| { name: 'published'; text: string; revision: number }
-
 export const publication = machine({
 	initial: 'empty',
-	inputs: type<Inputs>(),
-	states: type<States>(),
+
+	inputs: type<
+		| { type: 'open'; text: string }
+		| { type: 'revise'; text: string }
+		| { type: 'submit'; reviewer: string }
+		| { type: 'publish' }
+		| { type: 'cancel' }
+	>(),
+
+	states: type<
+		| { name: 'empty' }
+		| { name: 'draft'; text: string; revision: number }
+		| { name: 'review'; text: string; revision: number; reviewer: string }
+		| { name: 'published'; text: string; revision: number }
+	>(),
 
 	transitions: {
 		'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
@@ -108,18 +109,9 @@ doc.send({ type: 'open', text: 'hello' })
 again. Narrowing the state narrows its data, so there is no nullable padding on
 the states where the field would be meaningless.
 
-## The four keys
+## The surface
 
-`machine()` takes one configuration object:
-
-| key           | answers                                          |
-| ------------- | ------------------------------------------------ |
-| `initial`     | where a new host starts                          |
-| `inputs`      | what can happen                                  |
-| `states`      | what we can be                                   |
-| `transitions` | how we move, and what data the new state carries |
-
-And this is everything the package exports:
+Everything the package exports:
 
 | export                                                      | is                                                                |
 | ----------------------------------------------------------- | ----------------------------------------------------------------- |
@@ -127,6 +119,23 @@ And this is everything the package exports:
 | `type<T>()`                                                 | a declaration carrying `T`; returns `undefined` at runtime        |
 | `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>` | derived types, over `M = typeof publication`                      |
 | `Skip`                                                      | what `skip()` returns — it appears in every handler's return type |
+
+## `initial`: where a host starts
+
+`initial` names the state a new host begins in, and it has to be one of the
+declared states: anything else is a compile error on the `initial` line.
+
+That state alone decides whether `.start()` takes an argument. `empty` above
+carries no payload, so `publication.start()` takes none; an initial state that
+does carry data makes its payload a required argument, as in
+`counter.start({ count: 0 })`.
+
+Nothing announces the state a host starts in. Listeners are attached to the host
+`.start()` hands back, so the first thing they can see is the first transition.
+If the initial state has
+[immediate rows](#immediate-transitions-an-edge-with-no-input) they run before
+the host comes back, and `.start()`'s argument still follows the declared
+initial state rather than wherever that chain lands.
 
 ## `inputs` and `states`: the vocabulary
 
@@ -143,10 +152,11 @@ member is a union member carrying nothing but its tag, such as
 `type<T>()` exists only to carry `T`. It returns `undefined`, nothing reads it,
 and passing the return value explicitly is the same as omitting the field.
 
-**Name the unions.** Writing `type<Inputs>()` rather than `type<{ … }>()` keeps
-hover text and error messages from inlining the whole literal. Each is an
-ordinary type, so it can be exported, imported, generated, made generic, or
-built with `Omit`/`&`/`|`. Extraction goes through the named helpers:
+**Inline is fine; naming scales better.** Each is an ordinary type, so either
+union can be pulled out, exported, imported, generated, made generic, or built
+with `Omit`/`&`/`|`. Once a vocabulary grows past a handful of members, writing
+`type<Inputs>()` keeps hover text and error messages from inlining the whole
+literal. Extraction goes through the named helpers either way:
 `InputsOf<typeof publication>`, `StatesOf<typeof publication>`.
 
 **`data` is a convention rather than a rule**, on both halves of the vocabulary.
