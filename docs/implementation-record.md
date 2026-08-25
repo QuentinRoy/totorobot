@@ -3,9 +3,9 @@
 > **Read this if you are about to change the source.** It is the standing list of
 > what the type layer does, what it refuses to do, which construction to reach for
 > instead, and what the shipped bundle costs. It is written for whoever, or
-> whatever, is editing `src/`; a reader who only wants to know why the API is
-> shaped the way it is wants [the design record](design-record.md) instead, and a
-> reader who wants the API itself wants [the README](../README.md).
+> whatever, is editing `src/`. For why the API is shaped the way it is, read
+> [the design record](design-record.md); for the API itself,
+> [the README](../README.md).
 >
 > `src/totorobot.ts` cites these entries by identifier rather than restating them,
 > so an argument lives in exactly one place. Almost every type-layer entry was
@@ -208,10 +208,10 @@ name survives minification when it is accessed dynamically.
 
 ### <a id="i16"></a>I16 — The measured shapes, and what each alternative cost
 
-The ledger [I15](#i15) exists to protect. Each line is an alternative that was
-built and measured against the real toolchain, not estimated. Brotli unless said
-otherwise; percentages are from the pre-implementation prototypes, byte figures
-from the shipped build.
+The ledger that [I15](#i15) exists to protect. Each line is an alternative that
+was built and measured against the real toolchain, not estimated. Brotli unless
+said otherwise; percentages are from the pre-implementation prototypes, byte
+figures from the shipped build.
 
 - **`SKIP` as a symbol, not a self-returning function.** `const skip = () => skip`
   makes the function its own sentinel and saves a binding, at single-digit bytes,
@@ -230,14 +230,14 @@ from the shipped build.
 - **Null-prototype index, at both levels.** +10 B, the whole cost of an untyped
   `send({ type: 'toString' })` finding nothing rather than finding
   `Object.prototype`'s method and calling it as a handler.
-- **`current` as a closure variable behind a getter**, not a property on the host
-  object that `send` reaches back into and mutates. The assigned property comes
-  out larger: mutating a bound object costs more than a getter closing over a
-  local, and the getter needs no identifier for the object itself.
-- **Listeners copy-on-write at registration**, not a mutable list mutated with
-  `push`/`splice` and snapshotted with `slice` per dispatch: the mutable form is
-  20 B larger (29 raw, 14 gzip), and it allocates on the path that runs most.
-  Observable behaviour is identical under both.
+- **`current` as a closure variable behind a getter, not a property `send`
+  mutates.** The assigned property comes out larger: mutating a bound object costs
+  more than a getter closing over a local, and the getter needs no identifier for
+  the object itself.
+- **Listeners copy-on-write at registration, not a mutable list.** Mutating with
+  `push`/`splice` and snapshotting with `slice` per dispatch is 20 B larger
+  (29 raw, 14 gzip), and it allocates on the path that runs most. Observable
+  behaviour is identical under both.
 - **One `step`, called twice.** Folding the input hop and the immediate chain into
   a single loop by reassigning `rows`: 13 B larger, and three mutable locals where
   the nested form has one. A `commit` helper called from two near-identical
@@ -287,9 +287,9 @@ the state vocabulary, produces an error naming the **whole** vocabulary:
 Resolving the same computation **inline** reports against the one state the row
 targets — `Omit<{ name: "review"; text: string; by: string }, "name">` — and this
 holds with `S` as a real type parameter. This is the highest-traffic error in the
-library, so the rule is load-bearing; the residual cost is the `Omit<…, 'name'>`
-wrapper in the message. The variant with perfect messages, keeping the tag in the
-handler's return, was rejected for costing the arrow test
+library, so the rule earns its residual cost: the `Omit<…, 'name'>` wrapper in
+the message. The variant with perfect messages, keeping the tag in the handler's
+return, was rejected for costing the arrow test
 ([design record §5](design-record.md#revision-the-shape-of-a-named-thing)).
 
 ### <a id="i19"></a>I19 — An invalid inference candidate falls back to the constraint, not to the default

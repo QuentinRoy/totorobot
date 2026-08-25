@@ -74,9 +74,8 @@ doc.observe('* -> published', (e) => notify(e.to))
 doc.send({ type: 'open', text: 'hello' })
 ```
 
-`review` carries a `reviewer` that `draft` does not have and `published` sheds
-again. Narrowing the state narrows its data, so there is no nullable padding on
-the states where the field would be meaningless.
+`reviewer` exists on `review` alone: `draft` does not have it yet, `published`
+has shed it again, and neither carries it as a nullable placeholder.
 
 ## Contents
 
@@ -178,7 +177,7 @@ from -input> to
 
 The input is the arrow's label, and three rules govern the spelling:
 
-- **Whitespace is load-bearing.** Exactly one space before the `-`, one after
+- **The spaces are part of the grammar.** Exactly one before the `-`, one after
   the `>`; any other spelling is a compile error. The payoff is that the source
   name sits at column 1 on every row.
 - **An edge always contains an arrow, so a key with no arrow names a state.**
@@ -357,7 +356,7 @@ from a listener or from a hop `.start()` is settling, and whether it targets the
 dispatching host or an unrelated one. So a send takes effect immediately only
 when no dispatch is running anywhere; otherwise it waits for the one in progress
 to settle, and `current` read right after such a send still shows the earlier
-state. [Commit ordering](#commit-ordering) rule 4 has the mechanics.
+state. [Commit ordering](#commit-ordering) has the mechanics.
 
 **There is no typed send site.** `doc.send({ type: 'publish' })` compiles in
 `draft` and does nothing at runtime, so per-state capabilities go unchecked. That
@@ -606,7 +605,7 @@ of it is promised.
 
 ## Documentation
 
-- [Roadmap](docs/roadmap.md) — the prospective plan past v1: effects, a declared
+- [Roadmap](docs/roadmap.md) — what might come after v1: effects, a declared
   output channel, residency, and composition.
 - [Design record](docs/design-record.md) — the decision ledger: what was
   considered and rejected, and on what evidence.
@@ -623,6 +622,11 @@ For contributors — read these before changing `src/`:
   findings, including one built over Robot3 itself. They are type-checked, and
   the Robot3 one is tested, so a rejected option that starts working again fails
   the build rather than going unnoticed.
+
+Background, from before v1: [requirements](docs/requirements.md), the priority
+stack the exploration targeted, and [acceptance cases](docs/acceptance-cases.md),
+the scenarios candidates were compared against. Both record what the API was
+aimed at rather than what it shipped.
 
 ## Development
 

@@ -2,23 +2,29 @@
 
 > **Read this as a record, not as a reference.** The design itself is in
 > [the README](../README.md); what might come after it is in
-> [the roadmap](roadmap.md). This document is the evidence behind the decisions —
+> [the roadmap](roadmap.md). This document is the evidence behind the decisions:
 > what was considered, what was rejected, and on what grounds. It is a historical
 > ledger, so an entry states the position as it was argued at the time and a
 > conclusion here may have been overturned later. Sections are arranged by topic
 > rather than by the order the questions were asked; a position that was reversed
 > is preserved where it was written, under a blockquote pointing at the revision
 > that overturned it, and the two late revisions are merged into the sections they
-> revise rather than left at the end. API spellings are left as they were argued,
-> except where a later rename would leave a reader expecting a member that no
-> longer exists.
+> revise rather than left at the end. Where a later rename would leave a reader
+> expecting a member that no longer exists, the spelling is corrected in place.
+> What still reads in the older dialect stays because the argument around it needs
+> it, and all of it comes from [§5's revision](#revision-the-shape-of-a-named-thing):
+> a vocabulary written as a map of name → payload (`{ empty: void; draft: {…} }`)
+> rather than the tagged union `{ name: 'empty' } | { name: 'draft'; … }`; a
+> handler's `({ data })` rather than `({ state })`; and the four-field transition
+> record `{ on, input, from, to }` rather than `{ input, from, to }`.
 >
-> **Only the API argument is here.** What the compiler does — the findings about
-> making the type layer infer at all, which matter to whoever is editing the source
-> and to nobody else — is in [the implementation record](implementation-record.md).
+> **Only the API argument is here.** What the compiler does is in
+> [the implementation record](implementation-record.md): the findings about making
+> the type layer infer at all, which matter to whoever is editing the source and to
+> nobody else.
 > One type-system finding stays here, in §13, because it governs a decision.
 >
-> Prior-art research is separate and still current: [`research/`](research/) —
+> Prior-art research is separate and still current: [`research/`](research/),
 > ten notes on automata theory, execution semantics, HCI state machines,
 > typestate, TypeScript type engineering, and the JS FSM landscape.
 
@@ -42,13 +48,16 @@
 14. [The graveyard](#14-the-graveyard)
 15. [Still open](#15-still-open)
 
+Then [Where the code is](#where-the-code-is): the propositions above, mapped to the
+prototypes that tested them.
+
 ---
 
 ## 1. The ledger
 
 Twenty axes. All twenty were closed. **Two late revisions then reopened two of them
-(7, 2), renamed one (16) and reshaped one without changing its answer (6)** — decided
-after the rest of this record, and merged into the sections they revise: the
+(7, 2), renamed one (16) and reshaped one without changing its answer (6).** Both
+were decided after the rest of this record, and merged into the sections they revise: the
 [composition boundary](#revision-the-composition-boundary) into §10, and the
 [shape of a named thing](#revision-the-shape-of-a-named-thing) into §5. States, inputs,
 `observe`, and the 3-field transition record are shipped; outputs and `emit` remain
@@ -79,28 +88,28 @@ unbuilt.
 
 The axes are not independent. Declaring the vocabulary (§5) settles 2, 5 and 6 in
 one move. Removing entry/exit settles 3, which makes 4 and 5 unobservable and
-therefore moot — and allowing effects back in (§9) makes them observable again, so
-4 and 5 have answers that only hold given the answer to 10.
+therefore moot. Allowing effects back in (§9) makes them observable again, so 4 and
+5 have answers that only hold given the answer to 10.
 
 ## 2. How anything was judged
 
 Fixed instruments, which is the only reason the sections below produce
 conclusions rather than preferences.
 
-**The four search questions** (Sunshine, Herbsleb & Aldrich — how people actually
-read state machines). Every notation is scored on all four:
+**The four search questions** (Sunshine, Herbsleb & Aldrich, on how people
+actually read state machines). Every notation is scored on all four:
 
 - **A** — what state is this in?
 - **B** — what can I do in state X? _(the research says this one dominates)_
 - **C** — in what states can I do Z?
 - **D** — how do I get from X to Y?
 
-**The arrow test.** Can a reader recover all four coordinates of a transition —
-source, input, outcome kind, target — from fixed positions, after Prettier has
-had its way?
+**The arrow test.** Can a reader recover all four coordinates of a transition
+(source, input, outcome kind, target) from fixed positions, after Prettier has had
+its way?
 
-**The neutral machine.** A publication flow — `empty → draft → review →
-published` — chosen because it contains the three things that separate notations:
+**The neutral machine.** A publication flow, `empty → draft → review →
+published`, chosen because it contains the three things that separate notations:
 a conditional refusal (`revise` with unchanged text), a **multi-target**
 transition (`submit` reaching either `review` or `published`), and a plain edge.
 
@@ -135,11 +144,11 @@ Two results from the baselines shaped everything after:
   simultaneously real behaviour and a silent catch-all.
 
 A breadth-first multi-agent brainstorm ran before the candidate rounds. It did
-not produce an API, and its useful output was a set of mechanisms rather than a
-design — chiefly: **effects often belong to state residency**; transition results
-need an explicit algebra (no transition / same-state update / state change);
-staleness is an authority problem; definition and consumption can use different
-views. The first of those is where 9 landed independently.
+not produce an API. Its useful output was a set of mechanisms rather than a
+design: **effects often belong to state residency**; transition results need an
+explicit algebra (no transition / same-state update / state change); staleness is
+an authority problem; definition and consumption can use different views. The first
+of those is where §9 landed independently.
 
 ## 3. What generation 1 cost
 
@@ -182,15 +191,15 @@ Three constraints from that generation still hold:
 **And one conclusion that turned out to be false**, which matters because it was
 inherited into every later design: that a single declaration site necessarily
 produces remote errors, so a separate model type is required. Measured on
-TS 5.9.3 and 7.0.2, a single-declaration-site typestate machine works — states,
+TS 5.9.3 and 7.0.2, a single-declaration-site typestate machine works: states,
 per-state data and transitions in one object literal, errors on the exact
 sub-expression.
 
 What actually went wrong was **architectural** rather than a limit of the
-compiler, and the mechanics of that — why per-helper generic calls cannot see
-their siblings, what a single contextually-typed callback changes, and the two
-caveats on leaning on it — are in the implementation record,
-[I12](implementation-record.md#i12) and [I13](implementation-record.md#i13).
+compiler. The mechanics are in the implementation record,
+[I12](implementation-record.md#i12) and [I13](implementation-record.md#i13): why
+per-helper generic calls cannot see their siblings, what a single
+contextually-typed callback changes, and the two caveats on leaning on it.
 
 ## 4. Layout
 
@@ -213,13 +222,13 @@ somewhere else.
 **A — edge records.** Two separately measured blockers. A guarded-clause list
 makes the edge type `Outcome | readonly Outcome[]`, and **a union of an object
 type with an array of that object type makes every bare object edge in the whole
-machine lose its handler parameter types** — 3× `TS7031`, bisected in
+machine lose its handler parameter types**: 3× `TS7031`, bisected in
 `blocker.ts`. Supplying the type arguments explicitly changes nothing, so a
 second declaration site does not buy its way out. And **a guard does not narrow
 its own clause's projection**: `when` and `with` are separate callbacks, so a
 refinement established in the guard does not reach the data projection
 (`Property 'reviewer' does not exist on type 'Submit'`). That is not avoidable
-inside the encoding — the guard and the projection cannot become one function
+inside the encoding: the guard and the projection cannot become one function
 without putting the decision back in a body, which is exactly what the encoding
 exists to prevent. To compile at all its neutral machine had to split `submit`
 and `decide` into four invented input names, **the same capitulation radix was
@@ -229,7 +238,7 @@ forced into**.
 Case 1 135, Case 3 87, Case 4 178, send-site capabilities verified, 1 867 types /
 6 109 instantiations / 0.004 s at 20 states. Its multi-target ternary is
 **total**, so "every branch skipped by mistake" is a compile error rather than a
-silent refusal — a real safety property no later winner has. It lost because the
+silent refusal. No later winner has that safety property. It lost because the
 target lives in a type annotation: reading it means switching into type-reading
 mode, completions inside `To<'…'>` require the state-name union to be nameable
 (it is not, in general), and the target is stated twice.
@@ -241,13 +250,13 @@ totality property: with the decision split across branches, if every branch skip
 by mistake the machine silently refuses.
 
 **E — by destination** dissolves multi-target instead of solving it: every
-entrance has exactly one target — the enclosing key — so a target _set_ never
+entrance has exactly one target (the enclosing key), so a target _set_ never
 exists. Question D stops being a search and becomes an index. The price is the
 exact transpose: question B now requires reading every state's `from` block, and
 B is the question the research says dominates. Its idea was kept anyway: the
 reverse index is recoverable from any source-keyed layout **as a derived type**
 (`Sources<M, To>`, `Targets<M, From, On>`), which E's own prototype demonstrated.
-So the choice was never "which question do I want to be cheap" — keep the layout
+So the choice was never "which question do I want to be cheap": keep the layout
 that makes B a single block, and _derive_ the rest.
 
 **F — transition table.** Line-order priority instead of key-order, `keep`/
@@ -284,21 +293,20 @@ back.**
 
 **String keys won.** It is the shortest, the only notation where all four
 coordinates sit on one line at fixed positions, and the only one where all three
-topology questions are a plain text search. `'draft -submit> review'` is not
-four coordinates recovered from four positions in a nested structure — it is a
+topology questions are a plain text search. `'draft -submit> review'` is a
 sentence with an actual arrow in it, and no formatter can reflow the inside of a
-string literal. Several problems also simply stop arising: self-transitions need
+string literal; the other layouts recover four coordinates from four positions in
+a nested structure. Several problems also simply stop arising: self-transitions need
 no spelling, two targets for one input are two rows so there is no duplicate-key
 question, and declaration order is visibly the priority order.
 
-**What it costs, honestly.** Question B stops being co-located — `draft`'s
-outgoing edges are greppable but no longer contiguous unless the author keeps
-them together, and a flat table optimises the global view over the local one that
+**What string keys cost.** Question B stops being co-located: `draft`'s outgoing edges
+are greppable but no longer contiguous unless the author keeps them together, and a flat table optimises the global view over the local one that
 the research says dominates. Whitespace tolerance costs the grep story:
 `->published` will not match `-> published`, and no formatter can normalise
 inside a literal. And the key type must be an explicit template literal, since an
 inferred plain `string` offers no completions at all and completion latency is an
-acceptance criterion — which means the type is a cross-product,
+acceptance criterion. That makes the type a cross-product,
 |inputs| × |states|². **Measured** (`scripts/measure-completions.mjs`), and it is
 not the problem it looked like:
 
@@ -307,28 +315,28 @@ not the problem it looked like:
 | 4 inputs × 4²   | 64              | 28 KB    | 40 ms | 2 ms  |
 | 10 inputs × 20² | 4 000           | 1.7 MB   | 48 ms | 26 ms |
 
-Latency is fine — 26 ms warm at 4 000 members is well inside a keystroke. But the
+Latency is fine: 26 ms warm at 4 000 members is well inside a keystroke. But the
 server **does not narrow**: it returns all 4 000 entries with `isIncomplete: false`
 whatever prefix has been typed, so the collapse the playground asks about happens in
 the editor's client-side filter, not in TypeScript. The cost is therefore payload
-rather than compute — **~1.7 MB per completion request**, growing as |states|² — and
-it is the number to set a threshold against. At the stated 2–20-state target it is
+rather than compute: **~1.7 MB per completion request**, growing as |states|², and
+that is the number to set a threshold against. At the stated 2–20-state target it is
 liveable; beyond it the split layouts, where each coordinate completes against
 |states| or |inputs| alone, win on this axis rather than on taste.
 
 **Why the other two stay alive.** Target keys remains the choice if co-location
-matters more — it is the only live notation where a state's data and its outgoing
+matters more: it is the only live notation where a state's data and its outgoing
 edges are one block. Classic records remains the choice if the table must be
 extensible: priority, labels and metadata are just more fields, and nothing needs
 explaining to anyone who has ever seen an FSM. It costs 6.6× the instantiations
 and the arrow test. One non-stylistic piece of evidence for records turned up in
-9: a `do:` slot on an edge is absorbed by a record as one more field, while
+§9: a `do:` slot on an edge is absorbed by a record as one more field, while
 string keys and target keys grow a second value shape to hold it.
 
 ### Adopted: the label on the arrow
 
-`'draft -submit> review'` rather than `'draft -submit> review'` — the input as an
-arrow label, which is how every drawing tool spells it (mermaid `A -->|submit| B`,
+`'draft -submit> review'` rather than `'submit: draft -> review'`: the input as
+an arrow label, which is how every drawing tool spells it (mermaid `A -->|submit| B`,
 DOT `A -> B [label="submit"]`, PlantUML `A --> B : submit`). **This is axis 1's
 answer.** It arrived after the three-way comparison above, so the prototypes below
 implement the leading-input spelling; the cardinality of the key type is identical
@@ -347,7 +355,7 @@ implement the leading-input spelling; the cardinality of the key type is identic
 - Marginally shorter, and multi-target rows share a longer aligned prefix.
 
 **Measured cost**: a `-` is legal in a state or input name, so
-the separator is only unambiguous if **whitespace becomes load-bearing**. With a
+the separator is only unambiguous if **whitespace becomes significant**. With a
 lazy `${infer F}-${string}>${string}`, an ordinary kebab-case name mis-splits and
 does so silently:
 
@@ -355,38 +363,37 @@ does so silently:
 'waiting-for-input -submit> ready'   →  from: 'waiting',  on: 'for-input -submit'
 ```
 
-Requiring the space — `${infer F} -${infer On}> ${infer T}` — parses correctly, and
+Requiring the space (`${infer F} -${infer On}> ${infer T}`) parses correctly, and
 the compact spellings the current design accepts (`'draft-submit>review'`) then fail
 to parse at all rather than mis-parsing. So the choice is: mandatory spacing, or a
 last-dash recursion to disambiguate.
 
-**Mandatory spacing may be a feature rather than a cost.** Whitespace tolerance is
-what breaks the grep story today — `->published` does not match `-> published` — and
-the stated remedy is a lint rule enforcing canonical spelling. Mandatory spacing is
-that lint rule, enforced by the compiler. The same move is available to the current
-form, so it is a wash rather than a point for either.
+**Mandatory spacing may be a feature rather than a cost**: it is the lint rule the
+grep story already wanted, enforced by the compiler, as set out below. The same move
+is available to the current form, so on this point it is a wash rather than a gain
+for either.
 
-**Variable-length padding is rejected** — `'reading ---done> idle'` alongside
-`'reading -submit> idle'`, so the target column can be aligned by hand. It parses
+**Variable-length padding is rejected.** The proposal was `'reading ---done> idle'`
+alongside `'reading -submit> idle'`, so the target column could be aligned by hand. It parses
 (measured: dash-trimming on both sides of the label, interior dashes in
 `double-click` intact), and the alignment would make all four coordinates sit at
 fixed columns, which no notation here has achieved. It loses on two counts. **Nothing
-can re-align it after a rename** — and that is the notation's own headline virtue
-inverted, since string keys won partly because no formatter can reflow inside a
-string literal, which means none can re-pad one either. And **it makes the key type
+can re-align it after a rename**, which is the notation's own headline virtue
+inverted: string keys won partly because no formatter can reflow inside a string
+literal, so none can re-pad one either. And **it makes the key type
 infinite**, so the explicit template literal that completions require becomes
 impossible. If it is ever wanted, leading-only padding (`-+label>`) is the version to
 take: same alignment, and `label>` stays contiguous so question C is still a plain
 text search.
 
-**What it costs.** `->` intact is the most recognisable token in the notation, and an
-arrow split around a word is something no reader has met before — a genuine
-first-contact tax, paid once. And **whitespace becomes load-bearing**: exactly one
+**What the label spelling costs.** `->` intact is the most recognisable token in
+the notation, and an arrow split around a word is something no reader has met
+before: a first-contact tax, paid once. And **whitespace becomes significant**: exactly one
 space before the `-` and one after the `>`, because `-` is legal inside a name and
 `'waiting-for-input-submit>ready'` has no unambiguous reading.
 
 That second cost turns out to be a benefit. Whitespace tolerance is what broke the
-grep story — `->published` never matched `-> published`, and the recorded remedy was
+grep story: `->published` never matched `-> published`, and the recorded remedy was
 "a lint rule enforcing the canonical spelling". Fixed spacing **is** that rule,
 enforced by the compiler, so all three topology searches become exact rather than
 approximate:
@@ -399,7 +406,7 @@ approximate:
 
 **`-*>` is not in the language.** With no way to spell "some input, any input", `*`
 appears only in state positions and the input coordinate is either a name or absent.
-One wildcard, one meaning — and it removes the only place the labelled form read
+One wildcard, one meaning, and it removes the only place the labelled form read
 worse than the leading-input one.
 
 ### Two decisions that fell out of the comparison
@@ -410,22 +417,21 @@ worse than the leading-input one.
 edge and buys no static guarantee. It relocates the symptom.
 
 A dev-mode warning was the recorded consolation and **it is gone too**, on two
-counts. It cannot judge: an all-skip is exactly what a deliberate refusal looks like
-— `'draft -revise> draft'` declining an unchanged text is the design's own headline
-example — so it would fire on correct code, and the machine has no way to tell the
-protocol working from a mistake. And it is not free. "Dev mode" in a no-build
+counts. It cannot judge. An all-skip is exactly what a deliberate refusal looks
+like (`'draft -revise> draft'` declining an unchanged text is the design's own
+headline example), so it would fire on correct code, and the machine has no way to
+tell the protocol working from a mistake. And it is not free. "Dev mode" in a no-build
 browser library (P0.11) means either a build-condition split with two artifacts or
 API surface for the caller to opt in, and _no API surface_ was the whole selling
 point. So a decline is **silent**, which is the intended meaning of a refusal.
 
-What that loses is the author's per-edge assertion that fall-through is impossible —
-the one thing `else` genuinely buys. Still not worth a line on every multi-branch
-edge for a runtime check, but the honest accounting is a lost distinction rather than
-nothing lost.
+What that loses is the author's per-edge assertion that fall-through is impossible,
+the one thing `else` buys. Still not worth a line on every multi-branch edge for a
+runtime check, but the accounting is a lost distinction rather than nothing lost.
 
 **`TS2820`'s did-you-mean suggestion is conditional on identifier length.**
 `to: 'armd'` gets the suggestion; `to: 'onn'` gets a plain `TS2322`. Short state
-names — common in small machines, which is the stated target — do not get it. The
+names, common in the small machines this library targets, do not get it. The
 diagnostic advantage originally credited to edge records was narrower than
 recorded.
 
@@ -433,7 +439,7 @@ recorded.
 partly because the handler's context has to arrive through a standalone generic
 call. That objection does _not_ apply to string keys:
 `{ [K in keyof T]: Handler<Parse<K>> }` is a homomorphic mapped type over the
-keys of an inferred object — structurally the same mechanism target keys already
+keys of an inferred object, structurally the same mechanism target keys already
 used and that was verified to work. The keys happen to be compound strings, and
 `Parse<K>` recovers the coordinates with template-literal inference. The risk was
 **DX, not feasibility**, which is a different and more tractable problem.
@@ -443,7 +449,7 @@ used and that was verified to work. The keys happen to be compound strings, and
 > **Declaring is upheld; the shape below is superseded by
 > [the revision at the end of this section](#revision-the-shape-of-a-named-thing).**
 > The vocabulary becomes a tagged union rather than a map, and `void` leaves it. The
-> argument for declaring at all — what it closed, and what it costs — is unaffected
+> argument for declaring at all, what it closed and what it costs, is unaffected
 > and is why it is kept here as written.
 
 ```ts
@@ -451,15 +457,16 @@ inputs: type<{ submit: Submit; cancel: void }>(),
 states: type<{ empty: void; draft: { text: string; revision: number } }>(),
 ```
 
-Orthogonal to layout — it lands on any of the three — and it closed three axes at
-once, plus two silent holes.
+Orthogonal to layout, since it lands on any of the three, and it closed three axes
+at once plus two silent holes.
 
 - **Axis 6, input vocabulary.** The question was "keep `inputs:` or drop it, and
   annotate the payload where it is used". The third option won: declare both maps
   together, as an ordinary named type that can be exported, imported, generated
   or composed.
-- **Axis 2, data-free states.** `empty: void`. Not `data: nothing`, not
-  `state()` — the actual type. (What made that safe was measured separately:
+- **Axis 2, data-free states.** `empty: void`: the actual TypeScript type, rather
+  than a `data: nothing` or `state()` sentinel. (What made that safe was measured
+  separately:
   omitting an inference site normally makes TypeScript discard the _entire_
   inferred state map, and the fix is to widen the constraint and move the "no
   data" default into `DataOf`.)
@@ -469,14 +476,14 @@ once, plus two silent holes.
 **The two holes it closed are the real argument.**
 
 _The `any` leak._ `state<T = void>()` puts the marker call in a position
-contextually typed by the unresolved state map, so `T` infers as `any` — every
+contextually typed by the unresolved state map, so `T` infers as `any`: every
 data-free state silently accepted anything, and every payload-free input accepted
 any payload. A written `void` has **nothing to infer**. The bug is not fixed; it
 is unrepresentable.
 
 _The state-name inference cliff._ When every state was data-free and every
 handler a closure, `keyof S` collapsed to `string` and target names stopped being
-checked — needing a compile-time guard whose error message was the fix. Names are
+checked, needing a compile-time guard whose error message was the fix. Names are
 now declared, so they cannot be recovered wrongly:
 [`n2-declared-types/check.ts`](../explorations/candidates/n2-declared-types/check.ts)
 runs the exact
@@ -484,7 +491,7 @@ machine that broke `d1`, and it infers correctly with no guard in the library at
 all.
 
 Both are covered by `@ts-expect-error` cases, so a regression fails the build.
-Declaring is also cheaper — 14 864 instantiations against 20 103 inferred, ~26% —
+Declaring is also cheaper (14 864 instantiations against 20 103 inferred, ~26%),
 though that is small and not the reason.
 
 **Costs.** States have no runtime existence (`type<>` erases to `{}`, so a
@@ -494,16 +501,16 @@ every transition key with nothing but the checker tying them; and hover text
 inlines the whole literal unless the type is named, which is why
 `type<Publication>()` is the documented idiom.
 
-### Two markers, not one — and both optional
+### Two markers, both optional
 
 `types: type<Publication>()` became `inputs: type<Inputs>()` and
 `states: type<States>()`, so every config key is one concept and `initial`, `inputs`,
 `states` and `transitions` are siblings at one level. `invokes:` (§10) then joins them
 as a fifth rather than as a third key nested inside `types`.
 
-**The risk was §7's option-e failure**: siblings in one object literal cannot see each
+**The risk was §4's option-e failure**: siblings in one object literal cannot see each
 other's inferred types, so would `transitions` still be contextually typed by a
-vocabulary assembled from two sibling properties? **Measured, and yes** — with
+vocabulary assembled from two sibling properties? **Measured, and yes**, with
 exact-type assertions rather than "it compiles":
 
 ```
@@ -520,59 +527,64 @@ type had to be inferred.
 
 **A `null | T` marker was proposed and not taken.** `type<T>(): null | T` returns the
 smallest possible runtime value and makes extraction a built-in,
-`NonNullable<typeof publication.inputs>`. It infers `T` correctly — measured, no
-degradation to `null | T`. Two things decided against it: extraction reads better
+`NonNullable<typeof publication.inputs>`. It infers `T` correctly (measured: no
+degradation to `null | T`). Two things decided against it: extraction reads better
 through a named helper anyway (`InputsOf<typeof publication>`, matching the
 `Handled`/`Sources` family), and `null | T` legalises a bare `inputs: null`, after
 which `keyof S & string` collapses to `never` and the failure surfaces somewhere else
-as an obscure type-level message — which is the class P1.2 rules out by name.
+as an obscure type-level message, the class P1.2 rules out by name.
 
-**Revision: `types()`'s own return type moved from `T | null` to `T | undefined`
-(#15), and this entry's second ground no longer decides anything.** It argued
-against legalising a bare `inputs: null`; that argument is moot once the codebase
-carries no `null` at all — the collapse-to-`never` failure it warned about was never
-about `null` specifically, it was about a marker value that skips inference and lands
+**Revision: `type()`'s own return type moved from `T | null` to `T | undefined`
+(#15), and this entry's second ground no longer decides anything.** That ground
+argued against legalising a bare `inputs: null`, and it is moot once the codebase
+carries no `null` at all. The collapse-to-`never` failure it warned about was never
+about `null` specifically: it was about a marker value that skips inference and lands
 on the bare constraint, and `undefined` inherits the same exposure unless something
-else closes it. The first ground still holds under the new spelling: extraction still
-reads through `InputsOf`/`StatesOf`, not through the marker's own type. What newly had
-to be re-argued was a case this section's original text never had to face, because
+else closes it. The first ground still holds under the new spelling, since extraction
+still reads through `InputsOf`/`StatesOf` rather than through the marker's own type.
+
+What newly had to be re-argued is a case the original text never faced, because
 `null` and `undefined` are not interchangeable at the type level the way they are at
-the value level: `inputs?: I | null` and `inputs?: I | undefined` behave differently
-under `exactOptionalPropertyTypes`, and the second form is genuinely reachable two
-ways — an omitted property, and one explicitly written as `undefined` — that must
-resolve to the same default. Constraining the raw parameter to bare `Vocab` (`RawI
-extends Vocab = InputsFromKeys<K>`, the shape this section describes) makes those two
-call sites diverge: `undefined` is not a valid `Vocab`, so TypeScript's fallback for an
-invalid candidate is the constraint itself, and an explicit `inputs: undefined`
-silently widened every name to `string` where the omitted form correctly inferred
-`InputsFromKeys<K>`. The fix widens the constraint one step further, to `Vocab |
-undefined`, so `undefined` is a legal, non-widening candidate rather than a violation,
-and resolves the actual vocabulary through a small conditional (`Declared<Raw,
-Default>` in `src/totorobot.ts`) applied after inference rather than through the
-default position itself. `RawI`/`RawS` — what `inputs`/`states` actually infer to —
-are now separate type parameters from `I`/`S` — the resolved vocabularies used
-everywhere else in `machine`'s signature — for exactly this reason.
+the value level. `inputs?: I | null` and `inputs?: I | undefined` behave differently
+under `exactOptionalPropertyTypes`, and the second form is reachable two ways, by an
+omitted property and by one written explicitly as `undefined`. Both must resolve to
+the same default.
+
+Constraining the raw parameter to bare `Vocab` (`RawI extends Vocab =
+InputsFromKeys<K>`, the shape this section describes) makes those two call sites
+diverge. `undefined` is not a valid `Vocab`, and TypeScript's fallback for an invalid
+candidate is the constraint itself, so an explicit `inputs: undefined` silently
+widened every name to `string` where the omitted form correctly inferred
+`InputsFromKeys<K>`.
+
+The fix widens the constraint one step further, to `Vocab | undefined`, making
+`undefined` a legal, non-widening candidate rather than a violation. The vocabulary
+then resolves through a small conditional applied after inference (`Declared<Raw,
+Default>` in `src/totorobot.ts`) rather than through the default position itself.
+That is why `RawI`/`RawS`, what `inputs`/`states` actually infer to, are separate
+type parameters from `I`/`S`, the resolved vocabularies used everywhere else in
+`machine`'s signature.
 
 **Both markers are optional, which is P1.4 rather than a concession.** A JavaScript
 caller writes `machine({ initial, transitions })`; a TypeScript caller who omits them
-should still get a usable, checked interface — names and data read off `transitions`
-itself (see the revision note below) rather than `any` — with the key _grammar_ still
+should still get a usable, checked interface, with names and data read off
+`transitions` itself (see the revision note below) rather than `any`, and the key _grammar_ still
 enforced, since the grammar does not depend on the vocabulary.
 
 **It does not fall out for free.** A first attempt had `S` **reverse-inferred from
-`initial`** — `initial: 'whatever'` produced `S = { whatever: any }` — after which the
-only legal state was that bogus one, every real key was rejected, and the error moved
-off the offending line onto the whole `transitions` block. That fails P1.4 ("should
+`initial`**, so `initial: 'whatever'` produced `S = { whatever: any }`, after which
+the only legal state was that bogus one, every real key was rejected, and the error
+moved off the offending line onto the whole `transitions` block. That fails P1.4 ("should
 not collapse into an unusable surface") and P1.2 (locality) at once.
 
 **Three things fix it**, asserted in
 [`tests/untyped.test-d.ts`](../tests/untyped.test-d.ts), which covers every
-combination of declared maps with one omitted — the fully typed case is
+combination of declared maps with one omitted. The fully typed case is
 [`tests/vocabulary.test-d.ts`](../tests/vocabulary.test-d.ts):
 
 1. **Constrained defaults.** `S extends Vocab = Vocab`, with
-   `Vocab = Record<string, unknown>`. Widening then falls out of the constraint —
-   `keyof Vocab & string` is `string` and `Vocab[K]` is `unknown` — so nothing needs a
+   `Vocab = Record<string, unknown>`. Widening then falls out of the constraint
+   (`keyof Vocab & string` is `string`, `Vocab[K]` is `unknown`), so nothing needs a
    conditional to express "no vocabulary declared".
 2. **`NoInfer` on `initial`.** `keyof NoInfer<S> & string` leaves `states:` as the only
    inference site, so the default applies when it is omitted. `NoInfer` alone is not
@@ -580,7 +592,7 @@ combination of declared maps with one omitted — the fully typed case is
 string`) the reverse inference still happened. The constrained default is what makes
    the conditional unnecessary, and removing it is what lets `NoInfer` bite.
 3. **A bad key poisons its own value type**, mapping to an error-bearing string
-   literal instead of a handler signature — `K extends Key<S> ? Handler : "not a
+   literal instead of a handler signature: `K extends Key<S> ? Handler : "not a
 transition: 'K'"`. That reports on the offending line, where intersecting an extra
    required property reports at the object level, because a missing property is an
    object-level error. It **replaces** the separate `Check<S, T>` helper, so the fix
@@ -592,43 +604,46 @@ line, and the states-only combination does not resolve at all. Trading P1.2 for 
 not a fix.
 
 **Revision: the default's _names_ were later changed from `Vocab` to a table-derived
-vocabulary, its _data_ left at `unknown`.** Widening an omitted half's names to `string`
-turned out to give up more than it needed to: `K` (the table's own keys) is already
-inferred cleanly, via the same homomorphic-mapped-type mechanism as `Table` itself, so
-`From<K> | To<K>` and `Label<K>` recover the exact names `transitions` mentions without
-repeating the `initial` cliff — the risk there was reverse-inferring `S` from a single
-field, not deriving it from a sibling parameter that is already resolved. `I`/`S` now
-default to `InputsFromKeys<K>`/`StatesFromKeys<K>` (each name mapped to `unknown`)
-rather than to `Vocab`, so an omitted half's _names_ narrow to what the table says while
-its _data_ stays `unknown` exactly as before — nothing declares what an inferred name's
-data is, so assuming it absent would be a claim the table never made. Point 1 above
-("constrained defaults... `Vocab`") describes the superseded design for names; points 2
-and 3 — `NoInfer` on `initial`, and a bad key poisoning its own value type — are
-unchanged and still what keep this safe.
+vocabulary, its _data_ left at `unknown`.** Widening an omitted half's names to
+`string` gave up more than it needed to. `K`, the table's own keys, is already
+inferred cleanly by the same homomorphic-mapped-type mechanism as `Table` itself, so
+`From<K> | To<K>` and `Label<K>` recover the exact names `transitions` mentions. That
+does not repeat the `initial` cliff: the risk there was reverse-inferring `S` from a
+single field, not deriving it from a sibling parameter already resolved.
+
+`I`/`S` now default to `InputsFromKeys<K>`/`StatesFromKeys<K>`, each name mapped to
+`unknown`, rather than to `Vocab`. An omitted half's _names_ therefore narrow to what
+the table says while its _data_ stays `unknown` exactly as before: nothing declares
+what an inferred name's data is, so assuming it absent would be a claim the table
+never made. Point 1 above ("constrained defaults... `Vocab`") describes the
+superseded design for names. Points 2 and 3, `NoInfer` on `initial` and a bad key
+poisoning its own value type, are unchanged and still what keep this safe.
 
 **Revision (#22): the inferred vocabulary excludes a name a key cannot round-trip.**
 `From<K> | To<K>` and `Label<K>` read every name a key mentions, including two a key
-should never have been able to mint: `*`, which is already how a pattern spells "any
-state" in the same coordinate, and a name padded by a leading or trailing space, which
-the grammar's own delimiters (` -`, `> `) quietly absorb rather than reject — `'a -x>
-b'` and `'a -x>  b'` differ only in a doubled space that reads as invisible in a diff,
-yet mint two different states. Both are excluded by remapping `From<K> | To<K>` and
-`Exclude<Label<K>, ''>` through a `RoundTrips<N>` filter before either mapped type is
-built (`src/totorobot.ts`), so a key that mints one fails `Key` and is rejected on its
-own row — no new diagnostic, the existing `not a transition: '…'` poisoning already
-built for a malformed key. **Declared vocabularies are left alone**: filtering `Name`
-itself was considered and rejected, because it would reach every type in the module and
-make the name simply not exist, moving the diagnostic away from its cause — onto a
-rejected `initial`, a rejected row, or a rejected `send`, whichever happened to reference
-it, rather than the row that minted it. A hand-written `type<{ ' b': void }>()` keeps
+should never have been able to mint. One is `*`, already how a pattern spells "any
+state" in the same coordinate. The other is a name padded by a leading or trailing
+space, which the grammar's own delimiters (` -`, `> `) quietly absorb rather than
+reject: `'a -x> b'` and `'a -x>  b'` differ only in a doubled space that reads as
+invisible in a diff, yet mint two different states.
+
+Both are excluded by remapping `From<K> | To<K>` and `Exclude<Label<K>, ''>` through
+a `RoundTrips<N>` filter before either mapped type is built (`src/totorobot.ts`), so
+a key that mints one fails `Key` and is rejected on its own row. That needs no new
+diagnostic: it reuses the `not a transition: '…'` poisoning already built for a
+malformed key. **Declared vocabularies are left alone.** Filtering `Name` itself was
+considered and rejected, because it would reach every type in the module and make the
+name simply not exist, moving the diagnostic away from its cause: onto a rejected
+`initial`, a rejected row, or a rejected `send`, whichever happened to reference it,
+rather than onto the row that minted it. A hand-written `type<{ ' b': void }>()` keeps
 working, the same way it did before this revision: declaring an odd name is deliberate
 in a way a doubled space in a key never is. **No runtime check accompanies this**: it is
 a compile-time-only guarantee, costing nothing in the shipped artifact because the type
-layer is erased, and plain JavaScript with no typechecking stays uncovered — the same
-trade-off #16's `parse` throw made for a malformed key, scoped to what a _typo in the
-grammar_ produces rather than what an _odd but intentional_ name produces.
+layer is erased, and plain JavaScript with no typechecking stays uncovered. That is
+the same trade-off #16's `parse` throw made for a malformed key, scoped to what a
+_typo in the grammar_ produces rather than what an _odd but intentional_ name produces.
 
-**The alternative shape** — `machine<Publication>()({ … })` — removes the `types:`
+**The alternative shape**, `machine<Publication>()({ … })`, removes the `types:`
 property but needs the double call, because TypeScript has no partial
 type-argument inference (microsoft/TypeScript#53999). `()()` reads worse than one
 extra property.
@@ -636,7 +651,7 @@ extra property.
 ### `inputs`, not `events`
 
 The minority word in JavaScript and the majority word in the formal literature.
-Prior art splits cleanly along that line, and the split is not arbitrary — the two
+Prior art splits cleanly along that line, and the split is not arbitrary: the two
 words carry different semantics.
 
 | lineage                                   | word         | what it implies                                       |
@@ -666,28 +681,28 @@ recipient this design does not have. Two arguments decide the rest:
 
 **Rejected argument:** that `.on()` decides it, because calling the things you
 send "events" would make one word name both directions. Plenty of libraries have
-both directions and manage — the DOM dispatches and listens for one `Event`,
+both directions and manage: the DOM dispatches and listens for one `Event`,
 XState qualifies by verb, and most subscriptions deliver state rather than
 events. Ours delivers a **transition record**, `{ on, input, from, to }`, so the
 collision is fixable from the other end. `.on()` is a convenience for `input`,
 not a reason.
 
 > **Both spellings in that paragraph are gone, and the collision with them.** The
-> method is `observe` — renamed before v1 for reasons unrelated to this argument
-> ([§11](#observation-observe-on-the-host-with-patterns)) — and the record's `on`
+> method is `observe`, renamed before v1 for reasons unrelated to this argument
+> ([§11](#observation-observe-on-the-host-with-patterns)). The record's `on`
 > field left with the reshape in
 > [§5's revision](#revision-the-shape-of-a-named-thing), which spends it on the input's
 > own tag. Nothing now names both directions with one word, so the argument this
-> paragraph rejects has no premise left. The decision it defends — `inputs` over
-> `events` — is untouched.
+> paragraph rejects has no premise left. The decision it defends, `inputs` over
+> `events`, is untouched.
 
-**What it costs**, and this is real: every JS reader arrives knowing "event", so
-`inputs:` is one translation on first contact, against P1.1. **Worse, `input` is
-not unclaimed** — XState v5 uses it for the parameters passed to an actor when it
-is spawned (`createActor(machine, { input })`), so the word collides in exactly
-the population most likely to read this one. That is the strongest case for
-`message` as a third way. And a few members of the vocabulary genuinely are
-events — `loaded` and `timeout` arrive on their own. The counter is that the
+**What it costs.** Every JS reader arrives knowing "event", so `inputs:` is one
+translation on first contact, against P1.1. **Worse, `input` is not unclaimed**:
+XState v5 uses it for the parameters passed to an actor when it is spawned
+(`createActor(machine, { input })`), so the word collides in exactly the population
+most likely to read this one. That is the strongest case for `message` as a third
+way. And a few members of the vocabulary are events in the strict sense: `loaded`
+and `timeout` arrive on their own. The counter is that the
 vocabulary _mixes_ kinds: `submit` and `cancel` are commands, `loaded` and
 `failed` are notifications. A neutral word beats one that biases toward either,
 and "input" names the _slot in the transition function_, not the provenance of
@@ -701,8 +716,8 @@ way, and the context member is `input` rather than `event`.
 > **A late revision, merged here from what was §17 of the chronological record.**
 > Decided alongside [§10's composition boundary](#revision-the-composition-boundary),
 > and it changes the shape argued above rather than the decision to declare at all.
-> States and inputs are built; outputs are unbuilt. Reopens axis 2 — `void` leaves the
-> vocabulary entirely — and changes the shape axis 6 settled, though not its answer:
+> States and inputs are built; outputs are unbuilt. Reopens axis 2, since `void`
+> leaves the vocabulary entirely, and changes the shape axis 6 settled, though not its answer:
 > the vocabulary is still declared. The transition record's fourth field is freed up
 > and the record carries `{ input, from, to }`. The position it supersedes is the map
 > of name → payload above, preserved in place under its own note rather than edited
@@ -712,12 +727,13 @@ way, and the context member is `input` rather than `event`.
 
 Splitting observation from outputs ([§10's revision](#revision-the-composition-boundary))
 put `on` in two places at once: the record's `on` names an **input**
-(`e.on === 'submit'`), while an output subscription names an **output**. Opposite directions, one word — and at a seam they are literally the same
-string, since an output becomes the next machine's input.
+(`e.on === 'submit'`), while an output subscription names an **output**. Opposite
+directions, one word, and at a seam they are literally the same string, since an
+output becomes the next machine's input.
 
 Four fixes were weighed: nest the record so `on` is freed; rename the discriminant to
 `via`; give outputs a different method name; namespace them. **Nesting won because it
-is justified independently of the collision** — the record becomes isomorphic to the
+is justified independently of the collision**: the record becomes isomorphic to the
 key. `'draft -submit> review'` has three coordinates; the record spent four fields on
 them.
 
@@ -741,10 +757,10 @@ states: type<{ name: 'empty' } | { name: 'draft'; text: string; revision: number
   keeps `e.to.name` reading as "the target's name" instead of the state's state.
 - **`send` takes one argument**: `send({ type: 'move', x, y })`.
 - **A handler still does not restate its target.** It returns the target's payload
-  minus the tag, which the library injects — spread in _last_, so a handler that
+  minus the tag, which the library injects, spread in _last_, so a handler that
   spreads its source into the return cannot leave the source's tag on the committed
   state. The arrow test is untouched.
-- **The handler's source parameter is `state`, tag included** — replacing `data`, which
+- **The handler's source parameter is `state`, tag included**, replacing `data`, which
   after the reshape would have named neither the state nor the recommended nesting
   field, and would have left a handler unable to ask which state it was transitioning
   from: the case that matters for a handler shared across several rows
@@ -759,7 +775,7 @@ A payload that is not a record, or that wants a field named `type` or `name`, ne
 { name: 'editing', data: { name: 'foo' } }
 ```
 
-The library neither requires nor knows about `data` — it is an ordinary field. But it
+The library neither requires nor knows about `data`; it is an ordinary field. But it
 is the recommended shape whenever a tag would collide or a payload is not an object,
 and it belongs in the docs **at the point of declaration**: a state carrying its own
 `name` field is ordinary enough that discovering the collision by accident is the
@@ -767,37 +783,37 @@ failure mode worth designing against.
 
 #### What it deletes, and what survives
 
-**Deleted for states, built.** `Snapshot`/`At<S, N>` are gone — `current` is `S`, and a
+**Deleted for states, built.** `Snapshot`/`At<S, N>` are gone: `current` is `S`, and a
 narrowed end is `Extract<S, { name: N }>`. And **`void` leaves the state half of the
 vocabulary**: `{ name: 'empty' }` needs no sentinel, so axis 2's answer is deleted rather
 than reworded, for states.
 
-**Deleted for inputs, built.** `Dispatch<I>` goes entirely once inputs are tagged —
+**Deleted for inputs, built.** `Dispatch<I>` goes entirely once inputs are tagged:
 `send` becomes `(input: I) => void`, because arity no longer follows the payload
 argument. `void` leaves the input half of the vocabulary the same way it left the state
 half.
 
 **Survives.** `Start<S, Init>` still needs "no payload, no argument", with its condition
-changed from `[S[Init]] extends [void]` to `keyof Payload extends never` — built, for the
-initial state.
+changed from `[S[Init]] extends [void]` to `keyof Payload extends never`. Built, for
+the initial state.
 
 #### Measured, not assumed
 
 TS 7.0.2, each probe carrying a tripwire that must fail. All of it is pinned in
-[`explorations/tagged-vocabulary.ts`](../explorations/tagged-vocabulary.ts) — covered
+[`explorations/tagged-vocabulary.ts`](../explorations/tagged-vocabulary.ts), covered
 by `pnpm typecheck`, so a compiler release that changes any of these turns the build
 red rather than quietly invalidating this section. The empty-payload finding below is
 pinned separately, in
 [`explorations/empty-state-payload.ts`](../explorations/empty-state-payload.ts), because
-it outgrew a negative result once states shipped — see
+it outgrew a negative result once states shipped; see
 [The empty-payload encoding](#the-empty-payload-encoding-closing-the-negative-result)
 below.
 
 **The shape is not new to this repository.** `config-object-kit.ts` already carries
 states as `{ name: … }` unions and derives a source context with
 `Omit<Extract<S, { name: K }>, 'name'>`, for the generation-1 config-object family.
-What killed options D/E/F was sibling inference (§5), not the union — and
-[implementation record I11](implementation-record.md#i11) records the one hazard of
+What killed options D/E/F was sibling inference (above), not the union.
+[Implementation record I11](implementation-record.md#i11) records the one hazard of
 that construction: deriving the context from the state name inside a conditional
 forces the target to resolve before it is read. The
 spelling adopted here keeps the target a parsed string rather than a parameter to
@@ -809,7 +825,7 @@ infer, which is why it does not bite.
   access styles narrow: `e.input?.type === 'x'`, `switch (e.input?.type)` including
   `case undefined`, and `if (e.input)` splitting immediate from input-driven.
 - **Nesting costs no narrowing**, because `from`/`to` never depended on the
-  discriminant — they are narrowed by the _pattern_, through `Select<From<P>>`.
+  discriminant; they are narrowed by the _pattern_, through `Select<From<P>>`.
 - **The error-message hazard is real, and is not the union's fault.** A wrong handler
   return, under a named alias parameterized over `S`, produces an error naming the whole
   vocabulary:
@@ -824,17 +840,17 @@ infer, which is why it does not bite.
   as a real type parameter. **The rule is therefore: never put the handler's return type
   behind an alias that takes `S`.** The residual cost is the `Omit<…, "name">` wrapper,
   against today's bare object. This is the highest-traffic error in the library, so the
-  rule is load-bearing.
+  rule is worth that cost.
 
 - **The variant with perfect messages was rejected.** Keeping the tag in the handler's
-  return gives an error identical to today's — bare, resolved, no wrapper — and costs
+  return gives an error identical to today's (bare, resolved, no wrapper) and costs
   the arrow test, since the target migrates back inside the lambda. That is [08 F3]'s
   criticism of Tinder, declined deliberately here rather than stumbled into.
-- **The negative result this section originally recorded — closed, for states.** For a
+- **The negative result this section originally recorded, closed for states.** For a
   payload-free target the bare `Omit<S, 'name'>` form leaves the tag _not required_ but
   also _not rejected_: `Omit<{ name: 'empty' }, 'name'>` is `{}`, and `{}` accepts any
-  object literal. The revision closes it with the tagged empty-object encoding — see
-  [below](#the-empty-payload-encoding-closing-the-negative-result) — so the type upholds
+  object literal. The revision closes it with the tagged empty-object encoding
+  ([below](#the-empty-payload-encoding-closing-the-negative-result)), so the type upholds
   the arrow test everywhere, not only where the state carries data. The bare form's
   behaviour is unchanged and is exactly what makes the tagged form worth having.
 - **`typeof` queries do not see control-flow narrowing**, which is a trap for the
@@ -845,7 +861,7 @@ infer, which is why it does not bite.
 
 The negative result above is real, and it is not the tagged union's fault: any
 form that reduces a payload-free target to `{}` inherits it, because `{}` is the one
-object type that accepts every object literal — TypeScript's weak-type check and
+object type that accepts every object literal: TypeScript's weak-type check and
 excess-property check both require the target to carry at least one known property
 before either fires. Closing it needs a target type that is not `{}`.
 
@@ -861,7 +877,7 @@ type Ret = keyof Payload extends never ? EmptyObject | void : Payload
 
 `EmptyObject | void` is a handler's return type for a target with no payload beyond its
 tag; `Payload` otherwise, unchanged. `EmptyObject` carries one optional property the
-caller cannot spell, so nothing satisfies it except `{}` or `undefined` — the `void` arm.
+caller cannot spell, so nothing satisfies it except `{}` or `undefined`, the `void` arm.
 
 **Compared against an index-signature form** (`Record<string, never>` and kin), both
 against TS 7.0.2, both pinned in
@@ -872,24 +888,24 @@ Strictness is identical. The tagged form is chosen on two other grounds:
 
 - **Error quality.** The tagged form reports the value is not assignable to
   `EmptyObject`. The index-signature form reports a property incompatible with the index
-  signature and a string literal not assignable to `never` — machinery the caller never
+  signature and a string literal not assignable to `never`: machinery the caller never
   wrote, on what is the most common row in a table.
 - **Read safety.** In a union with a data-carrying member, reading a foreign property off
   a `Record`-shaped member infers `never` rather than erroring; the tagged form errors.
-  Unreachable through this library's types today — the type appears only as a handler's
-  return, and no caller holds a reference to read a foreign property off — but it becomes
-  reachable if a handler's target ever resolves to more than one state name, and the
-  tagged form does not depend on that staying true.
+  Unreachable through this library's types today, since the type appears only as a
+  handler's return and no caller holds a reference to read a foreign property off. But
+  it becomes reachable if a handler's target ever resolves to more than one state name,
+  and the tagged form does not depend on that staying true.
 
 The cost is a `unique symbol` declaration in the published types, and it is paid once,
-module-private, not exported ([On what is exported](../src/totorobot.ts)) — the same
+module-private, not exported ([On what is exported](../src/totorobot.ts)), the same
 shape `Skip`/`SKIP` already uses for the same reason. Both encodings cost nothing at
 runtime.
 
 **Rejecting a spread of a wider state is inherent to the empty target, not a property of
-either encoding** — only `{}` accepts one, which is the hole this closes. Spreading into
-a state that carries nothing is a mistake or a no-op, and the honest spellings — nothing,
-or `{}` — are accepted.
+either encoding**: only `{}` accepts one, which is the hole this closes. Spreading into
+a state that carries nothing is a mistake or a no-op, and the two direct spellings,
+nothing or `{}`, are both accepted.
 
 #### Why the handler's `state` parameter uses `NoInfer`
 
@@ -901,8 +917,8 @@ API: it is invisible to a caller, and it is recorded in
 ## 6. Immediate transitions
 
 > **Shipped, and the guarantee below did not survive.** Chaining landed with a hop
-> budget in place of provable termination — a reversal of "v1 keeps the guarantee",
-> not a qualification of it. The reversal is recorded in place, in
+> budget in place of provable termination, which reverses "v1 keeps the guarantee"
+> rather than qualifying it. The reversal is recorded in place, in
 > [What it forces open](#what-it-forces-open), rather than edited out of the
 > argument that concluded the other way.
 
@@ -911,9 +927,9 @@ spelling is the transition key with the input part removed:
 
 ```ts
 transitions: {
-	'draft -submit> checking': ({ data }) => data,
-	'checking -> allowed':       ({ data, skip }) => (data.quota > 0 ? data : skip()),
-	'checking -> denied':        ({ data }) => ({ reason: 'over quota' }),
+	'draft -submit> checking': ({ state }) => state,
+	'checking -> allowed':     ({ state, skip }) => (state.quota > 0 ? state : skip()),
+	'checking -> denied':      ({ state }) => ({ reason: 'over quota' }),
 }
 ```
 
@@ -921,7 +937,7 @@ On arriving in `checking`, its immediate rows are tried in declaration order.
 Everything else is the machinery that already exists: `skip()` falls through to the
 next candidate, declaration order is priority order, and the handler receives the
 source data and returns the target's. **A guarded choice therefore needs no new
-concept** — no `cond`, no junction pseudostate, no `always` block. It is the
+concept**: no `cond`, no junction pseudostate, no `always` block. It is the
 multi-target mechanism with the input coordinate deleted.
 
 ### Why it is wanted independently of composition
@@ -934,7 +950,7 @@ multi-target mechanism with the input coordinate deleted.
   about who sends it.
 - It was already on the README's list of missing features, and requirements
   [Probe 2](requirements.md#probe-2--automatic-or-eventless-transitions) reserved
-  the question — a finalist "may be tested by sketching their cascading and
+  the question: a finalist "may be tested by sketching their cascading and
   observability semantics", which is what the rest of this section does, and what
   the probe now marks answered.
 
@@ -942,7 +958,7 @@ multi-target mechanism with the input coordinate deleted.
 
 | source          | spelling                       | note                                                                  |
 | --------------- | ------------------------------ | --------------------------------------------------------------------- |
-| SCXML           | `<transition>` with no `event` | taken when its condition holds, in **document order** — the same rule |
+| SCXML           | `<transition>` with no `event` | taken when its condition holds, in **document order** (the same rule) |
 | XState v5       | `always: [{ guard, target }]`  | a separate block on the state; guards ordered                         |
 | UML statecharts | junction / choice pseudostates | a whole extra node kind for what is here a row                        |
 | robot3          | `immediate(target, guard)`     | already wrapped in `explorations/robot3-wrapper.ts`                   |
@@ -950,12 +966,12 @@ multi-target mechanism with the input coordinate deleted.
 Two findings are already recorded in that wrapper and carry over:
 
 - **An immediate contributes nothing to what a state _handles_.** It is typed
-  `handles: never`, because it is not sendable — so it must not appear in
+  `handles: never`, because it is not sendable, so it must not appear in
   `Handled<T, S>`.
 - **robot3 reuses whatever event caused entry** as the immediate's event, which the
   wrapper calls "untyped rather than mistyped". This design avoids the question
-  entirely: there is no input, so the handler has **no `input` binding**. Reading
-  one is a compile error, which is the honest answer.
+  entirely: there is no input, so the handler has **no `input` binding**, and
+  reading one is a compile error.
 
 ### One language, two uses
 
@@ -964,8 +980,8 @@ The key rule extends to three forms and stays decidable from the string alone:
 | key                 | meaning             |
 | ------------------- | ------------------- |
 | no arrow            | a state (residency) |
-| **arrow, no colon** | **immediate**       |
-| arrow, with colon   | an input edge       |
+| **arrow, no label** | **immediate**       |
+| arrow, with label   | an input edge       |
 
 There is **one** key language. What differs is what a key is being used _for_:
 
@@ -976,8 +992,8 @@ There is **one** key language. What differs is what a key is being used _for_:
   unconstrained.
 
 An omitted input position reads identically in both: **no input is named.** A
-declaration has to be complete, so that means the edge has none — it is immediate. A
-pattern does not, so it means the input is unconstrained — and an immediate
+declaration has to be complete, so that means the edge has none: it is immediate. A
+pattern does not, so it means the input is unconstrained, and an immediate
 transition, having no input, is matched by it. The pattern reading is the superset
 that contains the declaration reading. `observe('a -> b')` therefore fires for every
 transition from `a` to `b`, **immediate or not**, which is the useful answer as well
@@ -986,7 +1002,7 @@ as the consistent one.
 **An objection that does not hold**, recorded because it looks plausible and cost a
 round: that this breaks the key rule, since the same string would mean "no input"
 when declared and "any input" when matched. It does not. The key rule discriminates
-**state from edge** — `'review'` against `'* -submit> *'` — and `'a -> b'` has an
+**state from edge** (`'review'` against `'* -submit> *'`), and `'a -> b'` has an
 arrow, so it is an edge in both uses and the rule answers identically. How
 _completely_ an edge's coordinates are filled in is a different axis, one the rule
 never spoke to. If it did, `*` would already be a violation, since `*` is legal in a
@@ -998,16 +1014,17 @@ pattern and meaningless in a declaration.
 input. So the two spellings are not the same pattern, and the omitted form is
 strictly broader:
 
-| pattern     | matches                                                   |
-| ----------- | --------------------------------------------------------- |
-| `'a -> b'`  | every transition `a → b` — input-driven **and** immediate |
-| `'a -x> b'` | that one input-driven edge                                |
+| pattern     | matches                                                  |
+| ----------- | -------------------------------------------------------- |
+| `'a -> b'`  | every transition `a → b`, input-driven **and** immediate |
+| `'a -x> b'` | that one input-driven edge                               |
 
-**This changes how entry and exit should be written.** They were spelled
-`'* -> loading'` and `'draft -> *'`, which now say "by some input" — so they
-would miss an arrival or a departure taken immediately, which is exactly the kind of
-silent gap the pattern language exists to avoid. Dropping the input position instead
-gives the intended meaning:
+**This changes what entry and exit patterns mean.** Under the sugar reading an
+omitted input position was only a shorter way to write "some input", so
+`'* -> loading'` and `'draft -> *'` would have missed an arrival or a departure
+taken immediately, which is exactly the kind of silent gap the pattern language
+exists to avoid. Under the reading above, those same two spellings carry the
+intended meaning:
 
 ```ts
 '* -> loading' // entry: every arrival, by any route
@@ -1021,7 +1038,7 @@ because someone sent something".
 
 **What it costs:** nothing selects _only_ the input-driven edges, or _only_ the
 immediate one. **Correction, not a silent edit:** an earlier draft of the table
-above carried a second row for `-*>` — "some input, any input" — on the assumption
+above carried a second row for `-*>` ("some input, any input") on the assumption
 that a wildcard existed to complement the broad form. It does not: [§4](#4-layout)
 ruled it out before this section was written, on the same "one wildcard, one
 meaning" ground this section otherwise relies on. The row is removed rather than
@@ -1032,22 +1049,22 @@ more.
 The distinction also stays rare, for a structural reason: **an immediate transition
 makes its source transient**, so there is usually nobody in that state to send it an
 input, and both patterns then have the same edges to choose between. The exception is
-the case §10 records — if every immediate candidate calls `skip()`, you stay, and
+the case §10 records: if every immediate candidate calls `skip()`, you stay, and
 input edges out of that state (`'loading.ok -cancel> empty'`) become meaningful.
 
 ### What it forces open
 
-- **Termination — resolved by spending the guarantee, not by keeping it.**
+- **Termination, resolved by spending the guarantee rather than keeping it.**
   `'a -> b'` with `'b -> a'` spins. Note 02's F6 puts it at the level of a
   guarantee rather than a cost: _"the only way to have a big step that provably
   terminates is to forbid chaining — one input, at most one transition. Every
   'immediate' / 'always' / eventless / transient transition feature buys
   expressiveness by giving up the termination guarantee."_ XState #721 is that bug
   in the wild, and Stately's own docs concede only that XState "will help guard
-  against most infinite loop scenarios". **v1 does not keep the guarantee** — the
+  against most infinite loop scenarios". **v1 does not keep the guarantee**, the
   conclusion drawn here when this section was written. A chain settles up to a hop
   budget of 1e5, reset when the next queued input is taken; exceeding it throws a
-  `RangeError` naming the state it could not settle. F6 still holds — a budget
+  `RangeError` naming the state it could not settle. F6 still holds: a budget
   catches the bug, it does not make the big step provably terminate, and nothing
   here should be read as a solution to the thing F6 names. It is mitigation, spent
   once, knowingly, because composition needs the same mechanism (§10) and paying
@@ -1058,15 +1075,15 @@ input edges out of that state (`'loading.ok -cancel> empty'`) become meaningful.
 - **The initial state settles.** `initial: 'checking'` with immediate rows on
   `checking` does not leave the machine observably parked there: `.start()` runs
   the same settle loop `send` does before handing the host back, so "on entering"
-  needed no exception for the first entering. Leaving it unsettled — the other
-  option floated here — was rejected: it parks the machine in the one state its
+  needed no exception for the first entering. Leaving it unsettled, the other
+  option floated here, was rejected: it parks the machine in the one state its
   author declared transient, where a pure junction has no input-driven rows to
   move it again.
-- **The listener event has `on: undefined`, not a separate arm or a `null`
-  discriminant.** `on` stays the discriminant an input carrying no data already
-  needed to be distinguishable by (`on: 'cancel'`, `input: undefined`); the empty
-  string was rejected as a value for it, since `observe()` already uses it as the
-  wildcard and one spelling meaning two things is exactly what issue #7 was about.
+- **An immediate's record carries `input: undefined`, not a separate arm or a
+  `null` discriminant.** That is what tells an immediate apart from a payload-free
+  input, whose record still carries its tag (`{ type: 'cancel' }`). The empty string
+  was rejected as the value, since `observe()` already uses it as the label wildcard,
+  and one spelling meaning two things is exactly what issue #7 was about.
 
 **One thing it improves**: the arrow test. There is no fictional input on the line,
 so source, target and handler are all that remain.
@@ -1074,8 +1091,8 @@ so source, target and handler are all that remain.
 ## 7. Self-transitions
 
 > **Axis 7 was closed here, and is reopened in [§10](#revision-the-composition-boundary).**
-> One of its three grounds — that a listener recovers everything from the transition
-> record — did not survive the composition question. The other two stand. The
+> One of its three grounds, that a listener recovers everything from the transition
+> record, did not survive the composition question. The other two stand. The
 > self-transition argument itself is untouched.
 
 When a transition targets the state you are already in, does residency re-run?
@@ -1099,25 +1116,25 @@ branch-object type is optional, so a bare string is structurally assignable to i
 The only reason an invalid bare target name (`cancel: 'busyy'`) was ever rejected
 is that `String.prototype.repeat` collides with the reserved `repeat` key and
 produces a type mismatch. Rename `repeat` and target-name checking silently stops
-working — which is what happened the first time `&` was tried. Fixed by
+working, which is what happened the first time `&` was tried. Fixed by
 intersecting the member with `object`; the guarantee had rested on an accident.
 
 **Then the whole feature deleted itself.** `keep_state` and `repeat_state` are
 observationally identical unless something runs on entry or exit. That is not an
-opinion — it is how every prior art defines it. Erlang's `repeat_state` differs
+opinion: it is how every prior art defines it. Erlang's `repeat_state` differs
 from `keep_state` only in repeating the state-enter call; XState v5's
 `reenter: true` exists to control whether entry/exit actions and invoked actors
 re-run; SCXML's internal vs external transitions differ only in which onexit /
 onentry handlers execute. **Remove entry/exit from the definition and the
 distinction has nothing left to denote.** It does not become rare; it becomes
 unobservable. Checked against the acceptance cases: every place it would have
-mattered — the marking menu's dwell clock, the request race's timeout — is a
+mattered (the marking menu's dwell clock, the request race's timeout) is a
 **timer**, not an entry/exit action.
 
 That produced a cleaner boundary than "no side effects in the definition":
 
-> **Causes in, consequences out.** A timer is a _cause_ — a source of inputs, a
-> reason the machine moves — so removing it from the definition would make the
+> **Causes in, consequences out.** A timer is a _cause_, a source of inputs and a
+> reason the machine moves, so removing it from the definition would make the
 > definition stop telling you every way the machine can transition, which is the
 > one thing it must tell you. An action is a _consequence_: nothing about the
 > machine's behaviour depends on it, so it can be attached from outside without
@@ -1125,7 +1142,7 @@ That produced a cleaner boundary than "no side effects in the definition":
 
 **What dropping entry/exit cost:** a measured consolidation disappeared (using
 residency for the marking menu's dwell had moved `cancelDwell` from three edges to
-one place — that survives with an external listener scoped to "while in
+one place; that survives with an external listener scoped to "while in
 `tracking`", it just moves out of the file), and the machine stops telling you
 what it _does_. That is a locality cost, not an expressiveness one: a transition
 is identified by (source, input, target), so an external listener can
@@ -1134,13 +1151,13 @@ pattern-match at exactly the granularity inline actions gave.
 **Axis 7 (`emit`) closed with it**, on three grounds in ascending order of force:
 another concept to learn on a project whose thesis is that the table reads without
 explanation; **strictly redundant**, since a listener receives
-`{ on, input, from, to }` with data on both ends and everything a pure handler
-could compute is already in `to.data`; and **the direction is asymmetric** —
-adding `emit` later is additive, removing it later is breaking.
+`{ input, from, to }` with the states at both ends, and everything a pure handler
+could compute is already in `to`; and **the direction is asymmetric**: adding
+`emit` later is additive, removing it later is breaking.
 
-9 reverses the premise of all of this and none of the conclusions: the ten
+§9 reverses the premise of all of this and none of the conclusions: the ten
 spellings stayed dead, and axes 4 and 5 stayed dissolved, for a _different_
-reason — the answer moved to the action.
+reason: the answer moved to the action.
 
 ## 8. Effects
 
@@ -1152,7 +1169,7 @@ expressed, whether the core may perform effects at all, and where the effects go
 
 Against a running example that exercises both halves at once: a fetch starts on
 entering `loading`, a 5 s timeout races it, both stop on the way out. The seam
-that organises all five is Elm's — **`Cmd`**, one-shot, started _by a transition_
+that organises all five is Elm's: **`Cmd`**, one-shot, started _by a transition_
 (a fetch); **`Sub`**, continuous, a function of _which state you are in_ (a timer,
 a socket, a poll). The second half is what needs residency scoping and
 cancellation.
@@ -1170,8 +1187,8 @@ cancellation.
 
 - **A, `within('loading', fn)`** — an effect returning its cleanup. Setup and
   teardown are **lexically paired**, so the correlation no library could check
-  becomes one no author can break. A genuine dual to `observe()`: `observe` is keyed
-  by edges, `within` by nodes. Escape-hatch complete. Its cost is opacity — nothing
+  becomes one no author can break. A dual to `observe()`: `observe` is keyed by
+  edges, `within` by nodes. Escape-hatch complete. Its cost is opacity: nothing
   outside that closure knows `loading` has a 5 s timeout.
 - **B, `'loading -timeout> failed': after('5s')`** — best visibility by a
   distance, and **re-entry answers itself**: the trigger belongs to the source
@@ -1182,25 +1199,25 @@ cancellation.
 - **C, a `while:` block of resource constructors** — the library owns every
   lifetime, so cancellation is not something an author can _forget_ because it is
   not something an author _writes_. Inspectable and mockable. Costs a whole
-  vocabulary to design, learn and version — and its escape hatch is A, so C is
-  realistically **A plus a vocabulary**, not an alternative to it.
+  vocabulary to design, learn and version, and its escape hatch is A, so C is
+  realistically **A plus a vocabulary** rather than an alternative to it.
 - **D, the input declares its own source** (`timeout: from.timer('5s')`) — the
   research bet. **Zero duplication of the topology**: `timeout` is live in exactly
   the states that handle `timeout`, and the table already says which those are.
   Its flaw is that the scope is a _set_ of states, so "leaving" is not well
-  defined — if `loading` and `retrying` both handle `timeout`, does the clock
+  defined: if `loading` and `retrying` both handle `timeout`, does the clock
   reset on `loading -> retrying`? Both answers are defensible, which is the
   problem.
-- **E, `async` handlers** with a three-part key `'load: idle -> loading -> ready'`
-  — no new vocabulary at all, and the best-reading happy path on the page. **A
+- **E, `async` handlers** with a three-part key `'load: idle -> loading -> ready'`,
+  with no new vocabulary at all and the best-reading happy path on the page. **A
   trap worth naming**, precisely because of that: the error path is where async
   actually lives, a companion `-> failed` key is odd with nothing pairing them,
   overloading `skip()` conflates "decline" with "failed", throwing leaves the
-  machine somewhere unnamed — and every repair reintroduces the vocabulary the
+  machine somewhere unnamed, and every repair reintroduces the vocabulary the
   option existed to avoid. It also cannot express `Sub`.
 
 **One thing none of them fixes:** all five leave the fetch _running_ when you
-abort — a signal stops the machine from caring, not the server from working.
+abort: a signal stops the machine from caring, not the server from working.
 
 ### Composition subsumes the question
 
@@ -1216,22 +1233,22 @@ returning one. Three findings from reading it:
 
 1. **No cancellation and no cleanup hook at all.** An identity check is the whole
    staleness story; leaving an invoking state **abandons** the work rather than
-   stopping it. A shipping 1.2 KB library accepted that trade — evidence that
+   stopping it. A shipping 1.2 KB library accepted that trade, which is evidence that
    "ignore the result, do not cancel the work" is liveable.
 2. **No timer, interval, socket or poll vocabulary exists.** A timeout is
    `invoke(() => new Promise(r => setTimeout(r, 5000)))`. Empirical support for
    the thesis: one primitive really was enough.
-3. **It mounts the child at the state — and we cannot.** robot3's states are
+3. **It mounts the child at the state, and we cannot.** robot3's states are
    _values_, so the mount has an obvious home. Ours are _types_, declared in
    `type<>`, so there is no value-level slot to hang it on. **A real consequence
    of §5**, and the reason every mounting option needs a block or a derivation.
 
-Composition also obsoletes C's resource vocabulary — the resources become library
-machines — and demotes A to **the leaf primitive**, written once per kind of work
-rather than once per state.
+Composition also obsoletes C's resource vocabulary, since the resources become
+library machines, and demotes A to **the leaf primitive**, written once per kind of
+work rather than once per state.
 
-**The honest limit:** composition **relocates the effect boundary, it does not
-remove it.** At the bottom of every tree is a leaf that really calls `fetch`. "A
+**The limit:** composition **relocates the effect boundary, it does not remove
+it.** At the bottom of every tree is a leaf that really calls `fetch`. "A
 promise is a state machine" describes its _shape_, not its _execution_. It
 collapses N vocabulary items into **one** primitive, not zero.
 
@@ -1241,8 +1258,8 @@ That limit prompted a correction which was itself a mistake, and both directions
 are worth recording.
 
 The correction: two claims had been running together. _Something must call
-`fetch`_ — true, unavoidable, uninteresting. _That something must live inside the
-library_ — **false**, and it looked like the one that mattered. The transition
+`fetch`_ is true, unavoidable and uninteresting. _That something must live inside
+the library_ is **false**, and it looked like the one that mattered. The transition
 function is already pure. What would take that away is exactly what `within` and
 `invoke` propose: IO closures inside the definition, and then the library needs a
 scheduler to call them, track their lifetimes and cancel them.
@@ -1257,25 +1274,25 @@ diff → start the new, stop the departed
 ```
 
 Two consequences are the whole payoff. **Cancellation stops being something
-anyone writes** — leaving `loading` means `loading`'s resources are no longer in
+anyone writes**: leaving `loading` means `loading`'s resources are no longer in
 `desired`, so the driver stops them; no cleanup return, no `AbortController` in
 user code, no forgotten `clearTimeout`. And **the machine stays serialisable**,
 so state can be snapshotted, replayed and time-travelled.
 
-Five variants were worked through — P do nothing / Q descriptions in a `while:`
-block / R the mapping outside the machine / S handlers return data _and_ commands
-/ T generators yielding descriptions.
+Five variants were worked through: P do nothing, Q descriptions in a `while:`
+block, R the mapping outside the machine, S handlers return data _and_ commands,
+T generators yielding descriptions.
 
 **Then it fell**, on the cost that had been named up front and underweighted:
 **reconciliation needs identity.** Is `{ fetch, id: 1 }` followed by
 `{ fetch, id: 2 }` one resource restarted, or one stopped and another started?
 React answers with `key`, Elm with structural equality. That question has to be
-answered, and it is the real complexity — not the diffing.
+answered, and it is the real complexity rather than the diffing.
 
 Adding it up, an effect-free core forces **either** a description vocabulary plus
 a reconciling driver plus an identity rule, **or** a `within(state, childMachine)`
 mount. And the mount fails for a specific, structural reason: it **grows the
-input vocabulary** — mounting a child adds `loading.ok` and `loading.rejected` —
+input vocabulary**, since mounting a child adds `loading.ok` and `loading.rejected`,
 which means it cannot be a block (the vocabulary is declared up front) and must
 be a fluent chain, whose accumulated type is incomplete until the chain ends.
 That reopens §5. (§10 finds the crack in this argument: it holds only if children
@@ -1288,21 +1305,21 @@ Option S is worth one note, because it is the only shape that puts "this
 transition starts a fetch" on the line where the transition already is, and
 because it **reopens axis 7 legitimately rather than contradicting it**: that
 decision was about _outgoing notifications_, which a listener can recover from
-`{ on, input, from, to }`. _Starting work_ is not recoverable that way, so the
+`{ input, from, to }`. _Starting work_ is not recoverable that way, so the
 redundancy argument does not transfer.
 
 ## 9. Actions
 
-With effects allowed back in, the question is where they go — and it is settled by
-concern structure, not taste.
+With effects allowed back in, the question is where they go, and it is settled by
+concern structure rather than taste.
 
 ### The constraint
 
 The declaration is one block per job: `inputs` what can happen, `states` what we
 can be, `transitions` how we move. A proposition is judged first on whether it
 keeps that true. And the diagnosis is sharper than "actions break it", because
-**the overload predates actions**: the handler already does **two** jobs — it
-decides (`skip`) _and_ projects the target data. `o1`'s README celebrates that
+**the overload predates actions**: the handler already does **two** jobs, deciding
+(`skip`) _and_ projecting the target data. `o1`'s README celebrates that
 fold, correctly, because splitting `guard` from `map` lost narrowing (§4). "And
 it acts" makes three; proposition Z below made it **four**.
 
@@ -1317,23 +1334,23 @@ it acts" makes three; proposition Z below made it **four**.
 
 **Kind 3 decides everything: the test any proposition must pass is expressing a
 socket.** A design that only decorates edges cannot say "this is open while we are
-here", and fakes it by pairing an entry edge with every exit edge — the drift the
-table exists to eliminate.
+here", and fakes it by pairing an entry edge with every exit edge, which is the
+drift the table exists to eliminate.
 
 **Kind 4 turns out not to be its own kind.** Entry and exit are transition actions
-with one end pinned — `'* -> loading'` and `'draft -> *'` — and the pattern grammar
+with one end pinned (`'* -> loading'` and `'draft -> *'`), and the pattern grammar
 already parses both. Axis 3's original question answers itself. It
 collapses a second time from the other direction: **a residency action with no
-teardown _is_ an entry action, and one that only tears down _is_ an exit action**
-— `loading: fn` and `draft: () => fn`. The two spellings agree because the default
+teardown _is_ an entry action, and one that only tears down _is_ an exit action**:
+`loading: fn` and `draft: () => fn`. The two spellings agree because the default
 is to restart (below). The pattern form survives because it can scope the trigger
-more narrowly than "arriving" or "leaving" — by the input, or by the other end of
-the edge — which residency cannot express. But nothing needed a keyword, which was
+more narrowly than "arriving" or "leaving", by the input or by the other end of the
+edge, which residency cannot express. But nothing needed a keyword, which was
 the question.
 
 The question mark on kind 2 is a finding, not a hedge: **a command placed on an
-edge duplicates across every edge _into_ the state.** `load: idle -> loading` and
-`retry: failed -> loading` both have to start the fetch, and an edge added later
+edge duplicates across every edge _into_ the state.** `'idle -load> loading'` and
+`'failed -retry> loading'` both have to start the fetch, and an edge added later
 silently does not. Attached to residency it is written once and is automatically
 right. That is what rules out the edge-based propositions on merit rather than
 taste.
@@ -1357,8 +1374,8 @@ is already built. Three things decided it:
 
 1. **The definition is complete.** `machine({…})` is a value that gets exported
    and imported. If behaviour arrives through `.within()` calls afterwards, the
-   exported thing is not the machine — it is half a machine plus a convention that
-   every caller remembers to configure it. In practice you would export a factory,
+   exported thing is half a machine plus a convention that every caller remembers
+   to configure it. In practice you would export a factory,
    and the definition would stop being the definition.
 2. **Declarative, in one place.** A chain is imperative and order-dependent, can
    be applied conditionally, and can be spread across modules. A block cannot.
@@ -1372,27 +1389,27 @@ whoever instantiates it. That is also why axis 7 settled where it did.
 
 Calling it `states:` would be a lie: the states are already declared in `type<>`
 and every one appears in the table. The block declares **what runs**. Naming it
-after its content also freed its shape — it is no longer obliged to be a map keyed
+after its content also freed its shape: it is no longer obliged to be a map keyed
 by state name, which is what made trigger-keying possible.
 
-Three shapes were considered: **records** (`[{ within: 'loading', run: fn }]` — a
+Three shapes were considered: **records** (`[{ within: 'loading', run: fn }]`: a
 list, so two activities in one state stay separable; extensible in `o1`'s sense),
-**constructors** (`[within('loading', fn), on('draft -cancel> *', fn)]` — reads
+**constructors** (`[within('loading', fn), on('draft -cancel> *', fn)]`: reads
 best of the three; this is proposition M, which died for _transitions_ on per-edge
 tax, but actions are sparse so the tax is near nothing here), and **trigger-keyed**
-(`{ 'loading': fn, 'draft -cancel> *': fn }` — no new syntax at all, since both
+(`{ 'loading': fn, 'draft -cancel> *': fn }`: no new syntax at all, since both
 key languages already exist).
 
 **Trigger-keyed won**, because it pairs with string keys: they are the same idea
-applied twice — one key language, parsed, doing the work that structure does
+applied twice: one key language, parsed, doing the work that structure does
 elsewhere. Constructors were the near miss; they would have been the only place in
 the API using them on every line, and none of the three live layouts has that
 concept.
 
 ### Restart, and how the policy is spelled
 
-Actions make `draft -> draft` observable for the first time, so axes 4 and 5 —
-closed in §7 _because_ entry/exit had gone — had to be re-answered.
+Actions make `draft -> draft` observable for the first time, so axes 4 and 5,
+closed in §7 _because_ entry/exit had gone, had to be re-answered.
 
 First, a collapse: **restart-on-re-entry and restart-on-resident-data-change are
 one question.** Resident data can only change via a transition into the state you
@@ -1419,7 +1436,7 @@ Four spellings, and the reasons three lost:
 
 (`stay` and `next` were never candidates: a handler returning data under a key
 that reads `draft -> draft` already _is_ a stay. `stay` and `skip` are also **not**
-the same thing — `skip` changes nothing, commits nothing, and falls through to the
+the same thing: `skip` changes nothing, commits nothing, and falls through to the
 next candidate; `stay` changes data and consumes the input.)
 
 That leaves _how_ it is written, which is a separate question because
@@ -1431,47 +1448,47 @@ provides without a third key form.
 
 **Wrappers won.** The common case stays a bare function and a constructor appears
 only at the exception, which answers the objection to constructors-everywhere. And
-the wrapper **returns a record** — `persistent(fn)` → `{ run: fn, restart:
-'never' }` — so a bare function is sugar for `{ run: fn }`, the block stays
+the wrapper **returns a record** (`persistent(fn)` → `{ run: fn, restart: 'never' }`),
+so a bare function is sugar for `{ run: fn }`, the block stays
 inspectable as data, and new policies are new wrappers rather than new syntax.
 **That is the records proposition with a constructor as its ergonomic front door**,
 and the convergence is the strongest argument for it.
 
 That property also absorbed what looked like a separate question. A finer-grained
-policy — restart only when something relevant changed, spelled as an object value
-`{ run: fn, key: ({ id }) => id }` — appeared to need a second value shape, which
+policy (restart only when something relevant changed, spelled as an object value
+`{ run: fn, key: ({ id }) => id }`) appeared to need a second value shape, which
 was the main cost counted against wrappers. It does not: written as `keyed(k, fn)`
 it is one more constructor producing one more field. So the layering is not
 "coarse now, object values later"; it is **one mechanism that grows**. `keyed` is
-therefore _not_ in the initial API — there is no use case for it yet, and the whole
+therefore _not_ in the initial API: there is no use case for it yet, and the whole
 point of the shape is that adding it later costs nothing. Same for `once` or
 `debounced`.
 
 **The default is to restart**, for two reasons:
 
 - **It fails safe.** Forgetting the wrapper under a survive-default leaves an
-  activity closed over stale data — a correctness bug. Forgetting it under a
-  restart-default tears something down unnecessarily — a performance bug.
+  activity closed over stale data, a correctness bug. Forgetting it under a
+  restart-default tears something down unnecessarily, a performance bug.
 - **It puts the wrapper on the rarer thing.** A fetch should restart when you
   re-enter `loading`; a long-lived socket is the exception.
 
 It is also consistent with the pattern grammar: `'draft -> *'` matches
 `draft -> draft`, so an exit action fires on a self-transition — exactly what
 re-entry means under this default. The two rules agree rather than needing
-reconciliation. (The opposite default — residency is the state's name being
-current, so a self-transition restarts nothing — is coherent, and loses on both
-counts above.)
+reconciliation. (The opposite default, where residency is the state's name being
+current so a self-transition restarts nothing, is coherent and loses on both counts
+above.)
 
 ### What actions cost
 
 **Axis 3 reopens by definition**, and the block is **opaque**: nothing in the table
 says `loading` fetches, so grep `-> loading` finds the edges but not the work. That
 was the fatal complaint against `within` in §8, and attaching to residency does not
-answer it — it only gives the closure a defensible lifetime.
+answer it; it only gives the closure a defensible lifetime.
 
 Three properties come free, and they are what the rejected options paid for: **the
 type never grows** (`send` sends only already-declared inputs, so `actions` adds
-nothing to the vocabulary — this works _because_ it is less powerful than a mount);
+nothing to the vocabulary; this works _because_ it is less powerful than a mount);
 **it cannot drift** (state names are checked against the declared vocabulary); and
 **it is the standard answer** (Harel, SCXML, XState and `gen_statem` all attach
 activities to nodes).
@@ -1567,7 +1584,7 @@ That is the cost, and it is the thing `actions` exists to delete.
 ### What to test when it lands: actions fired by `start()`
 
 **Required coverage, and the one entry here that is a decision rather than a
-description.** The first action a machine ever runs is the one `start()` triggers —
+description.** The first action a machine ever runs is the one `start()` triggers:
 residency on the initial state, or on whatever its immediate chain settles into, plus
 any edge action on the hops of that chain. `start` settles that chain under the same
 drain ownership `send` takes ([§11](#start-settles-under-the-drain)), so an action
@@ -1600,8 +1617,8 @@ the half of this that a fix to `start` alone could not settle.
 
 ## 10. Composition
 
-> **Designed, deferred.** This is the design that was returned to, not the plan — what
-> is actually planned is in [the roadmap](roadmap.md). The boundary question was settled
+> **Designed, deferred.** This is the design that was returned to, not the plan;
+> what is actually planned is in [the roadmap](roadmap.md). The boundary question was settled
 > after everything below, and that revision is merged in at the end of this section:
 > [Revision: the composition boundary](#revision-the-composition-boundary).
 
@@ -1613,7 +1630,7 @@ strongest external evidence in the repo is about something else:
 > The SwingStates authors report that state explosion is **not** an issue within
 > a single interaction technique and appears only when _combining_ techniques.
 > Their fix, and ConstraintJS's independently, is **parallel small machines with
-> light communication — never hierarchy**. — [requirements.md](requirements.md),
+> light communication, never hierarchy**. [requirements.md](requirements.md),
 > P2.9 amendment, from [note 04](research/04-hci-critiques-and-alternatives.md)
 > F7/F8
 
@@ -1625,7 +1642,7 @@ SwingStates names three patterns, and only one of them is a mount:
 | **Stacking**           | machine per abstraction level; each emits what the next consumes | ad-hoc event synthesis |
 | **Shared transitions** | a common transition factored into a shared state class           | Harel super-states     |
 
-Their published Marking Menu — **this project's own acceptance case** — is
+Their published Marking Menu, **this project's own acceptance case**, is
 **three parallel machines** (linear menu, marking menu, item highlighting), while
 [acceptance-cases.md](acceptance-cases.md) Case 1 folds all three into one. Two
 independent labs six years apart converged on this; the amendment calls it "as
@@ -1646,8 +1663,8 @@ them is what made the earlier attempt feel unsolvable.
 1. **Hierarchy is out.** Keys become paths, `Handled`/`Sources` become recursive,
    the arrow test dies, grep stops being one hop, and every layout decision is
    re-litigated. "A different project."
-2. **A mount grows the input vocabulary** (§8) — `loading.ok`, `loading.rejected`
-   — and §5 declares the vocabulary up front.
+2. **A mount grows the input vocabulary** (§8) with `loading.ok` and
+   `loading.rejected`, and §5 declares the vocabulary up front.
 3. **Actions work _because_ the type never grows** (§9): _"this works because it
    is less powerful than a mount."_
 4. **Siblings in one object literal cannot see each other's inferred types**
@@ -1660,15 +1677,15 @@ them is what made the earlier attempt feel unsolvable.
    ([note 07](research/07-js-fsm-library-landscape.md)).
 
 Constraint 4 has a crack in it. A mount "cannot be a block… and must be a fluent
-chain" holds only if the children are **inferred**. If they are **declared** — in
-`type<>`, beside `inputs` and `states` — the derived inputs are computable at the
+chain" holds only if the children are **inferred**. If they are **declared**, in
+`type<>` beside `inputs` and `states`, the derived inputs are computable at the
 same moment as everything else, by a mapped type, which is the safe mechanism of
 [implementation record I10](implementation-record.md#i10). §5's own answer applies to its own objection.
 
 ### Three designs
 
-Each answers **both** halves — async and modularity — because a design that
-answers only one is half of someone else's. They differ on a single question:
+Each answers **both** halves, async and modularity, because a design that answers
+only one is half of someone else's. They differ on a single question:
 **where does a child machine live?**
 
 |                                  | Peers                  | Children                     | Inlining           |
@@ -1681,7 +1698,7 @@ answers only one is half of someone else's. They differ on a single question:
 | the work is visible in the table | ✗                      | ✓                            | ✓                  |
 | wiring lives                     | outside the definition | inside                       | inside             |
 
-#### Peers — a machine is never inside a machine
+#### Peers: a machine is never inside a machine
 
 Composition is several machines running **side by side**, wired by subscriptions.
 Async is not composition at all; it is an action whose outcomes are declared.
@@ -1694,7 +1711,9 @@ const menu = runAll({
 	highlight: highlighter,
 })
 
-menu.marking.observe('* -> recognized', (e) => menu.highlight.send('clear'))
+menu.marking.observe('* -> recognized', () =>
+	menu.highlight.send({ type: 'clear' }),
+)
 ```
 
 ```ts
@@ -1708,7 +1727,7 @@ actions: {
 values are checked against `Handled<T, 'loading'>`, so `loading` provably produces
 `loaded` or `failed` and nothing else.
 
-**Why it is credible.** `runAll` returns a **host of hosts**, not a machine — if it
+**Why it is credible.** `runAll` returns a **host of hosts**, not a machine: if it
 were a machine its state would be the product of its children's, which is parallel
 states, which P2.1 forbids in the core. So the core is untouched: no child
 lifetime, no cancellation semantics, no vocabulary growth. It is also exactly what
@@ -1716,19 +1735,19 @@ two independent labs converged on.
 
 **Its real weakness** is not the obvious one. The peer wiring lives _outside_ the
 definition, as imperative `observe()` calls a caller must remember to make. That is
-precisely the shape §9 rejected for actions: _"the exported thing is not the
-machine — it is half a machine plus a convention."_ This design accepts that
+precisely the shape §9 rejected for actions: _"the exported thing is half a machine
+plus a convention."_ This design accepts that
 argument for actions and then violates it one level up.
 
-#### Children — the child is declared in the vocabulary
+#### Children: the child is declared in the vocabulary
 
 Two cheaper spellings were tried first and both failed on the same principle.
 
-**Rejected — a `children:` map plus a `final` field on the child**, so the child
+**Rejected: a `children:` map plus a `final` field on the child**, so the child
 could contribute an input name. It works, but it buys with structure what is
 available without it.
 
-**Rejected — an outcome map inside `actions`:**
+**Rejected: an outcome map inside `actions`:**
 
 ```ts
 actions: {
@@ -1743,7 +1762,7 @@ a routing map in another block is a hidden arrow, and a reader now needs two hop
 to answer "what happens when the fetch succeeds".
 
 **So the child is declared, and its outcome is a _state_, not an input.** An
-intermediate draft made the outcome an input — `'fetch.ok: loading -> ready'` —
+intermediate draft made the outcome an input (`'fetch.ok: loading -> ready'`),
 which is a lie, and a small one that matters: nothing sends `fetch.ok`, and no
 caller can, as though a user could pick it. The child reaching `ok` is **a
 condition that became true**, which is what a state is.
@@ -1778,8 +1797,8 @@ transitions: {
 ```
 
 `loading.ok` is a state name that happens to contain a dot, so the three key forms
-of §6 carry this with nothing added, and the property that mattered — decidable
-from the string alone — survives.
+of §6 carry this with nothing added, and the property that mattered, decidable
+from the string alone, survives.
 
 **Measured**: all three key forms coexist, `Sources<'ready'>`
 is still the text search `-> ready`, `loading.ok` carries the child's outcome data,
@@ -1796,7 +1815,7 @@ _written to be invoked_ could be invoked.
 Three things fall out that were not designed for:
 
 - **`skip()` needs no change.** If every immediate candidate skips, you stay in
-  `loading.ok` — which is meaningful: the child finished and we have not decided
+  `loading.ok`, which is meaningful: the child finished and we have not decided
   yet.
 - **`'loading.ok -cancel> empty'` is legal** — an ordinary input edge out of a
   derived state. Waiting in a settled-child state for a user decision is
@@ -1806,15 +1825,15 @@ Three things fall out that were not designed for:
 
 **Four costs, and the fourth is the serious one.**
 
-- **It is one level of hierarchy.** Here the nesting is bounded — derived only from
-  `invokes`, never nested further — and both derivations stayed flat text searches.
+- **It is one level of hierarchy.** Here the nesting is bounded, derived only from
+  `invokes` and never nested further, and both derivations stayed flat text searches.
   That is the good half without the bad half, but it is visibly the nose of the
   camel, and `a.b.c` will be asked for.
 - **A fourth vocabulary map**, `invokes:`. Keyed by the state the child runs in,
   which is more natural than a child name and is what justifies the `loading.ok`
   spelling.
 - **`loading.ok`'s data is undecided.** The probe gave it the child's outcome. But
-  we are arguably still in `loading` and may still need `{ id }` — so it is the
+  we are arguably still in `loading` and may still need `{ id }`, so it is the
   child's outcome, the parent's data, or both under separate bindings.
 - **Run-to-completion becomes urgent.** A single `send` can now cause a _chain_ of
   transitions. When do actions fire, when do listeners fire, what does `send`
@@ -1824,10 +1843,10 @@ Three things fall out that were not designed for:
 
 **One child per state, and that is not a limitation.** Two mounts in _different_
 states are free. Two mounts in the _same_ state is the real question, and counting
-answers it: one child gives `loading.ok`, `loading.err` — **+2, a sum**; two
+answers it: one child gives `loading.ok`, `loading.err`, **+2, a sum**; two
 children give 3 × 3 = **9, a product**. With one child, `loading.ok` says
 everything. With two, `loading.user.ok` says nothing about `prefs`, so either the
-name encodes both children's progress or it is incomplete — and encoding both **is
+name encodes both children's progress or it is incomplete, and encoding both **is
 AND-states**, which P2.1 puts outside the core and which is exactly ConstraintJS's
 2 × 2 × 4 complaint. So: **at most one child per state, enforced structurally for
 free**, since `invokes` is keyed by state name and object keys are unique.
@@ -1856,8 +1875,8 @@ against a feature no shipping library under 12.7 KB provides at all.
 #### The fork: is a child's outcome topology, or an input source?
 
 There is a second, complete spelling that shares none of the machinery above. It
-is **the alternative**, not a complement — holding both would mean two ways to do
-one thing.
+is **the alternative** rather than a complement: holding both would mean two ways
+to do one thing.
 
 ```ts
 type Publication = {
@@ -1879,34 +1898,34 @@ actions: {
 
 **Its case is stronger than "escape hatch" allows**, and rests on one observation:
 **the table has never said where an input comes from.** `open` arrives from a
-click, `submit` from a form, `userLoaded` from a child machine — the model does not
+click, `submit` from a form, `userLoaded` from a child machine; the model does not
 distinguish them, and `grep '-> ready'` finds the row either way. On that reading
 the dotted form invents a category the design does not otherwise have, and the
-callback is not a hidden edge at all — it is an action sending a declared input,
+callback is not a hidden edge at all: it is an action sending a declared input,
 which is what actions already do. It also answers what the dotted form cannot:
 `child.send(…)` downward, which P2.1 asks for, plus `child.current` and conditional
 or partial wiring. And it needs **no new types whatsoever**.
 
-|                               | dotted (`loading.ok`)      | callback (`child.on`) |
-| ----------------------------- | -------------------------- | --------------------- |
-| new types                     | `Child<C, Out>`            | **none**              |
-| child must be written for it  | no (parent picks outcomes) | no                    |
-| outcome payloads checked      | **✓ exact**                | ✗ hand-declared       |
-| unhandled outcome detectable  | **✓ possible**             | ✗                     |
-| send downward / read progress | ✗                          | **✓**                 |
-| where the wiring lives        | the table                  | a closure             |
+|                               | dotted (`loading.ok`)      | callback (`child.observe`) |
+| ----------------------------- | -------------------------- | -------------------------- |
+| new types                     | `Child<C, Out>`            | **none**                   |
+| child must be written for it  | no (parent picks outcomes) | no                         |
+| outcome payloads checked      | **✓ exact**                | ✗ hand-declared            |
+| unhandled outcome detectable  | **✓ possible**             | ✗                          |
+| send downward / read progress | ✗                          | **✓**                      |
+| where the wiring lives        | the table                  | a closure                  |
 
 **The dotted form wins, on a narrower argument than it first appears.** Its two
 concessions both have answers elsewhere: reading a running child's progress is a
 **view** concern and belongs on the host (`doc.children.fetch.current`, read-only,
 no definition change); and sending downward is, in almost every real case,
-_restart with different data_ — which residency plus `keyed()` already expresses
+_restart with different data_, which residency plus `keyed()` already expresses
 without a handle. Once those are subtracted, the callback's remaining advantage is
 generality nobody has a use for yet, and its cost is a protocol the compiler cannot
 see. That is the same trade this project has made every time: prefer the less
 powerful thing the type system can check.
 
-#### Inlining — composition happens before the machine runs
+#### Inlining: composition happens before the machine runs
 
 There is only ever **one** machine. A child is a source of rows and vocabulary,
 merged in at definition time under a prefix.
@@ -1918,17 +1937,17 @@ type Publication = Compose<Base, { fetch: UserFetch }>
 
 transitions: {
 	...inline('fetch', userFetch),        // the child's own rows, prefixed
-	'empty -open> fetch.pending':          ({ input }) => ({ id: input.id }),
-	'fetch.resolve: fetch.pending -> ready': ({ input }) => ({ user: input }),
+	'empty -open> fetch.pending':                ({ input }) => ({ id: input.id }),
+	'fetch.pending -fetch.resolve> ready':       ({ input }) => ({ user: input }),
 }
 ```
 
 **The most native of the three.** The table is already data, so composition is
 data-merging, and everything downstream is unchanged: the same transition
 function, the same `actions` block, no child to own, no lifetime to define, no
-cancellation question — leaving `fetch.pending` is an ordinary transition. The
+cancellation question: leaving `fetch.pending` is an ordinary transition. The
 arrow test passes on generated rows because they are real rows. Modularity is the
-same mechanism, and reuse is free — `userFetch` can be inlined twice under
+same mechanism, and reuse is free: `userFetch` can be inlined twice under
 different prefixes.
 
 **Costs.** The heaviest type machinery of the three: a `Compose` that merges two
@@ -1938,18 +1957,18 @@ spawning**. And a generated row is not in the source, so grep finds it only in t
 composed value, which weakens the property the design was chosen to protect.
 
 **One thing it cannot do**, which decides how far it goes: inlining composes a
-_sum_ of states, not a _product_. ConstraintJS's radio button — focus × checked ×
-mouse-phase — is a product, and inlining it produces the 2 × 2 × 4 = 16 states
+_sum_ of states, not a _product_. ConstraintJS's radio button (focus × checked ×
+mouse-phase) is a product, and inlining it produces the 2 × 2 × 4 = 16 states
 their paper exists to complain about. **Concurrency is out of reach here.**
 
 #### Where this points
 
 **Children.** It is the only one that answers both halves while keeping the
-definition complete **and keeping every edge in the table** — the test that
+definition complete **and keeping every edge in the table**, the test that
 eliminated its own two cheaper spellings.
 
 Against peers: better external support, but its composition is a convention living
-outside the exported value — the exact defect §9 rejected for actions. A library
+outside the exported value, the exact defect §9 rejected for actions. A library
 whose thesis is "the definition is the documentation" should not require an
 assembly step it cannot express. Children subsumes the useful part anyway: peers in
 one state are `all(invoke(a, …), invoke(b, …))`.
@@ -1961,7 +1980,7 @@ matters. It solves async beautifully and modularity not at all.
 What makes it affordable is that everything hard was decided for other reasons:
 residency defines the child's lifetime (§9), wrappers carry the restart policy
 (§9), and declaring the child means the vocabulary grows from a declared type
-rather than an inferred sibling — the mechanism §5 built for a different problem.
+rather than an inferred sibling, the mechanism §5 built for a different problem.
 
 **Still open besides the fork**: whether leaving cancels the child's work or merely
 stops us caring; what data `loading.ok` carries; and that `actions` is
@@ -1997,15 +2016,15 @@ boundary of a machine goes, and offered two answers:
 
 #### What the prototype measured
 
-`explorations/composition/` — three examples written twice, a TUI running both against
-one scenario, and a size harness.
+`explorations/composition/` holds three examples written twice, a TUI running both
+against one scenario, and a size harness.
 
 **Bytes are not the axis.** Shipped, brotli: core 584 B, A 776 B, B 888 B. **B costs
 112 B over A.** Authored: whole files +11–18%, `machine({…})` blocks +55–72%
 (`pnpm exec node explorations/composition/size.ts`).
 
-**B's real cost is views.** A view belongs to the app under both models — a machine
-emits what happened, the view decides what to draw — and B's app cannot see states. So
+**B's real cost is views.** A view belongs to the app under both models (a machine
+emits what happened, the view decides what to draw), and B's app cannot see states. So
 every view lifetime becomes a declared _pair_ of outputs plus a variable the app keeps
 in step by hand:
 
@@ -2016,14 +2035,14 @@ fb.observe('trail', (s) => widget.trail(s.data.points)) // A: one line, residenc
 
 **What `actions` buys is the timer, not the emitting.** The marking menu's dwell is
 scheduled on entering `startup`, and `clock.after`'s cancel _is_ the residency
-teardown — §9's kind 3, the socket test. Under B the machine is self-contained; under
+teardown: §9's kind 3, the socket test. Under B the machine is self-contained; under
 A the identical code sits in the app, and an app that forgets it gets a machine that
 silently never reaches `novice`. This is the argument `emit` alone does not make.
 
 Two results fell out of owning the timer:
 
 - **It deletes the token.** A stale `dwell` cannot arrive once the timer is cancelled
-  on exit, so `dwell` carries no payload and `startup` stores none — note 08's F7 as
+  on exit, so `dwell` carries no payload and `startup` stores none; note 08's F7 as
   corrected by note 02, demonstrated rather than argued.
 - **Two residents of one state wanted opposite restart policies** — the dwell must
   survive a wiggle, the trail must restart on every track. That is §9's argument for
@@ -2031,15 +2050,15 @@ Two results fell out of owning the timer:
   an announce-once action duplicates the output silently.
 
 **Cross-machine dispatch nests, under both models.** [Commit
-ordering](#commit-ordering) rule 4 — a listener is never re-entered while an earlier
-call is still running — holds _per host_. Peer wiring crosses hosts, so the guarantee
+ordering](#commit-ordering) rule 4, that a listener is never re-entered while an
+earlier call is still running, holds _per host_. Peer wiring crosses hosts, so the guarantee
 lapses exactly where composition needs it. ~15 lines to fix, and unrelated to A/B.
 
 #### What the field does
 
-Re-read across notes 03, 04, 07 and 08. **The corpus was never asked this question** —
-no note carries an observability column — so this is a re-reading of findings gathered
-for other purposes, not a survey with its own method.
+Re-read across notes 03, 04, 07 and 08. **The corpus was never asked this question**,
+since no note carries an observability column, so this is a re-reading of findings
+gathered for other purposes rather than a survey with its own method.
 
 **No tool in the record does B deliberately**, in the sense of withholding a feed from
 an author who wrote the machine. Kingly returns commands as data and argues it from
@@ -2047,14 +2066,14 @@ testing without mocks [07 F24]; `gen_statem` hides state behind a process, which
 language's isolation model rather than an FSM decision [08 F5].
 
 **The split tracks who writes the definition.** Where the machine is an implementation
-detail of a shipped component — Garnet's Interactors [04 F30], Radix [07 F17], Zag
-[07 F14–F16], Proton [04 F10] — it is fully hidden, and none of them removed a feed:
-they have no machine in the API. Where the developer authors the machine —
-SwingStates, ConstraintJS, XState, Robot3 — it stays open, and nobody argues for
+detail of a shipped component (Garnet's Interactors [04 F30], Radix [07 F17], Zag
+[07 F14–F16], Proton [04 F10]) it is fully hidden, and none of them removed a feed:
+they have no machine in the API. Where the developer authors the machine
+(SwingStates, ConstraintJS, XState, Robot3) it stays open, and nobody argues for
 closing it.
 
 **SwingStates is B's seam without B's restriction.** Its stacking pattern has each
-level emit what the next consumes [04 F7] — an output alphabet — while state stayed
+level emit what the next consumes [04 F7], an output alphabet, while state stayed
 reachable through lexical scoping [03 F10]. Evidence that the seam is right; not
 evidence that the restriction is needed.
 
@@ -2072,7 +2091,7 @@ host wraps into a closed one in userland; nothing recovers a feed that was never
 exposed. No source in the record contradicts this and none argues the other way.
 
 What B was really buying, and what survives: under A you cannot tell a debugging
-subscription from a structural one — they are the same call. **Splitting the two
+subscription from a structural one; they are the same call. **Splitting the two
 channels by name recovers that distinction without hiding anything**, which is why
 observation and outputs get separate methods rather than one overloaded one.
 
@@ -2089,20 +2108,20 @@ So **`actions` is the prerequisite, not the follow-on**, which is why
 
 #### Axis 7 is reopened, not reversed
 
-Axis 7 was _returned commands_ — `transitionTo(State, SideEffect)`, the Tinder shape
+Axis 7 was _returned commands_: `transitionTo(State, SideEffect)`, the Tinder shape
 [08 F4]. `emit` in an action bag is a different mechanism that the axis-7 argument
 never evaluated. Of its three grounds, "another concept to learn" and "the direction is
 asymmetric" stand; **the "strictly redundant" ground does not.**
 
-The replacement argument is not ability — a consumer can still tell `down -release> up`
-from `dragging -release> up`. It is **coupling**: doing so requires knowing states that
+The replacement argument is not ability, since a consumer can still tell
+`down -release> up` from `dragging -release> up`. It is **coupling**: doing so requires knowing states that
 are not its business, and a level seam is exactly where that coupling should break.
 
 #### What `emit` does not fix
 
 Peer wiring still lives outside the definition, as imperative calls a caller must
-remember to make — [§10's own objection](#10-composition), "half a machine plus a
-convention". `emit` improves its grade, because the convention becomes the machine's
+remember to make; [§10's own objection](#10-composition) called it "half a machine
+plus a convention". `emit` improves its grade, because the convention becomes the machine's
 declared outputs rather than its internal states, so a topology refactor stops breaking
 consumers. It does not close it.
 
@@ -2118,10 +2137,10 @@ how the outside world observes it, and what happens during a commit.
 There are up to three things, and naming them separately makes the question
 tractable:
 
-1. **The definition** — what `machine({…})` returns. The table, the vocabulary.
+1. **The definition**: what `machine({…})` returns. The table, the vocabulary.
    Inert.
-2. **The snapshot** — `{ state, data }`. A value. Inert.
-3. **The host** — holds the current snapshot, runs and tears down effects, holds
+2. **The snapshot**: `{ state, data }`. A value. Inert.
+3. **The host**: holds the current snapshot, runs and tears down effects, holds
    subscriptions. **Mutable.**
 
 Nobody disputes 1 and 2. The whole question is whether 3 exists.
@@ -2141,11 +2160,11 @@ and everything that does not, does not.** Elm has no instance because the platfo
 owns effects; Rust has none because values are all there is; XState, robot3 and
 SCXML sessions all have one because something must own a running timer.
 
-So D1-vs-D5 is not a fresh decision — **it is axis 10 again**, and the honest
-framing is that **the host is the price of `actions`**. Worth stating plainly,
+So D1-vs-D5 is not a fresh decision. **It is axis 10 again**, and the framing that
+matters is that **the host is the price of `actions`**. Worth stating plainly,
 because it is the one place the project pays visibly for that decision.
 
-#### What the split buys — four arguments, three of which fail
+#### What the split buys: four arguments, three of which fail
 
 | argument                                   | verdict                                    |
 | ------------------------------------------ | ------------------------------------------ |
@@ -2154,20 +2173,20 @@ because it is the one place the project pays visibly for that decision.
 | replay and tests need no host              | ✗ weaker than it sounds                    |
 | **composition takes and returns machines** | ✓ **structural, and the only one**         |
 
-**Several instances — fails.** P1.6 asks for independent uses of the same
+**Several instances: fails.** P1.6 asks for independent uses of the same
 behaviour, and `const makeDoc = () => machine({…})` gets them from an ordinary
 function, at the cost of one closure. So "you need several" is not a reason.
 
-**The compiled index — fails.** Under the split, the table is parsed once for _all_
+**The compiled index: fails.** Under the split, the table is parsed once for _all_
 instances rather than once _per_ instance: a constant factor on tens of short
 strings, at interaction rates. Real, and far too small to decide anything.
 
-**Replay and tests — fails on inspection.** Under D2, stepping a value through a
-live machine still works — it reads the table off the object and ignores its
+**Replay and tests: fails on inspection.** Under D2, stepping a value through a
+live machine still works, reading the table off the object and ignoring its
 current state. Uglier, not impossible. A clarity argument dressed up as a
 capability argument.
 
-**Composition — holds, and it is structural.** `retry(fetchUser)`,
+**Composition: holds, and it is structural.** `retry(fetchUser)`,
 `race({ ok, late })`, mounting a child at a state. Each needs a **recipe, not a
 running thing**: `retry(child, { times: 3 })` must start a **fresh** attempt each
 time, and a child mounted at `loading` starts again on re-entry, from a blueprint.
@@ -2188,16 +2207,13 @@ one extra line in the smallest case, and two names people will conflate.
 
 **D3 is taken on top now that the split stays**: the host is
 `publication.start(data)`. It reads better than `run(publication, data)`, removes an
-import, and dot-completion makes it discoverable — against one method on a value that
+import, and dot-completion makes it discoverable, against one method on a value that
 is otherwise inert data. Also settled: the initial data is an argument to `start`,
 not a field beside `initial:`, so the definition stays free of instance state.
 
-**And observation belongs to the host** regardless of how this resolves. The
-prototype attaches `observe()` to the definition, which contradicts the ownership split
-§9 relies on: two hosts running one definition would **share** listeners, and a
-value documented as inert is quietly mutated. Putting observation on the host makes
-the split structural rather than conventional and leaves the definition genuinely
-immutable — which is what lets it be exported, imported, diffed and visualised.
+**And observation belongs to the host** regardless of how this resolves, which makes
+the split structural rather than conventional. The argument is under
+[Observation](#observation-observe-on-the-host-with-patterns) below.
 
 Still open: what the host is called (`run` / `interpret` / `start`), and whether
 the initial data is an argument or lives in the definition beside `initial:`.
@@ -2206,8 +2222,8 @@ the initial data is an argument or lives in the definition beside `initial:`.
 
 > **Renamed from `.on` before v1 tags** ([issue #29](https://github.com/QuentinRoy/totorobot/issues/29)),
 > **and split in two by [§10's revision](#revision-the-composition-boundary).** The rename is justified
-> by the name alone, nothing else: `observe` says what the method does — it reports
-> transitions — where `.on` read as registering a handler for a string-named event, the
+> by the name alone, nothing else: `observe` says what the method does, which is
+> report transitions, where `.on` read as registering a handler for a string-named event, the
 > mailbox connotation axis 11 already rejected for `inputs`. Same patterns, same two
 > arguments, same record, same unsubscribe function, bare state keys still illegal.
 > `.on` is left unclaimed for the later output channel, so that channel is pure
@@ -2215,19 +2231,19 @@ the initial data is an argument or lives in the definition beside `initial:`.
 > [§5's revision](#revision-the-shape-of-a-named-thing).
 
 `doc.observe(pattern, fn)` returns an unsubscribe function. Many listeners, edge patterns
-in the transition key language, and **no bare-state key** — a key with no arrow
+in the transition key language, and **no bare-state key**: a key with no arrow
 means residency, which the host does not implement.
 
 **On the host, never the definition.** The prototype attaches listeners to the
 definition, which contradicts the ownership split §9 relies on: two hosts running
 one definition would share them, and a value documented as inert is quietly mutated.
-On the host, the definition stays genuinely immutable — which is what lets it be
-exported, imported, diffed and visualised.
+On the host, the definition stays immutable, which is what lets it be exported,
+imported, diffed and visualised.
 
 **Deliver the transition record, not a snapshot.** Robot3 hands its observer the live
-service — no `from`, no `to`, no input — which is why it cannot say what _caused_ a
-change. Axis 7 dropped `emit` on the grounds that "a listener recovers everything
-from `{ on, input, from, to }`". Deliver the record and that argument stands;
+service, with no `from`, no `to` and no input, which is why it cannot say what
+_caused_ a change. Axis 7 dropped `emit` on the grounds that "a listener recovers
+everything from `{ input, from, to }`". Deliver the record and that argument stands;
 deliver a snapshot and axis 7 reopens.
 
 **Two arguments against a listener list were made and do not survive**, recorded
@@ -2241,18 +2257,18 @@ because both looked strong:
   three in order. The invariant holds for any number of listeners. Once the queue is
   in — and it is, for independent reasons — the list costs nothing here.
 - _"The pattern language is runtime cost."_ **It is not.** The table already has to
-  parse every key into `(on, from, to)` to dispatch at all; a pattern is the same
+  parse every key into `(from, input, to)` to dispatch at all; a pattern is the same
   parse with the input position allowed to be absent, and matching is three
   comparisons against an already-parsed transition. Ten lines over a bare callback
   list.
 
 **And one argument for patterns that the cost framing hid:** they keep the grep story
 whole. `grep '\-> published'` finds the transition rows and the listeners together,
-where `if (e.to.state === 'published')` severs the link. "Every topology question is
+where `if (e.to.name === 'published')` severs the link. "Every topology question is
 a text search" is the project's central claim, and this is a place it applies.
 
-**A construction-time callback was also considered** — `run(machine, onChange)`,
-robot3's shape — on the grounds that a registration API implies a list and
+**A construction-time callback was also considered**, `run(machine, onChange)` in
+robot3's shape, on the grounds that a registration API implies a list and
 singularity should be structural. It loses on the standard subscription contract:
 `useSyncExternalStore` wants `(cb) => unsubscribe` plus a snapshot getter, and Svelte,
 Solid and Vue stores are the same shape. A construction-time observer supplies
@@ -2263,7 +2279,7 @@ against it.
 ### Residency is derivable, not a host feature
 
 The remaining question was whether `observe()` should also accept a bare state key and
-scope a setup/teardown pair to residency. It should not — and the reason is not cost
+scope a setup/teardown pair to residency. It should not, and the reason is not cost
 but that **the host does not need to own it**:
 
 ```js
@@ -2294,13 +2310,13 @@ registration order** (which is what makes exit-before-entry reliable), and
 transition will announce).
 
 **So the dividing line is ownership, not the feature.** Caller-owned residency is a
-helper over public listeners. Definition-owned residency — `actions` — must be host
+helper over public listeners. Definition-owned residency, `actions`, must be host
 machinery, because the definition is inert data and something has to interpret it:
 read the block, run the right entry, hold the teardown, apply the restart policy.
 That is the only place the host is forced into a lifetime.
 
-Two consequences. The v1.1 coexistence worry softens — a helper and `actions` are not
-two implementations of one host lifetime, they are one lifetime and one
+Two consequences. The v1.1 coexistence worry softens: a helper and `actions` are not
+two implementations of one host lifetime, but one lifetime and one
 interpretation of a block, needing only "actions before listeners", which the commit
 order needs regardless. And residency **can arrive at any time without any version
 having been wrong**, because nothing about it is breaking to add.
@@ -2311,16 +2327,16 @@ Most of run-to-completion is already dead here. Esmaeilsabzali et al. deconstruc
 big-step semantics into **eight aspects** ([note 02](research/02-execution-semantics-and-time.md)
 F5), and P0.7 was amended to say so. Filtered against v1:
 
-| aspect                                   | status                                                                   |
-| ---------------------------------------- | ------------------------------------------------------------------------ |
-| Concurrency and Consistency              | **dead** — needs AND-states                                              |
-| Priority                                 | **dead** — declaration order plus `skip()` already answers it            |
-| Combo-Step Maximality                    | **dead** — no internal events to batch                                   |
-| Enabledness Memory (guards)              | **answered** — a handler receives source data; nothing else is in flight |
-| Assignment Memory (what a reaction sees) | **answered** — commit precedes notification                              |
-| Order of Small Steps                     | **answered** — FIFO, the answer reserved here if chaining ever existed   |
-| Event Lifeline                           | **P0.7 dictates it** — a raised input joins the next step, not this one  |
-| **Big-Step Maximality**                  | **answered** — chaining, budget-guarded (§6)                             |
+| aspect                                   | status                                                                  |
+| ---------------------------------------- | ----------------------------------------------------------------------- |
+| Concurrency and Consistency              | **dead**: needs AND-states                                              |
+| Priority                                 | **dead**: declaration order plus `skip()` already answers it            |
+| Combo-Step Maximality                    | **dead**: no internal events to batch                                   |
+| Enabledness Memory (guards)              | **answered**: a handler receives source data; nothing else is in flight |
+| Assignment Memory (what a reaction sees) | **answered**: commit precedes notification                              |
+| Order of Small Steps                     | **answered**: FIFO, the answer reserved here if chaining ever existed   |
+| Event Lifeline                           | **P0.7 dictates it**: a raised input joins the next step, not this one  |
+| **Big-Step Maximality**                  | **answered**: chaining, budget-guarded (§6)                             |
 
 **Big-Step Maximality is the immediate-transitions question** (§6), and note 02 F6
 named the trade before it was made: _"the only way to have a big step that provably
@@ -2332,13 +2348,13 @@ it throws a `RangeError` naming the state it could not settle.
 
 That leaves the rules, all five of them:
 
-1. **One input can yield a chain of transitions**, settled to exhaustion — or to
-   the hop budget — before the next queued input is taken.
+1. **One input can yield a chain of transitions**, settled to exhaustion (or to the
+   hop budget) before the next queued input is taken.
 2. **Commit, then notify.** A listener always sees a fully committed machine, so
-   `e.to` and `doc.current` agree — for every listener, always.
+   `e.to` and `doc.current` agree, for every listener, always.
 3. **Listeners fire in registration order.**
 4. **A send from a listener is queued**, and the queue drains before the outermost
-   `send` returns — not on a microtask, and not nested.
+   `send` returns, not on a microtask and not nested.
 5. **`send` returns nothing.**
 
 #### Queue, not stack
@@ -2353,8 +2369,8 @@ order**. Four things differ:
 | stack depth over a chain                            | a frame pair per hop | constant                        |
 | **what the listeners after it are told**            | **a stale event**    | the transition they are in      |
 
-Nesting is free — it is what happens if you write nothing — keeps `send` always
-returning a real outcome, and fails loudly on runaway recursion with a stack trace.
+Nesting is free, being what happens if you write nothing; it keeps `send` always
+returning a real outcome and fails loudly on runaway recursion with a stack trace.
 Queueing costs about ten lines and turns that runaway into a hang, which is a
 **worse** diagnostic. On safety alone neither wins.
 
@@ -2363,7 +2379,7 @@ hops, not fifty):
 
 - **The last row, once there is more than one listener.** Under nesting, whether
   your event is stale on arrival depends on what somebody else registered before
-  you — an ordering nobody controls. Under the queue the invariant holds for any
+  you, an ordering nobody controls. Under the queue the invariant holds for any
   number of listeners. **This is what makes the list safe**, and without it the case
   for a single construction-time observer would be strong.
 - **A listener is never re-entered.** "This callback may be called while it is
@@ -2374,36 +2390,36 @@ hops, not fifty):
   send-from-a-reaction _changes_ when actions land, which is the asymmetry that
   settled axis 7 and the typed send site.
 
-Robot3 nests — measured, and its reentrant send runs to completion inside the outer
-callback — which also makes it non-compliant with P0.7 as written. It gets away with
+Robot3 nests: measured, its reentrant send runs to completion inside the outer
+callback, which also makes it non-compliant with P0.7 as written. It gets away with
 it because it has exactly one observer; with a list it would not.
 
 #### Module scope, not per host
 
-The argument above settles queue over stack for one host. It says nothing about two —
+The argument above settles queue over stack for one host. It says nothing about two,
 and two machines wired to each other is how peer composition works today, before any
 composition feature exists. A queue and a draining flag owned by the host that created
 them get this wrong: a send from one machine's listener into another finds the second
 host's own flag unset and nests, exactly the shape just rejected, and precisely where
 composition needs the guarantee most. [Issue #24](https://github.com/QuentinRoy/totorobot/issues/24)'s
-prototype hit this directly — see
-[§10's revision, "What the prototype measured"](#what-the-prototype-measured) — "cross-machine
-dispatch nests, under both models."
+prototype hit this directly; see
+[§10's revision, "What the prototype measured"](#what-the-prototype-measured): "cross-machine
+dispatch nests, under both models.""
 
 Three shapes were on the table:
 
-- **Per host — the status quo, and wrong.** Argued above.
+- **Per host: the status quo, and wrong.** Argued above.
 - **A scheduler passed at `start()`.** Lets unrelated hosts opt into sharing a queue
-  explicitly. Rejected because it puts a knob in the v1 surface — frozen at the tag —
+  explicitly. Rejected because it puts a knob in the v1 surface, frozen at the tag,
   for a feature (`actions`, composition) that is not designed yet. Whatever a
   scheduler ends up being once those land, `start()`'s signature should not have
   already committed to a shape for it.
 - **Shared only among declared peers.** Scope the queue to machines that some future
-  composition feature explicitly wires together, leaving hand-wired hosts — two
+  composition feature explicitly wires together, leaving hand-wired hosts (two
   `machine().start()` calls with a plain closure between them, which is how peer
-  composition is _done today_ — back on separate queues. Rejected because it gives
-  two call shapes that read identically — a listener calling another host's `send` —
-  different semantics depending on whether that host was "declared" a peer through
+  composition is _done today_) back on separate queues. Rejected because it gives
+  different semantics to two call shapes that read identically, a listener calling
+  another host's `send`, depending on whether that host was "declared" a peer through
   machinery that does not exist yet. A reader cannot tell which rule applies by
   looking at the code.
 
@@ -2416,7 +2432,7 @@ uniformity is the point: nothing about how two hosts came to call each other's `
 changes what ordering they get.
 
 **Accepted cost, not designed around.** A send issued while any dispatch is in
-progress is deferred — including one into a host that has nothing to do with whichever
+progress is deferred, including one into a host that has nothing to do with whichever
 dispatch is running. Reading that host's `current` right afterwards shows the state it
 had before the send. This is not a new property: a send from a listener into its
 _own_ host was already exactly this stale, for the same reason
@@ -2425,23 +2441,23 @@ introduce staleness that single-host use did not already have.
 
 **Failure widens along the same axis.** A per-host queue could let one host's listener
 bug stay that host's problem. A shared queue cannot: a throw anywhere unwinds out of
-the `send` that started the chain — the outermost call, wherever it sits — and
+the `send` that started the chain (the outermost call, wherever it sits) and
 discards everything still queued, on every host in that chain, not only the one that
 threw. The alternative, draining on and surfacing the error at the end, was rejected
 for the same reason a per-host version of it would be: an entry left in the queue past
 the throw is either picked up later by an unrelated send at an arbitrary time, or run
 anyway against assumptions the throw may have already broken. Neither is better for
 being scoped to one host. What does not widen: the listeners after the throwing one
-still do not run, and every host in the chain — including the one whose listener threw
-— stays usable afterwards, exactly as a single host did. The coupling this introduces
-— one machine's listener bug discarding another machine's queued work — is a bug-path
+still do not run, and every host in the chain, including the one whose listener threw,
+stays usable afterwards, exactly as a single host did. The coupling this introduces,
+one machine's listener bug discarding another machine's queued work, is a bug-path
 property, understood and accepted rather than designed around; uniform-scheduler
 designs share it.
 
 #### `start` settles under the drain
 
 `start` settles the initial state's immediate chain, and that chain is a dispatch like
-any other — but for one release it did not look like one from the outside. It called
+any other, but for one release it did not look like one from the outside. It called
 `settle()` bare, without setting the draining flag, so while it ran "a dispatch is in
 progress" was false everywhere. Measured, on a machine whose initial state settles
 `a -> b -> c` with a handler on `a -> b` sending into an unrelated host:
@@ -2449,12 +2465,12 @@ progress" was false everywhere. Measured, on a machine whose initial state settl
 |                                  | the handler's send                                           | the other host's listeners        |
 | -------------------------------- | ------------------------------------------------------------ | --------------------------------- |
 | `start()` called at top level    | ran **immediately, nested**, between hop `a→b` and hop `b→c` | fired **inside** `start`'s settle |
-| `start()` called from a listener | queued — stale read — drained with the outer chain           | fired after the outer chain       |
+| `start()` called from a listener | queued (stale read), drained with the outer chain            | fired after the outer chain       |
 
 The second row is rule 4. The first was the shape ["Queue, not stack"](#queue-not-stack)
 rejects: a listener on another host running mid-chain of somebody else's settling, and
 a handler reading a host it just sent to and seeing the _new_ state. Identical code,
-two semantics, decided by whether a dispatch happened to be in flight — which the
+two semantics, decided by whether a dispatch happened to be in flight, which the
 author of that handler cannot see from where they stand.
 
 **Nothing supported could reach it**, which is why it survived a release: handlers only
@@ -2462,30 +2478,30 @@ project (§15), and the host being started has no listeners at all — `observe`
 unreachable until `start` returns, which is observable behaviour 6. The only way in was
 a handler closing over some _other_ host's `send`, hand-wired. **It stops being
 unreachable the moment `actions` lands**, since an action on a hop `start` is settling,
-sending back, is that feature's main path — and it would have presented as an ordering
+sending back, is that feature's main path, and it would have presented as an ordering
 oddity in `actions` with nothing pointing at `start`.
 
 **Fixed by giving `start` the drain ownership `send` already had**, factored into one
-`dispatch(work?)` so the two cannot drift: take the drain when the flag is unset — run
-`work`, then the queue to exhaustion, releasing both in a `finally` — and when it is
-set, run `work` and leave the queue to whoever holds it. Named for the window rule 4
-is stated in terms of rather than for the flag it sets — and not the reducer
-libraries' `dispatch`, which is this API's `send`. `send` passes nothing, having
-already queued its thunk; `start` passes `settle`, because it must run its chain
-_inline_ — a host handed back unsettled is not an option — while still holding the
-flag, so a send from one of those hops queues like any other. What makes that safe is
+`dispatch(work?)` so the two cannot drift. When the flag is unset it takes the drain,
+running `work` and then the queue to exhaustion, releasing both in a `finally`; when
+the flag is set it runs `work` and leaves the queue to whoever holds it. It is named
+for the window rule 4 is stated in terms of rather than for the flag it sets, and not
+after the reducer libraries' `dispatch`, which is this API's `send`. `send` passes
+nothing, having already queued its thunk. `start` passes `settle`, because it must run
+its chain _inline_ (a host handed back unsettled is not an option) while still holding
+the flag, so a send from one of those hops queues like any other. What makes that safe is
 that the queue is empty whenever the flag is unset, since every exit path clears it: a
 `start` taking the drain can never inherit work abandoned by an earlier throw.
 
-The factoring pays for itself in bytes — one `try`/`finally` where there were two —
+The factoring pays for itself in bytes, one `try`/`finally` where there were two,
 and the fix's net cost against the real toolchain is 11 B brotli (28 raw, 9 gzip).
 Rejected at that measurement: `queue = []` in place of `queue.length = 0`, which is
-3 B brotli cheaper and allocates an array per drain — the wrong trade on the path that
+3 B brotli cheaper and allocates an array per drain: the wrong trade on the path that
 runs once per outermost `send`, by the same rule that settled the listener array.
 
 A throw out of a `start` that owns the drain now discards queued work across every
 host, exactly as a throwing listener does, and for the same reason. It reads harsher
-here only because the caller never received the host being started — but "every host
+here only because the caller never received the host being started, but "every host
 stays usable" was never a claim about a host nobody has.
 
 #### No disposal, and a listener that throws
@@ -2520,13 +2536,13 @@ caller is a separate question, and the answer is no.
 
 - **One of the four is recoverable without it.** `moved` is `doc.current`.
   `unavailable` was, for a time, `doc.available` consulted _before_ sending rather
-  than after; `available` itself was later removed for reporting the wrong thing —
-  see [If `available` comes back, it comes back as `accepts`](#if-available-comes-back-it-comes-back-as-accepts)
-  — so nothing today answers that question in advance at all.
+  than after; `available` itself was later removed for reporting the wrong thing
+  (see [If `available` comes back, it comes back as `accepts`](#if-available-comes-back-it-comes-back-as-accepts));
+  nothing today answers that question in advance at all.
 - **`queued` is not information the caller can use.** It is inside a listener, it
   queued something, it will happen.
-- **Only a `skip()` refusal is genuinely unobservable** — nothing commits, so no
-  listener fires and nothing changed. But that is the intended meaning of a refusal.
+- **Only a `skip()` refusal is unobservable**: nothing commits, so no listener fires
+  and nothing changed. But that is the intended meaning of a refusal.
   A machine that needs the refusal to be _visible_ should model it as a transition,
   which is a state change and therefore observable through the normal channel.
 - **The asymmetry points this way.** Adding a return later is purely additive;
@@ -2534,7 +2550,7 @@ caller is a separate question, and the answer is no.
 
 A note on the shape, if it ever comes back: return a **string literal**, not
 `{ kind, reason }`. Case 1's pointer workload is 350 000 sends, and a bare `'moved'`
-allocates nothing where an object allocates once per send — which is what P0.11's
+allocates nothing where an object allocates once per send, which is what P0.11's
 "small, synchronous, predictable overhead" is about. The object shape belongs to the
 pure transition function, where it has to carry the next state; the host has already
 committed it.
@@ -2545,7 +2561,7 @@ call that caused it with the offending listener on the stack. No swallowing, no 
 channel, no API.
 
 What that costs, stated so it is not discovered later: **the listeners after it do
-not run, and the rest of that dispatch's queue is discarded** — the one case where a
+not run, and the rest of that dispatch's queue is discarded**, the one case where a
 `queued` answer does not lead to a transition. The transition itself is already
 committed and stays committed; rolling back would produce a state no listener ever
 saw, which is worse. And the implementation must reset the drain flag on the way out
@@ -2582,8 +2598,8 @@ Every other section is about **writing** a machine. This one and
 ### What a "capability" is
 
 Concretely: **the input names of a state become method names, and the payload
-becomes the argument.** `Handled<T, 'draft'>` — which already exists in the
-prototype — reads the table's keys and yields `'revise' | 'submit' | 'cancel'`,
+becomes the argument.** `Handled<T, 'draft'>`, which already exists in the
+prototype, reads the table's keys and yields `'revise' | 'submit' | 'cancel'`,
 and the capability type is one mapped type over it. So in `draft` you get exactly
 three members, `at.decide` is `TS2339`, `at.cancel()` takes no argument because
 `cancel` is `void`, and `at.submit` is **one method for two rows** — capabilities
@@ -2595,14 +2611,14 @@ declaration order with `skip()` fall-through.
 Can a narrowing type the send?
 
 ```ts
-if (doc.current.state === 'draft') {
-	doc.send('submit', { route: 'review' })
-	// doc may now be in `review` — does TypeScript know?
+if (doc.current.name === 'draft') {
+	doc.send({ type: 'submit', route: 'review' })
+	// doc may now be in `review`. Does TypeScript know?
 }
 ```
 
 **No, and there is no workaround** (§13). TypeScript never invalidates a
-narrowing on a call or an `await` — it has no effect system. The narrowing shape
+narrowing on a call or an `await`, because it has no effect system. The narrowing shape
 _is_ typeable (a discriminated union on the live object narrows correctly), it is
 simply wrong the moment the machine moves, and the compiler will keep insisting it
 is right.
@@ -2615,11 +2631,11 @@ not correctness.
 
 That yields a clean trichotomy. A typed send site is sound only when:
 
-1. **nothing mutates** — an old value is still a good value;
-2. **the window is closed by construction** — the handle does not outlive the
+1. **nothing mutates**, so an old value is still a good value;
+2. **the window is closed by construction**, so the handle does not outlive the
    check;
-3. **the assumption is re-stated at the call** — the type is checked against a
-   state the code names out loud, and the runtime verifies it.
+3. **the assumption is re-stated at the call**, so the type is checked against a
+   state the code names out loud and the runtime verifies it.
 
 Everything else is **category 4**: sound-looking and quietly wrong after the first
 mutation.
@@ -2644,8 +2660,8 @@ mutation.
 **S3's correction is worth stating**, because the extra call looks like it buys
 safety and does not. `capabilities(publication, now)` changes nothing about time:
 an `await` between the call and its use has the same effect as in S4. The only
-reading under which S3 is stale-free is if it is **pure** — closing over a
-definition and a value, never over the host — and that version cannot drive the
+reading under which S3 is stale-free is if it is **pure**, closing over a
+definition and a value and never over the host, and that version cannot drive the
 live machine at all, since the result must be handed back. So pure-S3 is S5 with
 extra ceremony, and live-S3 is S4 with extra ceremony.
 
@@ -2656,30 +2672,30 @@ silently acting on a state that has moved.
 
 ### Decided: a broad `send`, and no typed send site
 
-**`doc.send(name, payload)` is the whole sending API.** Broad, mutating, familiar;
-every declared input accepted from every state; anything the current state does not
-handle changes nothing. It returns nothing either — see §11.
+**`doc.send(input)` is the whole sending API.** Broad, mutating, familiar; every
+declared input accepted from every state; anything the current state does not handle
+changes nothing. It returns nothing either; see §11.
 
 The typed send site is **dropped**, because it stopped buying much once §13's finding
 was measured:
 
-- The version people would actually reach for — narrow, then send — is **unsound
-  and uncorrectable**, and worse than absent, because the compiler vouches for it.
+- The version people would actually reach for, narrow then send, is **unsound and
+  uncorrectable**, and worse than absent, because the compiler vouches for it.
 - Every sound spelling makes the caller **re-state a fact the machine already
   knows**. That is ceremony in exchange for catching a class of mistake the runtime
   already handles safely.
 - Nothing is at risk. A wrong send changes nothing; it does not corrupt state,
   throw, or half-apply.
 
-**What this costs, plainly.** Research note 07 F20 called per-state capabilities at
-the send site the one gap nobody has filled, and it was named as the
-differentiator. The honest statement is now narrower:
+**What this costs.** Research note 07 F20 called per-state capabilities at the send
+site the one gap nobody has filled, and it was named as the differentiator. The
+statement is now narrower:
 
 - **Per-state _data_ still works and is untouched.** Narrowing `doc.current` gives
-  typed data with no nullable padding — the half XState's global `context` gets
+  typed data with no nullable padding, the half XState's global `context` gets
   wrong, and reason enough for the project to exist.
 - **Per-state _capabilities_ are not surfaced at all.** An earlier revision advertised
-  them at runtime as `doc.available` — exactly where `useStateMachine` landed — but
+  them at runtime as `doc.available`, exactly where `useStateMachine` landed, but
   that value answered a different question than the one a caller reads it for: which
   inputs the state has rows for, not which will commit, since a guarded row can still
   decline. It was removed rather than kept with a caveat; see
@@ -2688,7 +2704,7 @@ differentiator. The honest statement is now narrower:
   written; what is unenforced is only the _call_.
 
 **And it is reversible, which is why it is safe to drop.** Adding a typed door
-later is additive — a new method beside `send`, no change to anything existing.
+later is additive: a new method beside `send`, with no change to anything existing.
 Shipping one now and regretting it is breaking. Same asymmetry that settled axis 7.
 
 **Also freed:** `doc.current` stays plain serialisable data, since nothing needs to
@@ -2697,15 +2713,15 @@ hang capabilities on it; the stale question disappears; and `capabilities`, `fro
 
 **On the call shape**, which is orthogonal: `send('submit', payload)` rather than
 `send({ type: 'submit', ...payload })`. XState and robot3 take one object. Separate
-arguments type more cleanly — merging them is how robot3's `[key: string]: any`
-hole appeared — and it makes a `void` input just `send('cancel')`.
+arguments type more cleanly (merging them is how robot3's `[key: string]: any`
+hole appeared), and it makes a `void` input just `send('cancel')`.
 
-> **Reversed — see [§5's revision](#revision-the-shape-of-a-named-thing).** Once an
+> **Reversed; see [§5's revision](#revision-the-shape-of-a-named-thing).** Once an
 > input is a tagged union member rather than a name plus a payload, the two arguments
 > have nothing to separate: `send` takes the input whole, `send({ type: 'submit', … })`,
 > and a payload-free input is `send({ type: 'cancel' })` rather than `send('cancel')`.
-> What made the separate arguments type cleanly — the payload never merging with the
-> discriminant — is what the tag gives for free, so the reason survives its spelling.
+> What made the separate arguments type cleanly, the payload never merging with the
+> discriminant, is what the tag gives for free, so the reason survives its spelling.
 
 ### If it comes back, it comes back as S12
 
@@ -2713,12 +2729,12 @@ hole appeared — and it makes a `void` input just `send('cancel')`.
 starts from a settled shape.
 
 ```ts
-doc.match('draft', ({ send, data }) => …)  // one branch — sugar for a one-key object
-doc.match({ draft: …, review: …, … })      // many branches — exactly one fires
+doc.match('draft', ({ send, state }) => …) // one branch: sugar for a one-key object
+doc.match({ draft: …, review: …, … })      // many branches: exactly one fires
 ```
 
 Everything about it was measured on 7.0.2, in a probe that was not kept:
-per-branch narrowing of both `send` and `data`, the dependent
+per-branch narrowing of both `send` and `state`, the dependent
 payload type, the no-argument `void` case, rejection of unknown states, and a
 return type that tightens from `R | undefined` to `R` exactly when every state is
 covered.
@@ -2727,20 +2743,20 @@ Why S12 rather than S3, S4, S7, S9, S10 or S11:
 
 - **Sound.** The handle does not outlive the callback, so the narrowing cannot go
   stale.
-- **No second calling convention.** `send('submit', …)` on the handle is the same
+- **No second calling convention.** `send({ type: 'submit', … })` on the handle is the same
   shape as on the host, so nothing new is learned and input names never become a
   member namespace. This is the strongest argument for it.
-- **It covers reading too**, not only sending — `data` is on the handle.
+- **It covers reading too**, not only sending: `state` is on the handle.
 - **One method, two arities**, with a uniform return-type rule and no fluent chain.
 
 Two things it must carry with it:
 
-**A multi-branch form is not sugar — it is the only correct dispatch.** The obvious
+**The multi-branch form is the only correct dispatch, not sugar.** The obvious
 way to get several branches is several single-branch calls, and it is a bug:
 
 ```ts
-doc.match('draft', ({ send }) => send('submit', { route: 'review' })) // → review
-doc.match('review', ({ send }) => send('decide', { verdict: 'ok' })) // ALSO fires
+doc.match('draft', ({ send }) => send({ type: 'submit', route: 'review' })) // → review
+doc.match('review', ({ send }) => send({ type: 'decide', verdict: 'ok' })) // ALSO fires
 ```
 
 **The machine moves between the two calls**, so the second matches the state the
@@ -2757,18 +2773,18 @@ immediately and feeds nothing.)
 |                                     | chain                                     | object                           |
 | ----------------------------------- | ----------------------------------------- | -------------------------------- |
 | picks exactly one branch            | ✓                                         | ✓                                |
-| a state cannot repeat               | needs an accumulator                      | **free — duplicate key**         |
+| a state cannot repeat               | needs an accumulator                      | **free: duplicate key**          |
 | exhaustiveness in the return type   | ✓                                         | ✓                                |
 | error names the remaining states    | **✓ better**                              | generic `TS1117`                 |
 | **Prettier**                        | **indents the whole chain**               | **fine**                         |
-| order is                            | line order                                | key order — as in `transitions`  |
+| order is                            | line order                                | key order, as in `transitions`   |
 | consistent with the rest of the API | the only fluent thing besides `observe()` | keyed maps, like everything else |
 
 The object wins. The chain's one real advantage is a better diagnostic, which does
 not pay for the rest.
 
 **Two costs to weigh if it is revived.** `match` invites an XState reading, where
-`state.matches('draft')` is a **predicate returning a boolean** — arity
+`state.matches('draft')` is a **predicate returning a boolean**; arity
 disambiguates, but the association is real for the population most likely to arrive
 here. And the object form is shaped like `actions`: `doc.match({ draft: fn })` and
 `actions: { draft: fn }` read alike, while `draft: fn` means "while in draft" in
@@ -2786,7 +2802,7 @@ region earns its keep in everyday code.
 as it stood: a runtime array of the current state's input names, judged "not a rival"
 to the typed-send question and kept on that basis. That basis did not hold up: the
 value UI code actually needs is "which inputs will commit", and `available` answers a
-different question — which inputs the state has _rows_ for. A guarded row can still
+different question: which inputs the state has _rows_ for. A guarded row can still
 decline, so an input can sit in `available` and still do nothing when sent. Nobody can
 build a disabled-control UI on that distinction, because the value does not carry it.
 
@@ -2796,7 +2812,7 @@ each answering a question the library can actually answer.
 **If the capability returns, its name is `accepts`.** That name states the true thing;
 `available` did not. Answering it for real means evaluating every candidate row's
 handler against a payload the read site does not have, which is a different and larger
-feature than a table lookup — not a fix to `available`, a new one. Nothing here is
+feature than a table lookup: a new one rather than a fix to `available`. Nothing here is
 designed or scheduled. Re-adding it later is pure addition: no existing member changes
 shape, so nothing today is written against its absence in a way that removal would
 break.
@@ -2805,17 +2821,17 @@ break.
 
 One type-system finding is recorded here rather than in
 [the implementation record](implementation-record.md), because it governs a decision
-rather than an edit: it is why §12 has no typed send site. The rest — the findings
-about making the type layer infer at all — are in the implementation record, where
+rather than an edit: it is why §12 has no typed send site. The rest, the findings
+about making the type layer infer at all, are in the implementation record, where
 whoever is editing the source will look for them.
 
 **Narrowing is never invalidated by a call, or by `await`.** Measured on 7.0.2:
-after `if (doc.current.state === 'draft')`, both `doc.send(…)` and `await slow()`
-leave the narrowing intact, and `const still: 'draft' = doc.current.state` still
+after `if (doc.current.name === 'draft')`, both `doc.send(…)` and `await slow()`
+leave the narrowing intact, and `const still: 'draft' = doc.current.name` still
 compiles. Narrowing an object that something else can mutate is unsound in
-TypeScript and there is no workaround — the language has no effect system to
+TypeScript and there is no workaround: the language has no effect system to
 invalidate it. A discriminated union on the live object _does_ narrow correctly, so
-the shape is typeable — it is just wrong the moment the machine moves. **This is the
+the shape is typeable; it is just wrong the moment the machine moves. **This is the
 finding that governs §12.** Like every finding in the implementation record, it was
 discovered by a test asserting that something illegal fails.
 
@@ -2828,12 +2844,12 @@ B annotated outcome (works; target lives in a type annotation) · C target list
 (negative evidence, will not compile) · E by destination (question B scatters; its
 one win is derivable) · F transition table (unverified crux) · M combinator edges
 (one verb, per-edge tax) · G no input vocabulary (payload at the use site;
-vocabulary stops being in one place — subsumed by `type<>`)
+vocabulary stops being in one place; subsumed by `type<>`)
 
 **Self-transitions.** T1 reserved keys · T2 symbol keys · T3 self-name · T4 return
 marker · T5 `&` · T6 per-state flag · H residency identity · I two blocks · J
-restart rule · L form dispatch — all moot once entry/exit left, and all still moot
-once actions returned, because the answer moved to the action.
+restart rule · L form dispatch. All moot once entry/exit left, and still moot once
+actions returned, because the answer moved to the action.
 
 **Async.** A `within` (demoted to the leaf primitive) · B `after()` on the edge
 (only self-triggering edges) · C resource vocabulary (obsoleted by composition) · D
@@ -2844,7 +2860,7 @@ block · H derived mounting (same set problem as D) · P/Q/R/S/T effect-free var
 
 **Actions.** U handler performs · V `do:` on the edge · X listeners as the action
 layer · Y actions as data · Z handler acts with multi-target return · AA
-`Symbol.dispose` on the data · AB no feature at all — **not rejected; this is what
+`Symbol.dispose` on the data · AB no feature at all: **not rejected; this is what
 v1 ships**
 
 **Observation.** A construction-time single observer (loses the standard
@@ -2911,8 +2927,10 @@ Opened by the two late revisions (outputs, actions, and policy remain open):
 
 ## Where the code is
 
-Note that all of these predate axis 1's final answer and use `'submit: draft ->
-review'` rather than `'draft -submit> review'`.
+Every directory below sits under
+[`explorations/candidates/`](../explorations/candidates/). All of them predate
+axis 1's final answer and use `'submit: draft -> review'` rather than
+`'draft -submit> review'`.
 
 | Directory              | Proposition                  | State                                        |
 | ---------------------- | ---------------------------- | -------------------------------------------- |
