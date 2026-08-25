@@ -346,7 +346,7 @@ type EmptyObject = { readonly [emptyObjectTag]?: never }
  * a row that could also `skip()`.
  *
  * `state` and `input` are wrapped in `NoInfer` because handler parameters are
- * inference sites: a context-sensitive handler — one that destructures its
+ * inference sites (`docs/implementation-record.md` I14): a context-sensitive handler — one that destructures its
  * argument — otherwise infers `S` or `I` contravariantly from the table,
  * competing with the `states`/`inputs` properties that are meant to be their
  * only sources. `S` or `I` lands on garbage and `Key<I, S>` collapses, so
@@ -720,8 +720,9 @@ const dispatch = (work?: () => void): void => {
  * `Declared` defaults at all.
  *
  * Rejected: splitting this into overloads, which also avoids that failure
- * but costs the diagnostics the notation exists to give, exactly as §5 of the
- * rationale already recorded for overloads generally. Overload resolution
+ * but costs the diagnostics the notation exists to give, exactly as
+ * `docs/implementation-record.md` I14 already recorded for overloads
+ * generally. Overload resolution
  * reports `No overload matches this call` against the whole call expression
  * and then elaborates only the *last* overload, so a malformed row lands on
  * `machine({` rather than on the row, a bad `initial` is reported as a

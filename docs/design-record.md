@@ -13,6 +13,11 @@
 > except where a later rename would leave a reader expecting a member that no
 > longer exists.
 >
+> **Only the API argument is here.** What the compiler does — the findings about
+> making the type layer infer at all, which matter to whoever is editing the source
+> and to nobody else — is in [the implementation record](implementation-record.md).
+> One type-system finding stays here, in §13, because it governs a decision.
+>
 > Prior-art research is separate and still current: [`research/`](research/) —
 > ten notes on automata theory, execution semantics, HCI state machines,
 > typestate, TypeScript type engineering, and the JS FSM landscape.
@@ -33,7 +38,7 @@
     [Revision: the composition boundary](#revision-the-composition-boundary)
 11. [The host](#11-the-host)
 12. [Sending inputs](#12-sending-inputs)
-13. [Type-system findings](#13-type-system-findings)
+13. [Narrowing is never invalidated](#13-narrowing-is-never-invalidated)
 14. [The graveyard](#14-the-graveyard)
 15. [Still open](#15-still-open)
 
@@ -179,22 +184,13 @@ inherited into every later design: that a single declaration site necessarily
 produces remote errors, so a separate model type is required. Measured on
 TS 5.9.3 and 7.0.2, a single-declaration-site typestate machine works — states,
 per-state data and transitions in one object literal, errors on the exact
-sub-expression, with no `const` type parameter, no `NoInfer`, no `satisfies` and
-no curried call.
+sub-expression.
 
-What actually went wrong was **architectural**: building each state through its
-own generic helper call means each call is inferred in isolation and cannot see
-its siblings. Passing the helpers as parameters of a **single contextually-typed
-callback for the whole machine** makes TypeScript defer context-sensitive
-properties and infer the non-function siblings first, so target data is known by
-the time a reducer body is checked. The information did not arrive too late; it
-arrived too late _for that arrangement of calls_.
-
-Two caveats kept on record: removing the second declaration site is fragile
-(`@cassiozen/useStateMachine` did it soundly and was silently broken by
-TypeScript 5.4; Zag v1 deliberately moved the other way, back to a hand-written
-schema), and `--isolatedDeclarations` consumers cannot export an inferred machine
-at all (TS9010).
+What actually went wrong was **architectural** rather than a limit of the
+compiler, and the mechanics of that — why per-helper generic calls cannot see
+their siblings, what a single contextually-typed callback changes, and the two
+caveats on leaning on it — are in the implementation record,
+[I12](implementation-record.md#i12) and [I13](implementation-record.md#i13).
 
 ## 4. Layout
 
@@ -800,9 +796,10 @@ below.
 **The shape is not new to this repository.** `config-object-kit.ts` already carries
 states as `{ name: … }` unions and derives a source context with
 `Omit<Extract<S, { name: K }>, 'name'>`, for the generation-1 config-object family.
-What killed options D/E/F was sibling inference (§5), not the union — and §13's last
-finding records the one hazard of that construction: deriving the context from the
-state name inside a conditional forces the target to resolve before it is read. The
+What killed options D/E/F was sibling inference (§5), not the union — and
+[implementation record I11](implementation-record.md#i11) records the one hazard of
+that construction: deriving the context from the state name inside a conditional
+forces the target to resolve before it is read. The
 spelling adopted here keeps the target a parsed string rather than a parameter to
 infer, which is why it does not bite.
 
@@ -896,21 +893,10 @@ or `{}` — are accepted.
 
 #### Why the handler's `state` parameter uses `NoInfer`
 
-The initial failure looked like a self-referential `S`/`K` problem: every row was reported as `not a transition`. That diagnosis was wrong.
-
-The actual issue is that `state: Extract<S, ...>` is an inference site. When a handler destructures its argument, TypeScript infers `S` from the table, competing with the `states` property. `S` becomes incorrect, `Key<I, S>` collapses, and every row fails.
-
-The fix is:
-
-```ts
-readonly state: NoInfer<Extract<S, { name: From<P> }>>
-```
-
-`states` is then the sole inference site. `NoInfer` belongs on the parameter, not on `S` itself.
-
-Overloads were considered as a workaround, but produce much worse diagnostics: errors move from individual rows to `machine({` and multiple bad rows collapse into one. The single signature with `NoInfer` preserves per-row errors.
-
-This also makes the state side symmetric with the existing `RawS`/`Declared` input handling. Other approaches, such as a plain default or constraining `S` to `StatesFromKeys<K>`, fail for `states: undefined`, interface-based vocabularies, or unused declared states.
+The shape argued for here only infers because the handler's `state` parameter is
+wrapped in `NoInfer`, which is a fact about the type layer rather than about the
+API: it is invisible to a caller, and it is recorded in
+[implementation record I14](implementation-record.md#i14).
 
 ## 6. Immediate transitions
 
@@ -1676,8 +1662,8 @@ them is what made the earlier attempt feel unsolvable.
 Constraint 4 has a crack in it. A mount "cannot be a block… and must be a fluent
 chain" holds only if the children are **inferred**. If they are **declared** — in
 `type<>`, beside `inputs` and `states` — the derived inputs are computable at the
-same moment as everything else, by a mapped type, which is §13 finding 10's safe
-mechanism. §5's own answer applies to its own objection.
+same moment as everything else, by a mapped type, which is the safe mechanism of
+[implementation record I10](implementation-record.md#i10). §5's own answer applies to its own objection.
 
 ### Three designs
 
@@ -2615,7 +2601,7 @@ if (doc.current.state === 'draft') {
 }
 ```
 
-**No, and there is no workaround** (finding 11). TypeScript never invalidates a
+**No, and there is no workaround** (§13). TypeScript never invalidates a
 narrowing on a call or an `await` — it has no effect system. The narrowing shape
 _is_ typeable (a discriminated union on the live object narrows correctly), it is
 simply wrong the moment the machine moves, and the compiler will keep insisting it
@@ -2674,7 +2660,7 @@ silently acting on a state that has moved.
 every declared input accepted from every state; anything the current state does not
 handle changes nothing. It returns nothing either — see §11.
 
-The typed send site is **dropped**, because it stopped buying much once finding 11
+The typed send site is **dropped**, because it stopped buying much once §13's finding
 was measured:
 
 - The version people would actually reach for — narrow, then send — is **unsound
@@ -2815,54 +2801,23 @@ designed or scheduled. Re-adding it later is pure addition: no existing member c
 shape, so nothing today is written against its absence in a way that removal would
 break.
 
-## 13. Type-system findings
+## 13. Narrowing is never invalidated
 
-Each was discovered by a test asserting that something **illegal** fails. No
-positive test has ever caught one.
+One type-system finding is recorded here rather than in
+[the implementation record](implementation-record.md), because it governs a decision
+rather than an edit: it is why §12 has no typed send site. The rest — the findings
+about making the type layer infer at all — are in the implementation record, where
+whoever is editing the source will look for them.
 
-1. **The cross-product rule was too strong.** It said a cross-product of
-   discriminants at value positions kills contextual typing. `o1` is a
-   cross-product of _three_ (`event`, `from`, `to`) and TypeScript 7.0.2
-   discriminates it correctly. Narrowed to the encodings actually tested.
-2. **Marker calls leak `any`.** `state<T = void>()` puts the call in a position
-   contextually typed by the unresolved state map, so `T` infers as `any`. A
-   parameterless _overload_ has nothing to infer; a declared vocabulary avoids it
-   entirely.
-3. **A type parameter in a closure's parameter type gets fixed to its constraint**
-   before inference. This killed "compute `S` from the raw literal", and it is why
-   the state-name inference cliff existed.
-4. **`T[I]` inside a mapped-type template forces `T` to resolve**, collapsing the
-   result to `never`. `const T` does not help. Per-row precision has to come from a
-   union instead.
-5. **Capturing a literal alongside a checking member disables excess-property
-   checking** against that member — a key is "known" if _any_ intersection member
-   has it. Cost `n1` its per-line errors until a second member restored them.
-6. **Reverse-mapped inference needs one non-closure leaf** _and_ only bites when
-   the type parameter also appears in a closure parameter. Neither alone is enough.
-7. **A union of an object type with an array of that object type** destroys
-   contextual typing for every bare object in the literal (§4).
-8. **`TS2820`'s did-you-mean is conditional on identifier length** (§4).
-9. **Omitting an inference site makes TypeScript discard the entire inferred map**;
-   the fix is to widen the constraint and move the default into the accessor type
-   (§5).
-10. **A homomorphic mapped type over inferred keys is the safe mechanism**; a
-    standalone generic call needing sibling context is the one that keeps failing
-    (§4).
-11. **Narrowing is never invalidated by a call, or by `await`.** Measured on
-    7.0.2: after `if (doc.current.state === 'draft')`, both `doc.send(…)` and
-    `await slow()` leave the narrowing intact, and
-    `const still: 'draft' = doc.current.state` still compiles. Narrowing an object
-    that something else can mutate is unsound in TypeScript and there is no
-    workaround — the language has no effect system to invalidate it. **This is the
-    finding that governs §12.** A discriminated union on the live object _does_
-    narrow correctly, so the shape is typeable — it is just wrong the moment the
-    machine moves.
-
-There is also one non-type finding worth keeping, recorded in
-`config-object-kit.ts`: deriving a transition's source context from the state name
-`K` inside `TransitionModifiers` makes resolving that conditional force `To` before
-the `target` argument is read, and `To` collapses onto `K`. Carrying the context as
-its own free type parameter avoids it.
+**Narrowing is never invalidated by a call, or by `await`.** Measured on 7.0.2:
+after `if (doc.current.state === 'draft')`, both `doc.send(…)` and `await slow()`
+leave the narrowing intact, and `const still: 'draft' = doc.current.state` still
+compiles. Narrowing an object that something else can mutate is unsound in
+TypeScript and there is no workaround — the language has no effect system to
+invalidate it. A discriminated union on the live object _does_ narrow correctly, so
+the shape is typeable — it is just wrong the moment the machine moves. **This is the
+finding that governs §12.** Like every finding in the implementation record, it was
+discovered by a test asserting that something illegal fails.
 
 ## 14. The graveyard
 
@@ -2946,8 +2901,9 @@ Opened by the two late revisions (outputs, actions, and policy remain open):
   once, with both call sites in view. That is why the rename ships without it.
 - **Whether `persistent` survives inference in the action bag.** In the prototype's
   shim, wrapping a context-sensitive action collapsed every argument bag to `never` —
-  §13's findings 3 and 6, where a type parameter appearing in a closure parameter is
-  fixed to its constraint before inference runs. The fix was to key `actions` off the states and transitions already
+  implementation record [I3](implementation-record.md#i3) and
+  [I6](implementation-record.md#i6), where a type parameter appearing in a closure
+  parameter is fixed to its constraint before inference runs. The fix was to key `actions` off the states and transitions already
   declared rather than off the block, and it cost wildcard triggers like
   `'draft -cancel> *'`, which §9's own sketch uses. **Not settled**: comparable APIs
   have been made to work before, and it has not been re-run against the real
