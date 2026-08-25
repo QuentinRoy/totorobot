@@ -270,20 +270,24 @@ export type Sources<M, S extends string> = From<
 // The definition
 // ---------------------------------------------------------------------------
 
-/** What the type layer above has already checked, so widening costs nothing. */
-type Unchecked = any
-
+/**
+ * The runtime's view of a row: one shape for every handler, because dispatch
+ * never distinguishes them. Widest *honest* shapes rather than `any`, which
+ * would check the same and cost nothing here — the runtime reads exactly
+ * `state.name` and `input.type`, and only ever spreads a payload (I23).
+ */
 type UncheckedHandler = (args: {
-	readonly state: Unchecked
-	readonly input: Unchecked
+	readonly state: StateVocab
+	readonly input: InputVocab | undefined
 	readonly skip: () => Skip
-}) => Unchecked | Skip
+}) => object | undefined | Skip
 
 type Row = readonly [to: string, handler: UncheckedHandler]
 
+/** The same for what `start` returns; `machine`'s overload is what a caller sees. */
 interface UncheckedHost {
-	readonly current: Unchecked
-	readonly send: (input: Unchecked) => void
+	readonly current: StateVocab
+	readonly send: (input: InputVocab) => void
 	readonly observe: (pattern: string, listener: Listener) => () => void
 }
 
@@ -360,9 +364,12 @@ export function machine<
 	readonly states?: RawS | undefined
 	readonly transitions: Table<I, S, K>
 }): Machine<I, S, K, Init>
-// The implementation signature, never seen by a caller. `any` because a row's
-// value can be the poison string literal, which no non-`any` type implements.
-export function machine(definition: any): any {
+// The implementation signature, never seen by a caller — the overload above is.
+// `unknown` rather than a shape, because a row's value can be the poison string
+// literal, which no concrete type implements; and rather than `any`, because it
+// satisfies the overload just as well and is what a caller would get were this
+// ever the signature that got emitted (I23).
+export function machine(definition: unknown): unknown {
 	const { initial, transitions } = definition as unknown as {
 		readonly initial: string
 		readonly transitions: Readonly<Record<string, UncheckedHandler>>
@@ -383,10 +390,10 @@ export function machine(definition: any): any {
 	}
 
 	return {
-		start: (data?: Unchecked): UncheckedHost => {
+		start: (data?: object): UncheckedHost => {
 			// A closure variable behind a getter, not a property `send` mutates:
 			// measured smaller (I16). `current` is the whole tagged state.
-			let current: Unchecked = { ...data, name: initial }
+			let current: StateVocab = { ...data, name: initial }
 
 			// Copy-on-write at registration, iteration at dispatch: allocation lands on
 			// the path that runs least, and measured smaller (I16).
@@ -396,7 +403,7 @@ export function machine(definition: any): any {
 			// that does not decline, and report whether the machine moved. Fusing this
 			// with the chain below, or splitting a `commit` helper out of it, both
 			// measured larger (I16).
-			const step = (rows: Row[] = [], input?: Unchecked): boolean => {
+			const step = (rows: Row[] = [], input?: InputVocab): boolean => {
 				for (const [to, handler] of rows) {
 					const payload = handler({ state: current, input, skip })
 					// Declining is ordinary and silent: try the next row for this pair.
@@ -442,7 +449,7 @@ export function machine(definition: any): any {
 			dispatch(settle)
 
 			return {
-				get current(): Unchecked {
+				get current(): StateVocab {
 					return current
 				},
 
@@ -457,7 +464,7 @@ export function machine(definition: any): any {
 					}
 				},
 
-				send: (input: Unchecked): void => {
+				send: (input: InputVocab): void => {
 					// Queued rather than run, whether the call came from this host's
 					// listener, another host's, or a hop `start` is settling.
 					queue.push(() => {

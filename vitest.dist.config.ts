@@ -31,7 +31,14 @@ export default defineConfig({
 	},
 
 	test: {
-		include: ['tests/**/*.test.{js,ts}', 'tests/**/*.test-d.ts'],
+		// `*.dist-test.ts` is the one thing here that is not the shared suite:
+		// assertions about the built artifact itself, which have nothing to read
+		// under `pnpm test` and so are deliberately unmatched by the source config.
+		include: [
+			'tests/**/*.test.{js,ts}',
+			'tests/**/*.test-d.ts',
+			'tests/**/*.dist-test.ts',
+		],
 
 		// No coverage block: the thresholds are scoped to `src/`, and this run
 		// exercises the built artifact rather than an instrumentable source

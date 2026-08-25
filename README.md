@@ -548,6 +548,12 @@ Per-state capabilities are not enforced by the compiler.
 - **Stale results are free.** A `loaded` arriving after we left `loading`
   matches no row and does nothing. That ignores the result; cancelling the work
   is still the caller's job.
+- **No `any` reaches you.** Widening is always to `unknown` — an omitted
+  vocabulary reads names off the table and leaves the data `unknown`, which
+  accepts anything without switching checking off downstream of it. The module
+  is free to be loose internally; nothing exported is, and
+  [`tests/surface.test-d.ts`](tests/surface.test-d.ts) asserts it over the whole
+  reachable surface rather than spot by spot.
 - **States have no runtime existence.** The definition carries transition keys
   rather than a list of states, so there is no source for a visualiser or a
   "valid states are …" message, and a state with no transitions is invisible at

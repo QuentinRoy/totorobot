@@ -332,3 +332,61 @@ Matching `Machine` itself to extract its parameters cannot work: a partly-inferr
 fails. Matching the carrier interface instead — which holds the vocabulary and the
 keys in one optional, never-present function property — infers all three at once,
 after which each derived type indexes the result rather than repeating the match.
+
+### <a id="i23"></a>I23 — The implementation half never needed `any`
+
+The runtime was written against `type Unchecked = any`, on the argument that the
+type layer above had already checked everything the aliased positions held. The
+argument is sound and the alias was still the wrong shape: an alias does not
+narrow `any`, so what the name really bought was that `any` stopped answering to
+a search for it. Nothing there needs it. `current` and a handler's `state` are
+read for `.name` alone, an input for `.type` alone, and a payload is only ever
+spread — so `StateVocab`, `InputVocab | undefined` and `object` type the whole
+runtime with no cast added and no shape changed, which `pnpm size` confirms as a
+byte-identical bundle.
+
+The overloaded `machine`'s implementation signature is the same story. `any` was
+recorded there as forced, because a row's value can be the poison string literal
+and no concrete type implements that. `unknown` implements it just as well:
+compatibility between an implementation signature and its overloads is checked by
+assignability, which `unknown` satisfies in the parameter position, and the body
+already casts before reading. The distinction is not academic — the emitted
+declarations are generated from these signatures, so a `.d.ts` rollup that ever
+preferred an implementation signature to its overload would hand every caller
+`any` instead of merely losing precision.
+
+### <a id="i24"></a>I24 — `any` in the public surface is caught structurally, and has two blind spots
+
+`toEqualTypeOf` passes against `any` (see the header of `tests/vocabulary.test-d.ts`),
+so an assertion that does not also say `not.toBeAny()` cannot see a leak, and the
+positions those pairings cover are the positions somebody thought of.
+`tests/surface.test-d.ts` checks the surface instead: `HasAny<T>` walks
+properties, array elements and both ends of every function signature, and
+`IsAny<T> = 0 extends 1 & T` is the leaf test, `any` being the one type that
+swallows the intersection. Recursion is bounded by a tuple index; the fuel is
+twelve, which clears the deepest public position — a transition record inside a
+listener inside `observe`'s parameter list — and a test pins the reach so
+lowering it goes red.
+
+Two things the walk cannot reach, both covered separately in that file:
+
+1. **`Table`'s handler arguments.** Walking `typeof machine` instantiates its
+   type parameters at their constraints, where `P extends Key<I, S>` is false for
+   `P = string` and every row resolves to the poison literal instead of to a
+   handler. An `any` on that handler's `state` therefore passes the whole walk.
+   Assertions written _inside_ handler bodies, against a real call's vocabulary,
+   are what close it.
+2. **A declaration that is emitted but not yet referenced.** The rollup drops
+   what nothing public mentions, so an unreferenced helper is genuinely not in
+   user land; one that is mentioned, however loosely, ships. `tests/declarations.dist-test.ts`
+   reads `dist/totorobot.d.ts` and rejects the token outright, comments stripped
+   first because the prose has to be able to discuss it. It is dist-only — hence
+   `*.dist-test.ts`, a glob `vitest.config.ts` deliberately does not match, since
+   a check that skips when its subject is missing is worse than none.
+
+Both blind spots were found by mutation rather than by inspection. `any` planted
+at `Host['current']` or at `Transition['input']` turns the whole-surface walk
+red; planted at `Table`'s `state` it leaves that walk green, and only the
+handler-body assertions and the declaration read catch it — alongside the
+`not.toBeAny()` pairings in the older files, which is the case those pairings
+were written for.
