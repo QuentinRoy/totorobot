@@ -177,7 +177,7 @@ test('skip() is returnable from a handler for every target shape, including a pa
 		},
 	})
 
-	// `Skip` is exported, so its shape is surface too.
+	// `Skip` is exported, so a caller names it directly.
 	expectTypeOf<Skip>().not.toBeAny()
 })
 
