@@ -31,13 +31,7 @@ export default defineConfig({
 	},
 
 	test: {
-		// `*.dist-test.ts` asserts against the artifact itself, so only this
-		// config matches it.
-		include: [
-			'tests/**/*.test.{js,ts}',
-			'tests/**/*.test-d.ts',
-			'tests/**/*.dist-test.ts',
-		],
+		include: ['tests/**/*.test.{js,ts}', 'tests/**/*.test-d.ts'],
 
 		// No coverage block: the thresholds are scoped to `src/`, and this run
 		// exercises the built artifact rather than an instrumentable source

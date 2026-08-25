@@ -226,6 +226,10 @@ test('start() takes an optional, unknown payload for an inferred initial state',
 	// legal.
 	untyped.start()
 	untyped.start({ anything: true })
+
+	// Optional, but still the inferred state's data rather than `any` — this is
+	// the other arm of `Start` from the declared case in `vocabulary.test-d.ts`.
+	expectTypeOf(untyped.start).parameter(0).not.toBeAny()
 })
 
 test('an immediate row is legal with no vocabulary declared, and contributes no input name', () => {

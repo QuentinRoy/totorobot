@@ -5,7 +5,7 @@
 
 import { expect, expectTypeOf, test } from 'vitest'
 
-import { machine, type } from 'totorobot'
+import { machine, type, type Skip } from 'totorobot'
 
 type Inputs =
 	| { type: 'open'; text: string }
@@ -176,6 +176,9 @@ test('skip() is returnable from a handler for every target shape, including a pa
 				Math.random() > 0.5 ? skip() : undefined,
 		},
 	})
+
+	// `Skip` is exported, so its shape is surface too.
+	expectTypeOf<Skip>().not.toBeAny()
 })
 
 test('a declared vocabulary may still name `*` or a padded name explicitly (#22)', () => {

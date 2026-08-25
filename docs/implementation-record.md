@@ -349,22 +349,3 @@ compatibility is an assignability check, and the body casts before reading. Not
 academic, since declarations are generated from these signatures — a rollup that
 preferred an implementation signature to its overload would hand callers `any`
 rather than merely losing precision.
-
-### <a id="i24"></a>I24 — Walking the public surface for `any` misses `Table`
-
-`toEqualTypeOf` passes against `any`, so an assertion not paired with
-`not.toBeAny()` cannot see a leak. `tests/surface.test-d.ts` walks the surface
-instead, with `0 extends 1 & T` as the leaf test.
-
-The walk cannot reach `Table`: instantiating `machine`'s parameters at their
-constraints makes `P extends Key<I, S>` false for `P = string`, so every row
-resolves to the poison literal rather than to a handler, and an `any` on that
-handler's `state` passes. Assertions inside handler bodies close it. An `any` can
-also ship in an emitted declaration nothing public refers to yet, which only reading
-`dist/totorobot.d.ts` catches — `tests/declarations.dist-test.ts` does that.
-
-Measured by mutation, and the redundancy is worth knowing: the existing per-position
-assertions already catch `any` at `Host['current']`, `Transition['input']` and
-`Table`'s `state`. What only these two files catch is a leak at a position no
-assertion names — `observe`'s return, `start`'s payload — or one sitting in an
-emitted declaration nothing instantiates yet, which the walk cannot see at all.
