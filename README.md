@@ -356,7 +356,7 @@ from a listener or from a hop `.start()` is settling, and whether it targets the
 dispatching host or an unrelated one. So a send takes effect immediately only
 when no dispatch is running anywhere; otherwise it waits for the one in progress
 to settle, and `current` read right after such a send still shows the earlier
-state. [Commit ordering](#commit-ordering) rule 4 has the mechanics.
+state. [Commit ordering](#commit-ordering) has the mechanics.
 
 **There is no typed send site.** `doc.send({ type: 'publish' })` compiles in
 `draft` and does nothing at runtime, so per-state capabilities go unchecked. That
@@ -420,7 +420,7 @@ and `tests/helpers.ts` carries it as working code.
 
 ### Commit ordering
 
-Five rules cover everything a listener sees:
+Three rules cover everything a listener sees:
 
 1. **One input yields at most one chain.** The input causes at most one
    transition, but arriving somewhere with immediate rows continues on hop after
@@ -431,12 +431,13 @@ Five rules cover everything a listener sees:
    snapshotted before the dispatch, so one unsubscribed by an earlier listener
    still runs for the current transition, and one registered during a dispatch
    does not.
-4. **A send from inside a dispatch is queued**, across every host in the process,
-   so a listener is never re-entered. The queue drains first in first out before
-   the outermost `send` returns, never on a microtask and never nested. A queued
-   send is evaluated against the state at drain time, so it waits for the chain to
-   settle rather than landing mid-hop, and may correctly find no row.
-5. **`send` returns nothing**, including when it was queued.
+
+Re-entrancy is two more. **A send from inside a dispatch is queued**, across
+every host in the process, and the queue drains first in first out before the
+outermost `send` returns, never on a microtask and never nested. **`send` returns
+nothing**, including when it was queued. So a listener is never re-entered, and a
+queued send waits for the whole chain to settle rather than landing mid-hop,
+where it is evaluated against the state at drain time and may find no row.
 
 A throwing listener ends the drain and discards what was queued, but the
 transition stays committed and every host works normally afterwards. There is no
@@ -622,13 +623,10 @@ For contributors — read these before changing `src/`:
   the Robot3 one is tested, so a rejected option that starts working again fails
   the build rather than going unnoticed.
 
-Background, from before v1. These record what the API was aimed at rather than
-what it shipped, and stay where they are because the design record cites them.
-
-- [Requirements](docs/requirements.md) — the priority stack the exploration
-  targeted.
-- [Acceptance cases](docs/acceptance-cases.md) — the shared scenarios candidates
-  were compared against.
+Background, from before v1: [requirements](docs/requirements.md), the priority
+stack the exploration targeted, and [acceptance cases](docs/acceptance-cases.md),
+the scenarios candidates were compared against. Both record what the API was
+aimed at rather than what it shipped.
 
 ## Development
 
