@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# Publishing goes through npm's trusted publishing (OIDC): the exchange needs
+# `id-token: write`, and there is no NPM_TOKEN to leak. The trusted publisher
+# registered on npm names *this* workflow file, so renaming it breaks publishing.
+#
+# `changesets/action` needs `contents: write` and `pull-requests: write` to open
+# and maintain the "Version Packages" pull request, plus the repository setting
+# Actions → General → "Allow GitHub Actions to create and approve pull requests".
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+# A second push while a release is mid-flight would race the version pull
+# request against the publish. Queue instead, and never cancel a publish.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # The last gate before something immutable reaches npm. Pull requests run
+      # the same two suites, but a push straight to main does not, and this job
+      # publishes either way.
+      - run: pnpm test:coverage
+      - run: pnpm test:dist
+
+      # With changesets pending, this opens or updates the version pull request
+      # and stops. With none pending — i.e. that pull request just merged — it
+      # publishes, tags, and creates the GitHub release (`create-github-releases`
+      # and `push-git-tags` both default to true). `dist/` is gitignored, so the
+      # tarball is built by the `prepack` script rather than by a step here.
+      #
+      # GITHUB_TOKEN is not for the action itself — its `github-token` input
+      # already defaults to the job token. It is what `@changesets/changelog-github`
+      # reads while `changeset version` writes CHANGELOG.md, to resolve each
+      # changeset back to the pull request that carried it.
+      - uses: changesets/action@v2
+        with:
+          publish-script: pnpm changeset publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
