@@ -650,43 +650,22 @@ untyped path against the shipped API. `pnpm typecheck` covers `src/`,
 
 ## Releasing
 
-Releases run on [Changesets](https://changesets.dev). Nothing is published from
-a laptop: npm accepts this package only from the `Release` workflow, through
-[trusted publishing](https://docs.npmjs.com/trusted-publishers), which is why
-there is no npm token anywhere in this repository. Provenance comes with it.
+Releases run on [Changesets](https://changesets.dev). Only the `Release`
+workflow can publish: npm accepts this package through
+[trusted publishing](https://docs.npmjs.com/trusted-publishers), so no token
+lives in the repository and every release carries provenance.
 
-A change that users should hear about carries a changeset:
+For a change users should hear about, run `pnpm changeset`, pick the bump, and
+commit the file it writes under `.changeset/` with the change. Docs, tooling and
+dependency bumps need none, and nothing enforces this.
 
-```bash
-pnpm changeset
-```
+Merging to `main` opens a "Version Packages" pull request that bumps the version
+and writes `CHANGELOG.md`; merging that one publishes, tags, and creates the
+GitHub release. Edit changesets, never the changelog or the version field.
 
-Pick the bump (patch, minor, major) and write the line as a user reading the
-changelog would want it — what changed for them, not what the diff did. The
-command writes a small markdown file under `.changeset/`; commit it with the
-change. Nothing enforces this, so a release-worthy pull request without one just
-ships silently in the next version. Internal work — docs, tooling, dependency
-bumps — needs no changeset.
-
-From there it is automatic:
-
-1. Merging to `main` makes the workflow open (or update) a **Version Packages**
-   pull request. It bumps the version, folds the pending changesets into
-   `CHANGELOG.md`, and deletes them. It carries no CI checks: pull requests
-   opened by the workflow token do not trigger `on: pull_request`, and the
-   release job re-runs the full suite before publishing anyway.
-2. Merging **that** pull request publishes to npm, tags the commit, and creates
-   the GitHub release from the changelog entry.
-
-So the version number is never edited by hand, and `CHANGELOG.md` is generated —
-edit the changeset, not the changelog.
-
-Two pieces of setup live outside the repository and are recorded here because
-nothing in the tree reveals them: the trusted publisher on npm, registered
-against this repository and `.github/workflows/release.yml` by name (renaming
-that file breaks publishing), and the repository setting **Actions → General →
-"Allow GitHub Actions to create and approve pull requests"**, without which the
-version pull request cannot be opened.
+Two things live outside the tree: the npm trusted publisher, registered against
+`.github/workflows/release.yml` by name, and the repository setting "Allow
+GitHub Actions to create and approve pull requests".
 
 ## Thanks
 
