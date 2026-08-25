@@ -1,32 +1,11 @@
 /**
  * Nothing a caller can reach is `any`.
  *
- * `any` is fine inside the module — the runtime half has no use for the type
- * layer's per-row precision, and discarding it there costs a caller nothing. It
- * is not fine on the way out: `any` does not merely widen a type, it switches
- * checking off for every expression downstream of it, silently and
- * transitively. A leak is invisible in a green suite, because the assertions
- * that would have caught it pass vacuously against `any` — `toEqualTypeOf`
- * compares `any` to anything without complaint, which is why the older files
- * pair it with `not.toBeAny()`.
- *
- * Those pairings check the positions somebody thought to name. This file checks
- * the surface: `HasAny` walks a type's properties, its array elements, and both
- * ends of every function signature it meets, and reports whether `any` occurs
- * anywhere inside. Pointing it at `machine` and at what `machine` returns covers
- * the reachable surface in one assertion each, including positions no
- * hand-written assertion names — the `from` of a transition record delivered to
- * a listener registered under a narrowed pattern, say.
- *
- * A detector that always answered `false` would pass every assertion here and
- * catch nothing, so the planted-leak tests below are load-bearing rather than
- * decorative: each one is a position `HasAny` must fire on, and one of them
- * (`state` in the table) was a genuine blind spot until the handler-argument
- * assertions were added. See I24 for what the walk does not reach.
- *
- * The suite imports by package name, so this runs against `src/` under
- * `pnpm test` and against the emitted declarations under `pnpm test:dist` —
- * the rollup is where a leak would appear with no runtime symptom at all.
+ * A leak is invisible in a green suite: `toEqualTypeOf` passes against `any`,
+ * which is why the older files pair it with `not.toBeAny()`. Those cover the
+ * positions somebody named; `HasAny` walks the reachable surface instead. The
+ * planted-leak tests stop it rotting into a detector that always answers no.
+ * What the walk cannot reach, and why, is I24.
  */
 
 import { expectTypeOf, test } from 'vitest'
@@ -45,32 +24,16 @@ import {
 // The detector
 // ---------------------------------------------------------------------------
 
-/**
- * `any` is the one type that swallows an intersection: `1 & any` is `any`, so
- * `0 extends 1 & any` holds where `0 extends 1 & T` holds for no other `T`.
- */
+/** `1 & any` is `any`, so this holds for `any` and for nothing else. */
 type IsAny<T> = 0 extends 1 & T ? true : false
 
-/**
- * A walk distributes over unions and a mapped type yields one answer per key,
- * so the arms below produce a union of booleans; this collapses it back to one.
- * `true` wins: a leak in any member is a leak.
- */
+/** The walk distributes over unions; this collapses the result back to one boolean. */
 type Some<U> = true extends U ? true : false
 
-/**
- * Recursion has to be bounded, and a tuple index is how a conditional type
- * counts down. Twelve is comfortably past the deepest public position — a
- * listener's transition record, reached through `observe`'s second parameter —
- * and the `reaches as deep as it claims` test below pins that.
- */
+/** Bounds the recursion. Twelve clears the deepest public position; a test pins it. */
 type Fuel = [never, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
-/**
- * `never` first, because a conditional whose checked type is `never` resolves
- * to `never` rather than to a branch; `IsAny` before the fuel check, so an `any`
- * sitting exactly at the limit is still reported rather than run out of budget.
- */
+/** `never` first: a conditional checked on `never` resolves to `never`, not a branch. */
 type Walk<T, D extends number> = [T] extends [never]
 	? false
 	: IsAny<T> extends true
@@ -85,7 +48,6 @@ type Walk<T, D extends number> = [T] extends [never]
 						? Some<{ [K in keyof T]-?: Walk<T[K], Fuel[D]> }[keyof T]>
 						: false
 
-/** `true` if `any` occurs anywhere in `T`. The union `Walk` may return, collapsed. */
 type HasAny<T> = Some<Walk<T, 12>>
 
 // ---------------------------------------------------------------------------
@@ -96,23 +58,18 @@ test('a planted leak is found wherever it sits', () => {
 	expectTypeOf<HasAny<any>>().toEqualTypeOf<true>()
 	expectTypeOf<HasAny<{ a: { b: any } }>>().toEqualTypeOf<true>()
 	expectTypeOf<HasAny<readonly any[]>>().toEqualTypeOf<true>()
-	// A parameter, which is where a leak hurts a caller writing a callback.
 	expectTypeOf<HasAny<(x: any) => void>>().toEqualTypeOf<true>()
 	expectTypeOf<HasAny<() => { deep: { deeper: any } }>>().toEqualTypeOf<true>()
 	expectTypeOf<
 		HasAny<{ ok: string; fn: (a: number) => any }>
 	>().toEqualTypeOf<true>()
-	// One arm of a union is enough: this is the shape a vocabulary has.
 	expectTypeOf<HasAny<{ a: string } | { b: any }>>().toEqualTypeOf<true>()
-	// A callback's callback: the shape `observe` has.
 	expectTypeOf<
 		HasAny<(p: string, l: (e: { from: any }) => void) => () => void>
 	>().toEqualTypeOf<true>()
 })
 
 test('the neighbours of `any` are not mistaken for it', () => {
-	// `unknown` is the whole point of the untyped path: it widens without
-	// disabling anything, and must not be reported as a leak.
 	expectTypeOf<HasAny<unknown>>().toEqualTypeOf<false>()
 	expectTypeOf<
 		HasAny<{ u: unknown; s: string; n: never; v: void; f: () => void }>
@@ -122,8 +79,7 @@ test('the neighbours of `any` are not mistaken for it', () => {
 })
 
 test('the walk reaches as deep as it claims', () => {
-	// Eight objects down, then through a function at both ends: deeper than any
-	// position the surface below actually has. Reduce `Fuel` and this goes red.
+	// Reduce `Fuel` and this goes red.
 	expectTypeOf<
 		HasAny<{ a: { b: { c: { d: { e: { f: { g: { h: () => any } } } } } } } }>
 	>().toEqualTypeOf<true>()
@@ -165,7 +121,7 @@ const inferred = machine({
 	},
 })
 
-/** Half declared, half read off the table: the two default resolutions meet. */
+/** Half declared, half read off the table. */
 const half = machine({
 	initial: 'empty',
 	inputs: type<Inputs>(),
@@ -175,7 +131,7 @@ const half = machine({
 	},
 })
 
-/** A payload-carrying initial state, so `start`'s parameter is not empty. */
+/** A payload-carrying initial state, so `start` takes an argument. */
 const carrying = machine({
 	initial: 'draft',
 	inputs: type<Inputs>(),
@@ -203,7 +159,6 @@ test('an inferred machine and its host are clean, transitively', () => {
 	expectTypeOf<
 		HasAny<ReturnType<typeof inferred.start>>
 	>().toEqualTypeOf<false>()
-	// The named guarantee of the untyped path: unknown, and not the other one.
 	expectTypeOf(inferred.start().current['whatever']).not.toBeAny()
 	expectTypeOf(inferred.start().current['whatever']).toEqualTypeOf<unknown>()
 })
@@ -236,13 +191,12 @@ test('the derived helpers are clean', () => {
 })
 
 // ---------------------------------------------------------------------------
-// The two positions the walk above cannot reach
+// What the walk cannot reach
 // ---------------------------------------------------------------------------
 
 test("a handler's arguments are clean, on every kind of row", () => {
-	// `Table` is only ever instantiated against a real call's vocabulary, so
-	// walking `typeof machine` resolves it at its constraints and never reaches
-	// these — an `any` on `state` there passes every assertion above (I24).
+	// Walking `typeof machine` resolves `Table` at its constraints, so an `any`
+	// on `state` passes every assertion above (I24).
 	machine({
 		initial: 'empty',
 		inputs: type<Inputs>(),
@@ -252,20 +206,18 @@ test("a handler's arguments are clean, on every kind of row", () => {
 				expectTypeOf<HasAny<typeof args>>().toEqualTypeOf<false>()
 				return { text: args.input.text }
 			},
-			// A row that declines, so `skip` is used rather than merely present.
 			'draft -submit> review': (args) => {
 				expectTypeOf<HasAny<typeof args>>().toEqualTypeOf<false>()
 				return args.skip()
 			},
-			// An unlabelled arrow, whose `input` is `undefined` rather than a member.
+			// An unlabelled arrow: `input` is `undefined`.
 			'draft -> empty': (args) => {
 				expectTypeOf<HasAny<typeof args>>().toEqualTypeOf<false>()
 			},
 		},
 	})
 
-	// And the same with no vocabulary declared, where the arguments are widened
-	// rather than declared and `unknown` is what must come back.
+	// The same with no vocabulary declared, where `unknown` must come back.
 	machine({
 		initial: 'off',
 		transitions: {
@@ -281,9 +233,7 @@ test("a handler's arguments are clean, on every kind of row", () => {
 test("a listener's transition record is clean, under every pattern shape", () => {
 	const host = declared.start()
 
-	// Reachable from `HasAny<typeof host>` only at `observe`'s constraint; each
-	// pattern below instantiates it differently, and a narrowed one is where the
-	// mapped arm of `Transition` actually does its work.
+	// Each pattern instantiates `Transition` differently.
 	host.observe('* -> *', (e) => {
 		expectTypeOf<HasAny<typeof e>>().toEqualTypeOf<false>()
 	})
@@ -297,7 +247,7 @@ test("a listener's transition record is clean, under every pattern shape", () =>
 		expectTypeOf<HasAny<typeof e>>().toEqualTypeOf<false>()
 	})
 
-	// The unsubscribe handle, which is the one thing `observe` hands back.
+	// The unsubscribe handle.
 	expectTypeOf<HasAny<ReturnType<typeof host.observe>>>().toEqualTypeOf<false>()
 
 	const untyped = inferred.start()

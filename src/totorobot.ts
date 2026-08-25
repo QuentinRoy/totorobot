@@ -270,12 +270,7 @@ export type Sources<M, S extends string> = From<
 // The definition
 // ---------------------------------------------------------------------------
 
-/**
- * The runtime's view of a row: one shape for every handler, because dispatch
- * never distinguishes them. Widest *honest* shapes rather than `any`, which
- * would check the same and cost nothing here — the runtime reads exactly
- * `state.name` and `input.type`, and only ever spreads a payload (I23).
- */
+/** One shape for every handler: dispatch reads `.name` and `.type`, nothing else (I23). */
 type UncheckedHandler = (args: {
 	readonly state: StateVocab
 	readonly input: InputVocab | undefined
@@ -284,7 +279,6 @@ type UncheckedHandler = (args: {
 
 type Row = readonly [to: string, handler: UncheckedHandler]
 
-/** The same for what `start` returns; `machine`'s overload is what a caller sees. */
 interface UncheckedHost {
 	readonly current: StateVocab
 	readonly send: (input: InputVocab) => void
@@ -364,11 +358,8 @@ export function machine<
 	readonly states?: RawS | undefined
 	readonly transitions: Table<I, S, K>
 }): Machine<I, S, K, Init>
-// The implementation signature, never seen by a caller — the overload above is.
-// `unknown` rather than a shape, because a row's value can be the poison string
-// literal, which no concrete type implements; and rather than `any`, because it
-// satisfies the overload just as well and is what a caller would get were this
-// ever the signature that got emitted (I23).
+// The implementation signature, never seen by a caller. `unknown` because a row's
+// value can be the poison string literal, which no concrete type implements (I23).
 export function machine(definition: unknown): unknown {
 	const { initial, transitions } = definition as unknown as {
 		readonly initial: string

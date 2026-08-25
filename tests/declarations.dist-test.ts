@@ -1,19 +1,11 @@
 /**
- * The shipped `.d.ts` contains no `any` at all — not in the exports, not in the
- * module-local declarations the rollup carries along with them.
+ * The shipped `.d.ts` contains no `any`, including in the module-local
+ * declarations the rollup carries along with the exports. `surface.test-d.ts`
+ * proves the stronger thing about the reachable part; this catches an `any`
+ * sitting in a declaration nothing public refers to yet (I24).
  *
- * `surface.test-d.ts` proves the stronger thing about the part a caller can
- * reach, and it proves it here too, since the type half of `pnpm test:dist`
- * resolves the package to this same file. What that walk cannot see is an `any`
- * sitting in a declaration nothing public refers to *yet*: a helper someone
- * types loosely today and wires into an exported signature tomorrow, at which
- * point the leak is already written and only the wiring is new. Reading the
- * emitted text is how that gets caught while it is still harmless.
- *
- * Dist-only, hence the filename: there is no artifact to read under `pnpm test`,
- * and a check that quietly skips when its subject is missing is worse than no
- * check. `vitest.dist.config.ts` includes `*.dist-test.ts`; the source config's
- * globs do not match it.
+ * Dist-only, hence the filename: there is nothing to read under `pnpm test`,
+ * and a check that skips when its subject is missing is worse than none.
  */
 
 import { readFileSync } from 'node:fs'
@@ -25,13 +17,9 @@ const declarations = readFileSync(
 	'utf8',
 )
 
-/**
- * Comments are stripped first, because the prose legitimately discusses `any` —
- * this file's own subject is hard to write about otherwise. Naive enough to be
- * fooled by `//` inside a template-literal type, which the key grammar has no
- * way to produce today; if one ever appears, over-stripping shows up as a
- * missed leak rather than a false alarm, so re-read this then.
- */
+// Comments go first, because the prose legitimately discusses `any`. Naive
+// enough to be fooled by `//` inside a template-literal type, which the key
+// grammar cannot produce today.
 const code = declarations
 	.replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, ' '))
 	.replace(/\/\/[^\n]*/g, '')
@@ -47,8 +35,8 @@ test('the emitted declarations are free of `any`', () => {
 })
 
 test('the check is reading the declarations it thinks it is', () => {
-	// A stripper bug, a moved artifact or an empty build would otherwise leave
-	// the assertion above passing against nothing at all.
+	// Otherwise a stripper bug or an empty build leaves the assertion above
+	// passing against nothing.
 	expect(declarations).toContain('export declare function machine')
 	expect(code).toContain('export declare function machine')
 	expect(code).toContain('Machine<I, S, K, Init>')
