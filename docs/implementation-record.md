@@ -363,5 +363,8 @@ handler's `state` passes. Assertions inside handler bodies close it. An `any` ca
 also ship in an emitted declaration nothing public refers to yet, which only reading
 `dist/totorobot.d.ts` catches — `tests/declarations.dist-test.ts` does that.
 
-Confirmed by mutation: `any` at `Host['current']` or `Transition['input']` turns the
-walk red, at `Table`'s `state` it does not.
+Measured by mutation, and the redundancy is worth knowing: the existing per-position
+assertions already catch `any` at `Host['current']`, `Transition['input']` and
+`Table`'s `state`. What only these two files catch is a leak at a position no
+assertion names — `observe`'s return, `start`'s payload — or one sitting in an
+emitted declaration nothing instantiates yet, which the walk cannot see at all.
