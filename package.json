@@ -29,6 +29,7 @@
 		"dev": "node --watch examples/index.ts",
 		"examples": "node examples/index.ts",
 		"build": "vite build",
+		"prepack": "pnpm build",
 		"size": "pnpm build && node scripts/size.ts",
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
@@ -49,6 +50,8 @@
 		"url": "https://github.com/QuentinRoy/totorobot/issues"
 	},
 	"devDependencies": {
+		"@changesets/changelog-github": "^1.0.0",
+		"@changesets/cli": "^3.0.1",
 		"@types/node": "^26.3.0",
 		"@typescript/typescript6": "^6.0.2",
 		"@vitest/coverage-v8": "^4.1.11",
@@ -60,5 +63,5 @@
 		"vite-plugin-dts": "^5.0.3",
 		"vitest": "^4.1.11"
 	},
-	"packageManager": "pnpm@10.15.1"
+	"packageManager": "pnpm@10.34.5"
 }
