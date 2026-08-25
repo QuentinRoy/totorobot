@@ -11,8 +11,9 @@
  * Nothing here is the library. Every function is `declare`d; only signatures
  * matter. The shape is not new to this repository — `config-object-kit.ts`
  * already carries states as `{ name: … }` unions and derives a source context
- * with `Omit<Extract<S, { name: K }>, 'name'>` — and §13's last finding records
- * a hazard with that construction which claim 5 below deliberately avoids.
+ * with `Omit<Extract<S, { name: K }>, 'name'>` — and finding I11 of
+ * [the implementation record](../docs/implementation-record.md#i11) records a
+ * hazard with that construction which claim 5 below deliberately avoids.
  */
 
 import { assertType, type Equal } from './config-object-kit.ts'
@@ -119,10 +120,10 @@ send({ type: 'nope' })
 // 5. A handler returns the target's payload MINUS the tag, so the target is
 //    never restated in the lambda and the arrow test survives.
 //
-//    §13's last finding is the hazard here: deriving the source context from the
-//    state name inside a conditional can force the target to resolve before it
-//    is read. This spelling keeps the target as a plain parsed string rather
-//    than a free parameter to infer, which is why it does not bite.
+//    Implementation record I11 is the hazard here: deriving the source context
+//    from the state name inside a conditional can force the target to resolve
+//    before it is read. This spelling keeps the target as a plain parsed string
+//    rather than a free parameter to infer, which is why it does not bite.
 // ---------------------------------------------------------------------------
 
 type To<P> = P extends `${string}> ${infer T}` ? T : never

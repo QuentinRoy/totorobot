@@ -609,12 +609,17 @@ of it is promised.
 - [Roadmap](docs/roadmap.md) — the prospective plan past v1: effects, a declared
   output channel, residency, and composition.
 - [Design record](docs/design-record.md) — the decision ledger: what was
-  considered and rejected, on what evidence, plus the reusable TypeScript
-  findings.
+  considered and rejected, and on what evidence.
 - [Research notes](docs/research/) — ten prior-art notes on automata theory,
   execution semantics, HCI state machines, typestate, TypeScript type
   engineering, and the JS FSM landscape.
-- [Explorations](explorations/README.md) — the compilable prototypes behind the
+
+For contributors — read these before changing `src/`:
+
+- [Implementation record](docs/implementation-record.md) — the standing list of
+  compiler behaviour behind the type layer, as numbered findings with stable
+  identifiers the source can cite.
+- [Explorations](explorations/README.md) — the compilable prototypes behind those
   findings, including one built over Robot3 itself. They are type-checked, and
   the Robot3 one is tested, so a rejected option that starts working again fails
   the build rather than going unnoticed.

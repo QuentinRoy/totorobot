@@ -116,7 +116,8 @@ assertions so they cannot rot.
 
 ## The one finding worth carrying over
 
-Recorded at length in [`config-object-kit.ts`](config-object-kit.ts): deriving a
+Standing as [I11](../docs/implementation-record.md#i11) in the implementation
+record, and at length in [`config-object-kit.ts`](config-object-kit.ts): deriving a
 transition's source context from the state name `K` inside `TransitionModifiers`
 makes resolving that conditional force `To` before the `target` argument is
 read, and `To` collapses onto `K`. `transition('login', 'authenticating', ...)`
