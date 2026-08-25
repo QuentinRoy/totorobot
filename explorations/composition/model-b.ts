@@ -5,7 +5,7 @@
  *
  *   + `outputs: type<Outputs>()` — a third declared vocabulary, beside
  *     `inputs` and `states`.
- *   + `actions` (docs/api-rationale.md §9: trigger-keyed, a bare state name is
+ *   + `actions` (docs/design-record.md §9: trigger-keyed, a bare state name is
  *     residency and returns its teardown, an arrow key is an edge) whose
  *     argument bag carries `emit` alongside `send`.
  *   − the host publishes declared outputs only. `.on('opened', …)` names an

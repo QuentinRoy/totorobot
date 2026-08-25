@@ -263,7 +263,7 @@ describe('commit ordering', () => {
 // Two machines wired to each other are how peer composition works today, before
 // any composition feature exists. The dispatch queue is module scope, not per
 // host, so these must hold across hosts exactly as the single-host tests above
-// hold within one — see `docs/api-rationale.md`, "Module scope, not per host".
+// hold within one — see `docs/design-record.md`, "Module scope, not per host".
 describe('commit ordering across hosts', () => {
 	test("a send from one host into another queues rather than nesting: the second host runs only after the first host's remaining listeners for the current transition", () => {
 		const hostA = toggle.start()
@@ -441,7 +441,7 @@ describe('commit ordering across hosts', () => {
 // so a send issued from one of its hops queues rather than nesting. Nothing on
 // the host being started can issue one — it has no listeners yet — so these go
 // through a handler reaching into another host, which is also the shape
-// `actions` will make ordinary. See `docs/api-rationale.md`, "`start` settles
+// `actions` will make ordinary. See `docs/design-record.md`, "`start` settles
 // under the drain".
 describe('commit ordering while `start` settles', () => {
 	test('a send issued while the initial chain settles queues rather than nesting, and drains after the chain has settled', () => {

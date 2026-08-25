@@ -11,7 +11,7 @@
 1. Is the **second declaration site** — a hand-written model type plus a
    `defineMachine<Model>()(...)` double call — actually forced by current
    TypeScript? The project's "Attempt 1"
-   (`../api-rationale.md`) concluded yes, before `const` type
+   (`../design-record.md`) concluded yes, before `const` type
    parameters (5.0), `satisfies` (4.9) and `NoInfer` (5.4).
 2. What techniques let a library check one property of an object literal
    against a contract derived from a **sibling** property of the same literal,
@@ -620,7 +620,7 @@ homomorphic mapped-type inference and context-sensitive argument deferral —
 both of which long predate Attempt 1. Attempt 1's finding was a correct
 observation about a specific architecture — per-state generic helper calls —
 generalised into a false claim about object-literal inference. It should be
-retired, and `../api-rationale.md` should say so.
+retired, and `../design-record.md` should say so.
 
 Two caveats keep an explicit-model path alive, but only as an _option_:
 `--isolatedDeclarations` consumers who re-export a machine (F9.3), and users

@@ -1,7 +1,7 @@
 # Explorations
 
 Compilable evidence for the API shapes considered in
-[the design record](../docs/api-rationale.md). None of this is the
+[the design record](../docs/design-record.md). None of this is the
 library; nothing here is exported from `totorobot`. Almost every function is
 `declare`d, because only the signatures matter - each file exists to record what
 TypeScript can and cannot infer for a proposed call shape.
@@ -15,7 +15,7 @@ runtime because its claim is a runtime one, and is covered by
 The files in this directory are the **first round** — call shapes for the
 generation-1 spec. [`candidates/`](candidates/) is the **second**: the nine
 notation prototypes and three rival baselines behind the layout decision in
-[api-rationale.md](../docs/api-rationale.md), which links into
+[design-record.md](../docs/design-record.md), which links into
 [`candidates/n2-declared-types/`](candidates/n2-declared-types/) by line number.
 
 They are checked separately, because they need different compiler settings:
@@ -93,17 +93,18 @@ discriminated unions for states and events, and makes `state` / `transition` /
 | [`option-g-define-then-create.ts`](option-g-define-then-create.ts)   | `createMachine(defineMachine<S>()({...}), states)`                         | **Works, and beats D.** Same guarantees, no `as const` on a hoisted spec, bad `initialState` reported at `defineMachine`. Also pins why the one-call spelling `defineMachine<S>({...})` cannot exist. |
 | [`option-h-marker-in-config.ts`](option-h-marker-in-config.ts)       | `createMachine({initialState, specification: defineMachine<S>()}, states)` | **Works, trades differently than G.** No curried call, but no fix for D's `as const` edge either - checked, not assumed.                                                                              |
 
-### The §17 vocabulary
+### The tagged vocabulary
 
 Not part of either family, and later than both: the tagged-union vocabulary decided
-in [§17](../docs/api-rationale.md#17-the-shape-of-a-named-thing), which is unbuilt.
+in [§5's revision](../docs/design-record.md#revision-the-shape-of-a-named-thing), which
+is unbuilt.
 The section rests on claims about TypeScript's behaviour, and this is those claims as
 assertions so they cannot rot.
 
 | File                                                       | Shape                                                                                           | Result                                                                                                                                                                                                                                                                                                                                                |
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`tagged-vocabulary.ts`](tagged-vocabulary.ts)             | `inputs`/`states` as unions tagged `type`/`name`; handler returns tag-less                      | **Works**, with one negative result pinned: for a payload-free target the tag is not required but also not rejected, because `Omit<{ name: 'x' }, 'name'>` is `{}`. Also pins that a `typeof` query does not see control-flow narrowing.                                                                                                              |
-| [`empty-state-payload.ts`](empty-state-payload.ts)         | the tagged empty-object encoding (`{ [emptyObjectTag]?: never }`) closing that hole, for states | **Works**: accepts nothing and `{}`; rejects an excess-property literal, a wider variable, an interface-typed value, and a spread of a wider state. A negative-control block pins that the bare `Omit<S, 'name'>` form accepts all four — the comparison `docs/api-rationale.md` §17 draws.                                                           |
+| [`empty-state-payload.ts`](empty-state-payload.ts)         | the tagged empty-object encoding (`{ [emptyObjectTag]?: never }`) closing that hole, for states | **Works**: accepts nothing and `{}`; rejects an excess-property literal, a wider variable, an interface-typed value, and a spread of a wider state. A negative-control block pins that the bare `Omit<S, 'name'>` form accepts all four — the comparison `docs/design-record.md` §5's revision draws.                                                 |
 | [`handler-param-inference.ts`](handler-param-inference.ts) | the handler's source-state parameter as an inference site, with and without `NoInfer`           | **Pins the mechanism behind a one-word fix in `Table`.** Without `NoInfer` a _context-sensitive_ handler infers the state vocabulary contravariantly from the table and every well-formed row is rejected as `not a transition`; with it, the inferred and declared paths both resolve and a genuinely malformed row is still caught on its own line. |
 
 ### Robot3 as the runtime

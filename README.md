@@ -143,7 +143,7 @@ goes through the named helpers: `InputsOf<typeof publication>`,
 that wants a field called `type` or `name`, nests it under one:
 `{ type: 'tick', data: 5 }`. Nothing in the library requires or inspects `data`,
 and any other name works
-([rationale §17](docs/api-rationale.md#data-is-a-convention-not-a-rule)).
+([rationale §5](docs/design-record.md#data-is-a-convention-not-a-rule)).
 
 Both keys are optional. Omitting them reads the names off `transitions` and
 gives you the [untyped path](#the-untyped-path).
@@ -288,7 +288,7 @@ the host is handed back, so those hops are unobservable: nobody has subscribed
 yet. If you need to observe an arrival, do not make it the initial state. The
 argument still follows the **declared** initial state's payload rather than the
 settled one's, and a cycle among those rows throws from `.start()` instead of
-from `send` ([rationale §7](docs/api-rationale.md#what-it-forces-open)).
+from `send` ([rationale §6](docs/design-record.md#what-it-forces-open)).
 
 ### What the table gives you for free
 
@@ -363,7 +363,7 @@ state. [Commit ordering](#commit-ordering) rule 4 has the mechanics.
 `draft` and does nothing at runtime, so per-state capabilities go unchecked. That
 is a deliberate drop: the narrow-then-send shape is unsound in TypeScript, and a
 sound variant stays addable later without breaking anything
-([rationale §11](docs/api-rationale.md#11-sending-inputs)).
+([rationale §12](docs/design-record.md#12-sending-inputs)).
 
 ### Observing
 
@@ -416,7 +416,7 @@ computed from each end.
 Declaring it in the definition instead of assembling it by hand is
 [a roadmap direction](docs/roadmap.md#residency--a-recipe-today-maybe-declared-later).
 The full recipe, with the argument for leaving it to the caller today, is in
-[rationale §12](docs/api-rationale.md#residency-is-derivable-not-a-host-feature),
+[rationale §11](docs/design-record.md#residency-is-derivable-not-a-host-feature),
 and `tests/helpers.ts` carries it as working code.
 
 ### Commit ordering
@@ -444,7 +444,7 @@ A throwing listener ends the drain and discards what was queued, but the
 transition stays committed and every host works normally afterwards. There is no
 `stop()`: disposal is unsubscribing your listeners and not sending any more, and
 the host holds nothing else. The argument for all of it, the cross-host case
-included, is [rationale §12](docs/api-rationale.md#queue-not-stack).
+included, is [rationale §11](docs/design-record.md#queue-not-stack).
 
 ## A worked example
 
@@ -561,13 +561,13 @@ argument is:
 
 | absent                      | instead                                                                                                               |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `enter` / `exit`            | patterns with one end pinned ([§9](docs/api-rationale.md#9-actions))                                                  |
-| `keep` / `repeat` / `stay`  | an ordinary self-transition row ([§6](docs/api-rationale.md#6-self-transitions))                                      |
-| `else`                      | declining is a normal outcome, and silent ([§4](docs/api-rationale.md#two-decisions-that-fell-out-of-the-comparison)) |
-| a `send` return value       | `current` ([§12](docs/api-rationale.md#send-returns-nothing))                                                         |
-| `stop()`                    | unsubscribe, and stop sending ([§12](docs/api-rationale.md#no-disposal-and-a-listener-that-throws))                   |
-| typed `send`                | nothing at runtime either; recorded but unbuilt ([§11](docs/api-rationale.md#if-it-comes-back-it-comes-back-as-s12))  |
-| hierarchy, parallel regions | out of scope ([§10](docs/api-rationale.md#what-the-rest-of-the-record-forbids))                                       |
+| `enter` / `exit`            | patterns with one end pinned ([§9](docs/design-record.md#9-actions))                                                  |
+| `keep` / `repeat` / `stay`  | an ordinary self-transition row ([§7](docs/design-record.md#7-self-transitions))                                      |
+| `else`                      | declining is a normal outcome, and silent ([§4](docs/design-record.md#two-decisions-that-fell-out-of-the-comparison)) |
+| a `send` return value       | `current` ([§11](docs/design-record.md#send-returns-nothing))                                                         |
+| `stop()`                    | unsubscribe, and stop sending ([§11](docs/design-record.md#no-disposal-and-a-listener-that-throws))                   |
+| typed `send`                | nothing at runtime either; recorded but unbuilt ([§12](docs/design-record.md#if-it-comes-back-it-comes-back-as-s12))  |
+| hierarchy, parallel regions | out of scope ([§10](docs/design-record.md#what-the-rest-of-the-record-forbids))                                       |
 
 ## The untyped path
 
@@ -608,7 +608,7 @@ of it is promised.
 
 - [Roadmap](docs/roadmap.md) — the prospective plan past v1: effects, a declared
   output channel, residency, and composition.
-- [Design record](docs/api-rationale.md) — the decision ledger: what was
+- [Design record](docs/design-record.md) — the decision ledger: what was
   considered and rejected, on what evidence, plus the reusable TypeScript
   findings.
 - [Research notes](docs/research/) — ten prior-art notes on automata theory,

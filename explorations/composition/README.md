@@ -219,18 +219,20 @@ reason it was worth building:
 - **Cross-host ordering is broken today** (finding 11), which turns out to be
   most of what "support horizontal composition" means.
 
-Recorded in [`docs/api-rationale.md` §16](../../docs/api-rationale.md) and §17,
+Recorded in
+[`docs/design-record.md` §10's revision](../../docs/design-record.md#revision-the-composition-boundary)
+and [§5's revision](../../docs/design-record.md#revision-the-shape-of-a-named-thing),
 with the reshaped vocabulary that fell out of it, and answered against P0.10,
 P2.1 and P2.9 in [`docs/requirements.md`](../../docs/requirements.md).
 
 ## Capture
 
-The decisions are folded into `docs/` — [`api-rationale.md`](../../docs/api-rationale.md)
-§16 and §17, and the answers against P0.10, P2.1 and P2.9 in
+The decisions are folded into `docs/` — [`design-record.md`](../../docs/design-record.md)
+§10's and §5's revisions, and the answers against P0.10, P2.1 and P2.9 in
 [`requirements.md`](../../docs/requirements.md). Those are what `main` keeps.
 
 This directory is kept alongside them rather than parked on a throwaway branch,
 because the records cite it by path: the byte tables above are reproducible
 (`pnpm exec node explorations/composition/size.ts`) and the ordering result in finding 11 is
-something you press a key to see. Delete it once §16 and §17 are built and the
-numbers are no longer the only evidence for them.
+something you press a key to see. Delete it once the two revisions those sections
+carry are built and the numbers are no longer the only evidence for them.

@@ -208,7 +208,7 @@ the helpers in as parameters of a contextually-typed callback fixes it, because
 TypeScript defers context-sensitive properties (`CheckMode.SkipContextSensitive`)
 and infers the non-function siblings first (note 06, F2).
 
-**The recorded conclusion in `api-rationale.md` generalised one specific
+**The recorded conclusion in `design-record.md` generalised one specific
 mistake into a false claim about object-literal inference, and every proposition
 has been paying a two-declaration tax for it since.**
 
@@ -465,7 +465,7 @@ owns a dataflow graph enabled on entry and disabled on exit (note 04, F6).
 1. ~~Re-falsify the "declare the model first" constraint.~~ **Done — note 06.
    It is not forced** — but note 07 shows removing it is fragile (finding 13).
    Decide deliberately, and if the single site is chosen, pin a type-regression
-   suite across TypeScript versions. Correct `docs/api-rationale.md`
+   suite across TypeScript versions. Correct `docs/design-record.md`
    either way; it still records a false conclusion about object-literal
    inference.
 2. **Prototype encodings (a), (c) and (d)** against the toggle and the Marking

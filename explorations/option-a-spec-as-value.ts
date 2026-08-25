@@ -36,7 +36,7 @@
  * repaired version would still carry the callback and the extra step that
  * Option D does without.
  *
- * See [the design record](../docs/api-rationale.md).
+ * See [the design record](../docs/design-record.md).
  */
 
 import type {
