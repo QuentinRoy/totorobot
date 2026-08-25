@@ -24,9 +24,6 @@
 		"dist"
 	],
 	"sideEffects": false,
-	"engines": {
-		"node": ">=26.0.0"
-	},
 	"scripts": {
 		"start": "node examples/index.ts",
 		"dev": "node --watch examples/index.ts",
