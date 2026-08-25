@@ -28,7 +28,7 @@ without it: a handler may `skip()`, and declaration order is priority order, so 
 handler that emitted would announce a transition that then loses. `emit` needs a
 post-commit home, and the action bag is the only one.
 
-_Argued in: [rationale §9](api-rationale.md#9-actions)._
+_Argued in: [rationale §9](design-record.md#9-actions)._
 
 ## `emit` — a declared output channel
 
@@ -49,7 +49,7 @@ breaking whoever is subscribed to it. `observe` would still see every transition
 nothing hidden, a channel added. The `.on` spelling above is illustrative — no method
 name, shape, or syntax is claimed ahead of the design that would justify it.
 
-_Argued in: [rationale §10](api-rationale.md#revision-the-composition-boundary)._
+_Argued in: [rationale §10](design-record.md#revision-the-composition-boundary)._
 
 ## Residency — a recipe today, maybe declared later
 
@@ -64,7 +64,7 @@ residency is a decision already made, not a gap waiting on the others, and addin
 later breaks nothing that exists today. Whether it ever does is as open as everything
 else here.
 
-_Argued in: [rationale §11](api-rationale.md#residency-is-derivable-not-a-host-feature)._
+_Argued in: [rationale §11](design-record.md#residency-is-derivable-not-a-host-feature)._
 
 ## Horizontal composition — the chosen direction
 
@@ -79,7 +79,7 @@ outside any single definition, as imperative calls a caller has to remember to m
 declared outputs improve the convention's vocabulary without closing it. What shape
 that orchestration takes, if any is ever built, is not decided.
 
-_Argued in: [rationale §10](api-rationale.md#10-composition), the "Peers" design._
+_Argued in: [rationale §10](design-record.md#10-composition), the "Peers" design._
 
 ## Vertical composition — explicitly unlikely
 
@@ -92,5 +92,5 @@ peers' job. Pursuing it would also cost a fourth vocabulary map and a second,
 product-shaped way to compose, against a mechanism that already inflected the
 vocabulary the way `actions` did not.
 
-_Argued in: [rationale §10](api-rationale.md#10-composition), the "Children" design and
+_Argued in: [rationale §10](design-record.md#10-composition), the "Children" design and
 "Where this points"._

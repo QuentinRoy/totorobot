@@ -1,7 +1,7 @@
 /**
  * The empty-object encoding for a payload-free state target, pinned.
  *
- * [§5](../docs/api-rationale.md#revision-the-shape-of-a-named-thing) tags states as
+ * [§5](../docs/design-record.md#revision-the-shape-of-a-named-thing) tags states as
  * a union discriminated by `name` and has a handler return the target's
  * payload minus that tag. For a target that carries no payload beyond its
  * tag, the return type has to accept nothing and `{}` while rejecting

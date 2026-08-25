@@ -52,8 +52,8 @@ see the P0.3 note.
 
 Companions, neither of which replaces this file:
 
-- [api-rationale.md](api-rationale.md) — the working brief for the
-  next design round: what to build, what to measure, what not to propose.
+- [design-record.md](design-record.md) — the decision ledger: every axis, what
+  was considered and rejected, and on what evidence.
 - [research/10-synthesis.md](research/10-synthesis.md) — the fifteen findings
   and where each amendment comes from.
 - [research/README.md](research/README.md) — the nine underlying notes.
@@ -143,7 +143,7 @@ full statechart feature set is outside the target.
 >
 > **Framing — needs a decision, not an edit by an agent.** This entry says the
 > main use case _is_ interaction-technique development. The working brief
-> ([api-rationale.md](api-rationale.md), §1) now says the library
+> ([design-record.md](design-record.md), §1) now says the library
 > is a **general** FSM library for which interaction technique development is
 > the _motivating domain_ — the reason timing, staleness and same-state updates
 > are weighted — but not the subject matter. Those two framings are compatible
@@ -197,7 +197,7 @@ typestates.
 >
 > Related: **P1.3 is achievable.** Describing topology once, for both TypeScript
 > and runtime, has been built and measured — see the correction in
-> [api-rationale.md](api-rationale.md).
+> [design-record.md](design-record.md).
 
 ### P0.4 — Keep type narrowing truthful over time
 
@@ -397,7 +397,7 @@ The exact subscription or reaction mechanism remains open.
 > different questions: under one merged mechanism a debugging subscription and a
 > structural one are the same call, and a consumer of a machine has to name its
 > internal states to react to it. Nothing is hidden either way —
-> [api-rationale.md, §10](api-rationale.md#revision-the-composition-boundary).
+> [design-record.md, §10](design-record.md#revision-the-composition-boundary).
 
 ### P0.11 — Fit high-frequency, platform-neutral browser code
 
@@ -493,8 +493,8 @@ Composition must not require hierarchical or parallel states in the core API.
 > draining flag moved to module scope, shared by every host, so rule 4 holds
 > across any wiring with no host-side configuration — a scheduler passed at
 > `start()` was rejected rather than deferred. See
-> [api-rationale.md, §11](api-rationale.md#module-scope-not-per-host) and
-> [§10](api-rationale.md#revision-the-composition-boundary).
+> [design-record.md, §11](design-record.md#module-scope-not-per-host) and
+> [§10](design-record.md#revision-the-composition-boundary).
 >
 > Still outside this entry: the wiring itself remains imperative and outside the
 > definition, so an exported peer is still "half a machine plus a convention"
@@ -552,7 +552,7 @@ clearer types and errors.
 > literal carrying extra properties, a wider-typed variable, an
 > interface-typed value, and a spread of a wider state, with error quality
 > equal to the data-carrying case — no trade needed
-> ([rationale §5](api-rationale.md#revision-the-shape-of-a-named-thing)).
+> ([rationale §5](design-record.md#revision-the-shape-of-a-named-thing)).
 
 ### P2.9 — Reuse behavior shared by several states
 
@@ -612,7 +612,7 @@ them.
 
 > **Answered 2026-08-18.** Immediate transitions shipped in v1 as
 > `'from -> to'`, the transition key with the input removed — see
-> [api-rationale.md, §6](api-rationale.md#6-immediate-transitions). Cascading
+> [design-record.md, §6](design-record.md#6-immediate-transitions). Cascading
 > settles to exhaustion under a hop budget rather than provably terminating;
 > observability is intact, since every hop still commits and notifies before
 > the next candidate is tried.

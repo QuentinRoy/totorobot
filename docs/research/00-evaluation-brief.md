@@ -24,7 +24,7 @@ obviously right at a glance.
 
 ## Dissatisfaction 1: the ceremony floor is library-shaped
 
-All three propositions in `../api-rationale.md` require the state
+All three propositions in `../design-record.md` require the state
 and input vocabulary to be written twice — once as a model type, once as the
 behavior map — plus a `defineMachine<Model>()(...)` double call whose only
 purpose is to create a TypeScript inference boundary.
@@ -34,7 +34,7 @@ The API is paying rent to the type checker rather than to the author.
 
 Open question for the synthesis: is the second declaration site actually forced
 by current TypeScript? The project's "Attempt 1" (see
-`../api-rationale.md`) concluded that inferring states and data from one
+`../design-record.md`) concluded that inferring states and data from one
 object literal produced remote, machine-wide errors instead of local ones. That
 conclusion predates `const` type parameters, `NoInfer`, and `satisfies`. It
 should be re-falsified, not inherited.

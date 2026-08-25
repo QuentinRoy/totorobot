@@ -1,6 +1,6 @@
 /**
  * The tagged-union vocabulary of
- * [§5](../docs/api-rationale.md#revision-the-shape-of-a-named-thing), pinned.
+ * [§5](../docs/design-record.md#revision-the-shape-of-a-named-thing), pinned.
  *
  * The revision decides that inputs, outputs and states stop being maps of name → payload
  * and become discriminated unions — inputs tagged `type`, states tagged `name` —

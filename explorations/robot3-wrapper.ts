@@ -65,7 +65,7 @@
  * and the `d`/`logging` debugging modules. Both are plausible to add; neither
  * has been tried.
  *
- * See [the design record](../docs/api-rationale.md).
+ * See [the design record](../docs/design-record.md).
  */
 
 import * as robot from 'robot3'

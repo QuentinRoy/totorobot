@@ -220,14 +220,14 @@ reason it was worth building:
   most of what "support horizontal composition" means.
 
 Recorded in
-[`docs/api-rationale.md` §10's revision](../../docs/api-rationale.md#revision-the-composition-boundary)
-and [§5's revision](../../docs/api-rationale.md#revision-the-shape-of-a-named-thing),
+[`docs/design-record.md` §10's revision](../../docs/design-record.md#revision-the-composition-boundary)
+and [§5's revision](../../docs/design-record.md#revision-the-shape-of-a-named-thing),
 with the reshaped vocabulary that fell out of it, and answered against P0.10,
 P2.1 and P2.9 in [`docs/requirements.md`](../../docs/requirements.md).
 
 ## Capture
 
-The decisions are folded into `docs/` — [`api-rationale.md`](../../docs/api-rationale.md)
+The decisions are folded into `docs/` — [`design-record.md`](../../docs/design-record.md)
 §10's and §5's revisions, and the answers against P0.10, P2.1 and P2.9 in
 [`requirements.md`](../../docs/requirements.md). Those are what `main` keeps.
 

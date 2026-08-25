@@ -30,7 +30,7 @@
  * does. Trading the curry away brings that cost back - see the hoisting
  * section below, which checks this rather than asserting it.
  *
- * See [the design record](../docs/api-rationale.md).
+ * See [the design record](../docs/design-record.md).
  */
 
 import {
