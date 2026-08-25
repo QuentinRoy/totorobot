@@ -397,7 +397,7 @@ The exact subscription or reaction mechanism remains open.
 > different questions: under one merged mechanism a debugging subscription and a
 > structural one are the same call, and a consumer of a machine has to name its
 > internal states to react to it. Nothing is hidden either way —
-> [api-rationale.md, §16](api-rationale.md#16-the-composition-boundary).
+> [api-rationale.md, §10](api-rationale.md#revision-the-composition-boundary).
 
 ### P0.11 — Fit high-frequency, platform-neutral browser code
 
@@ -493,8 +493,8 @@ Composition must not require hierarchical or parallel states in the core API.
 > draining flag moved to module scope, shared by every host, so rule 4 holds
 > across any wiring with no host-side configuration — a scheduler passed at
 > `start()` was rejected rather than deferred. See
-> [api-rationale.md, §12](api-rationale.md#module-scope-not-per-host) and
-> [§16](api-rationale.md#16-the-composition-boundary).
+> [api-rationale.md, §11](api-rationale.md#module-scope-not-per-host) and
+> [§10](api-rationale.md#revision-the-composition-boundary).
 >
 > Still outside this entry: the wiring itself remains imperative and outside the
 > definition, so an exported peer is still "half a machine plus a convention"
@@ -552,7 +552,7 @@ clearer types and errors.
 > literal carrying extra properties, a wider-typed variable, an
 > interface-typed value, and a spread of a wider state, with error quality
 > equal to the data-carrying case — no trade needed
-> ([rationale §17](api-rationale.md#17-the-shape-of-a-named-thing)).
+> ([rationale §5](api-rationale.md#revision-the-shape-of-a-named-thing)).
 
 ### P2.9 — Reuse behavior shared by several states
 
@@ -612,7 +612,7 @@ them.
 
 > **Answered 2026-08-18.** Immediate transitions shipped in v1 as
 > `'from -> to'`, the transition key with the input removed — see
-> [api-rationale.md, §7](api-rationale.md#7-immediate-transitions). Cascading
+> [api-rationale.md, §6](api-rationale.md#6-immediate-transitions). Cascading
 > settles to exhaustion under a hop budget rather than provably terminating;
 > observability is intact, since every hop still commits and notifies before
 > the next candidate is tried.

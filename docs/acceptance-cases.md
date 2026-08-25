@@ -48,7 +48,7 @@ type Menu = {
 > cancels the timer, so a stale `dwell` cannot arrive, and neither `timerToken`
 > nor `nextToken` has anything left to guard
 > (`explorations/composition/ex1-marking-menu/`,
-> [api-rationale.md, §16](api-rationale.md#16-the-composition-boundary)).
+> [api-rationale.md, §10](api-rationale.md#revision-the-composition-boundary)).
 >
 > The case stays as it is — it is normative for v1, and the bookkeeping it
 > forces is a fair test of what v1 costs. Worth revisiting when `actions` lands,

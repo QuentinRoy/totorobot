@@ -49,7 +49,7 @@ breaking whoever is subscribed to it. `observe` would still see every transition
 nothing hidden, a channel added. The `.on` spelling above is illustrative — no method
 name, shape, or syntax is claimed ahead of the design that would justify it.
 
-_Argued in: [rationale §16](api-rationale.md#16-the-composition-boundary)._
+_Argued in: [rationale §10](api-rationale.md#revision-the-composition-boundary)._
 
 ## Residency — a recipe today, maybe declared later
 
@@ -64,7 +64,7 @@ residency is a decision already made, not a gap waiting on the others, and addin
 later breaks nothing that exists today. Whether it ever does is as open as everything
 else here.
 
-_Argued in: [rationale §12](api-rationale.md#residency-is-derivable-not-a-host-feature)._
+_Argued in: [rationale §11](api-rationale.md#residency-is-derivable-not-a-host-feature)._
 
 ## Horizontal composition — the chosen direction
 

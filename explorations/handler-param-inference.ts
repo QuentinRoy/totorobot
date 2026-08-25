@@ -13,7 +13,7 @@
  * This is easy to misread as a checker bug in the vocabulary machinery — the
  * story that `S` is self-referentially derived from the same `K` that indexes
  * `Table`'s own conditional fits the symptom and is wrong. It is recorded in
- * [§17](../docs/api-rationale.md#why-the-handlers-state-parameter-is-wrapped-in-noinfer)
+ * [§5](../docs/api-rationale.md#why-the-handlers-state-parameter-uses-noinfer)
  * with the false diagnosis intact, because the wrong conclusion cost a
  * two-overload signature and a set of relocated `@ts-expect-error`s before the
  * one-word fix was found. With that site closed, the state half of `machine`'s

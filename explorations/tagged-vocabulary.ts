@@ -1,8 +1,8 @@
 /**
  * The tagged-union vocabulary of
- * [§17](../docs/api-rationale.md#17-the-shape-of-a-named-thing), pinned.
+ * [§5](../docs/api-rationale.md#revision-the-shape-of-a-named-thing), pinned.
  *
- * §17 decides that inputs, outputs and states stop being maps of name → payload
+ * The revision decides that inputs, outputs and states stop being maps of name → payload
  * and become discriminated unions — inputs tagged `type`, states tagged `name` —
  * and it rests on five claims about what TypeScript does. This file is those
  * claims as assertions, so that a compiler release which changes one of them
@@ -18,7 +18,7 @@
 import { assertType, type Equal } from './config-object-kit.ts'
 
 // ---------------------------------------------------------------------------
-// The fixture: the publication machine of the README, restated in the §17 shape.
+// The fixture: the publication machine of the README, restated in the tagged shape.
 // ---------------------------------------------------------------------------
 
 type Inputs =
@@ -127,7 +127,7 @@ send({ type: 'nope' })
 
 type To<P> = P extends `${string}> ${infer T}` ? T : never
 
-// Inlined, NOT behind an alias taking `S`. §17's error-message rule: an alias
+// Inlined, NOT behind an alias taking `S`. The revision's error-message rule: an alias
 // parameterized over the vocabulary makes TypeScript print the whole union in
 // every wrong-return error, where the inlined form resolves to the one state.
 type Table<S, K extends string> = {

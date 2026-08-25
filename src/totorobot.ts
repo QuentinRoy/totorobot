@@ -290,7 +290,7 @@ type Pattern<
  * Chosen over an index-signature form (`Record<string, never>` and kin) on two
  * measured grounds, both against TS 7.0.2 and both pinned in
  * `explorations/empty-state-payload.ts`, and argued in
- * `docs/api-rationale.md#17-the-shape-of-a-named-thing`:
+ * `docs/api-rationale.md#revision-the-shape-of-a-named-thing`:
  *
  * - **Error quality.** This form reports the value is not assignable to
  *   `EmptyObject`. The index-signature form reports a property incompatible
@@ -325,7 +325,7 @@ type EmptyObject = { readonly [emptyObjectTag]?: never }
  * behind such an alias reports against the whole state union
  * (`… required in type 'Data<{ name: "empty" } | …, "review">'`); resolving
  * the same computation inline reports against the one state the row actually
- * targets. See `docs/api-rationale.md#17-the-shape-of-a-named-thing`.
+ * targets. See `docs/api-rationale.md#revision-the-shape-of-a-named-thing`.
  *
  * The **source** state arrives whole, tag included, under `state` — a handler
  * shared across several rows can branch on `state.name` to tell which one it
