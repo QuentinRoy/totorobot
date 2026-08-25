@@ -1,5 +1,7 @@
 # Totorobot
 
+[![Bundle size](https://deno.bundlejs.com/?q=totorobot&badge=detailed)](https://bundlejs.com/?q=totorobot)
+
 Totorobot is a tiny TypeScript state-machine library. One line declares one
 transition, and the line looks like the edge it declares:
 
