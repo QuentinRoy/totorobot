@@ -2,8 +2,8 @@
  * Totorobot — finite state machines declared as a transition table. One
  * definition builder, one host, no dependencies. The API is specified in
  * `README.md` and argued in `docs/design-record.md` (cited as §n); the compiler
- * behaviour the type layer is built around is in `docs/implementation-record.md`
- * (cited as In). Comments state the consequence and cite the argument.
+ * behaviour behind the type layer is in `docs/implementation-record.md` (cited
+ * as In). Comments state the consequence and cite the argument.
  *
  * The runtime is golfed (I15): minification strips comments and renames locals,
  * so only code *shape* is left to spend (I16), and `pnpm size` arbitrates. The
@@ -31,9 +31,9 @@ const skip = (): Skip => SKIP
 // ---------------------------------------------------------------------------
 
 /**
- * Spacing is load-bearing, and splitting on both separators leaves an unlabelled
- * arrow's label empty: that is what makes `''` the label wildcard. Shared by
- * `machine()` and `observe()`, so the two cannot drift.
+ * Both separators carry their space, which is what fixes the spelling and what
+ * leaves an unlabelled arrow's label empty: hence `''` as the label wildcard.
+ * Shared by `machine()` and `observe()`, so the two cannot drift.
  */
 const parse = (key: string): [from: string, input: string, to: string] => {
 	const parts = key.split(/ -|> /)
@@ -52,8 +52,9 @@ type InputVocab = { readonly type: string }
 type StateVocab = { readonly name: string }
 
 /**
- * Lands an omitted property and a passed marker on the same type; constraining
- * the raw parameter to bare `T` widens the explicit case instead (I19).
+ * Lands an omitted property and an explicit `undefined` on the same type;
+ * constraining the raw parameter to bare `T` widens the explicit case instead
+ * (I19).
  */
 type Declared<Raw, Default> = Raw extends undefined ? Default : Raw
 
@@ -309,9 +310,10 @@ let queue: (() => void)[] = []
 let draining = false
 
 /**
- * Run `work`, and everything it queues, as one dispatch — the window rule 4 is
- * stated in terms of, and named for it rather than for the flag. `send` queued
- * its work already; `start` runs its chain inline, but inside the window.
+ * Run `work`, and everything it queues, as one dispatch: the window rule 4 is
+ * stated in terms of. Named for that window rather than for the `draining` flag.
+ * `send` queued its work already; `start` runs its chain inline, but inside the
+ * window.
  */
 const dispatch = (work?: () => void): void => {
 	// Already inside a dispatch: the outermost call owns the drain.
@@ -387,7 +389,7 @@ export function machine(definition: unknown): unknown {
 			let current: StateVocab = { ...data, name: initial }
 
 			// Copy-on-write at registration, iteration at dispatch: allocation lands on
-			// the path that runs least, and measured smaller (I16).
+			// the path that runs least, and it measures smaller (I16).
 			let listeners: Registration[] = []
 
 			// One row-scanning path for both kinds of transition: commit the first row

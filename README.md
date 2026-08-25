@@ -74,9 +74,8 @@ doc.observe('* -> published', (e) => notify(e.to))
 doc.send({ type: 'open', text: 'hello' })
 ```
 
-`review` carries a `reviewer` that `draft` does not have and `published` sheds
-again. Narrowing the state narrows its data, so there is no nullable padding on
-the states where the field would be meaningless.
+`reviewer` exists on `review` alone: `draft` does not have it yet, `published`
+has shed it again, and neither carries it as a nullable placeholder.
 
 ## Contents
 
@@ -178,7 +177,7 @@ from -input> to
 
 The input is the arrow's label, and three rules govern the spelling:
 
-- **Whitespace is load-bearing.** Exactly one space before the `-`, one after
+- **The spaces are part of the grammar.** Exactly one before the `-`, one after
   the `>`; any other spelling is a compile error. The payoff is that the source
   name sits at column 1 on every row.
 - **An edge always contains an arrow, so a key with no arrow names a state.**
@@ -421,7 +420,7 @@ and `tests/helpers.ts` carries it as working code.
 
 ### Commit ordering
 
-Three rules cover everything a listener sees:
+Five rules cover everything a listener sees:
 
 1. **One input yields at most one chain.** The input causes at most one
    transition, but arriving somewhere with immediate rows continues on hop after
@@ -432,13 +431,12 @@ Three rules cover everything a listener sees:
    snapshotted before the dispatch, so one unsubscribed by an earlier listener
    still runs for the current transition, and one registered during a dispatch
    does not.
-
-Re-entrancy is two more. **A send from inside a dispatch is queued**, across
-every host in the process, and the queue drains first in first out before the
-outermost `send` returns, never on a microtask and never nested. **`send` returns
-nothing**, including when it was queued. So a listener is never re-entered, and a
-queued send waits for the whole chain to settle rather than landing mid-hop,
-where it is evaluated against the state at drain time and may find no row.
+4. **A send from inside a dispatch is queued**, across every host in the process,
+   so a listener is never re-entered. The queue drains first in first out before
+   the outermost `send` returns, never on a microtask and never nested. A queued
+   send is evaluated against the state at drain time, so it waits for the chain to
+   settle rather than landing mid-hop, and may correctly find no row.
+5. **`send` returns nothing**, including when it was queued.
 
 A throwing listener ends the drain and discards what was queued, but the
 transition stays committed and every host works normally afterwards. There is no
@@ -606,7 +604,7 @@ of it is promised.
 
 ## Documentation
 
-- [Roadmap](docs/roadmap.md) — the prospective plan past v1: effects, a declared
+- [Roadmap](docs/roadmap.md) — what might come after v1: effects, a declared
   output channel, residency, and composition.
 - [Design record](docs/design-record.md) — the decision ledger: what was
   considered and rejected, and on what evidence.
@@ -623,6 +621,14 @@ For contributors — read these before changing `src/`:
   findings, including one built over Robot3 itself. They are type-checked, and
   the Robot3 one is tested, so a rejected option that starts working again fails
   the build rather than going unnoticed.
+
+Background, from before v1. These record what the API was aimed at rather than
+what it shipped, and stay where they are because the design record cites them.
+
+- [Requirements](docs/requirements.md) — the priority stack the exploration
+  targeted.
+- [Acceptance cases](docs/acceptance-cases.md) — the shared scenarios candidates
+  were compared against.
 
 ## Development
 
