@@ -11,7 +11,17 @@
 > that overturned it, and the two late revisions are merged into the sections they
 > revise rather than left at the end. API spellings are left as they were argued,
 > except where a later rename would leave a reader expecting a member that no
-> longer exists.
+> longer exists. The renames that recur are collected here rather than corrected
+> in place. The host's `.on` is now
+> [`observe`](#observation-observe-on-the-host-with-patterns), and the marker
+> `types()` is now `type()`. The rest come from
+> [§5's revision](#revision-the-shape-of-a-named-thing), which reshaped every named
+> thing. Outside that revision, read:
+>
+> - `{ state: 'draft', data: {…} }` as the flat `{ name: 'draft', … }`, so
+>   `current.state` is `current.name` and `to.data.x` is `to.x`
+> - a handler's `({ data })` as `({ state })`, which carries the source tag too
+> - the transition record `{ on, input, from, to }` as `{ input, from, to }`
 >
 > **Only the API argument is here.** What the compiler does — the findings about
 > making the type layer infer at all, which matter to whoever is editing the source
@@ -41,6 +51,9 @@
 13. [Narrowing is never invalidated](#13-narrowing-is-never-invalidated)
 14. [The graveyard](#14-the-graveyard)
 15. [Still open](#15-still-open)
+
+Then [Where the code is](#where-the-code-is): the propositions above, mapped to the
+prototypes that tested them.
 
 ---
 
@@ -1138,7 +1151,7 @@ explanation; **strictly redundant**, since a listener receives
 could compute is already in `to.data`; and **the direction is asymmetric** —
 adding `emit` later is additive, removing it later is breaking.
 
-9 reverses the premise of all of this and none of the conclusions: the ten
+§9 reverses the premise of all of this and none of the conclusions: the ten
 spellings stayed dead, and axes 4 and 5 stayed dissolved, for a _different_
 reason — the answer moved to the action.
 
@@ -2911,8 +2924,10 @@ Opened by the two late revisions (outputs, actions, and policy remain open):
 
 ## Where the code is
 
-Note that all of these predate axis 1's final answer and use `'submit: draft ->
-review'` rather than `'draft -submit> review'`.
+Every directory below sits under
+[`explorations/candidates/`](../explorations/candidates/). All of them predate
+axis 1's final answer and use `'submit: draft -> review'` rather than
+`'draft -submit> review'`.
 
 | Directory              | Proposition                  | State                                        |
 | ---------------------- | ---------------------------- | -------------------------------------------- |
