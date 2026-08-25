@@ -123,6 +123,13 @@ test('start() takes no argument when the initial state carries no payload, and r
 	withData.start({ text: 'x', revision: 0 })
 	// @ts-expect-error - draft's data is required; start() cannot be called with none
 	withData.start()
+
+	// The payload is the declared state's data, not `any`: nothing else here
+	// reads this parameter, so an `any` in `Start` would go unnoticed.
+	expectTypeOf(withData.start).parameter(0).not.toBeAny()
+	expectTypeOf(withData.start)
+		.parameter(0)
+		.toEqualTypeOf<{ text: string; revision: number }>()
 })
 
 test('send needs no extra fields for a payload-free input, and requires them otherwise', () => {

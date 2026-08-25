@@ -147,3 +147,9 @@ test('an immediate transition is distinguished from a payload-free input by inpu
 		expectTypeOf(e.input).toEqualTypeOf<{ type: 'open'; text: string }>()
 	})
 })
+
+test('observe returns an unsubscribe function, not `any`', () => {
+	const off = doc.start().observe('* -> *', () => {})
+	expectTypeOf(off).not.toBeAny()
+	expectTypeOf(off).toEqualTypeOf<() => void>()
+})

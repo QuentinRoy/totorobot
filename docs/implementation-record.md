@@ -332,3 +332,20 @@ Matching `Machine` itself to extract its parameters cannot work: a partly-inferr
 fails. Matching the carrier interface instead — which holds the vocabulary and the
 keys in one optional, never-present function property — infers all three at once,
 after which each derived type indexes the result rather than repeating the match.
+
+### <a id="i23"></a>I23 — The implementation half never needed `any`
+
+The runtime was written against `type Unchecked = any`, on the sound argument that
+the type layer above had already checked those positions. But an alias does not
+narrow `any`; what the name bought was that `any` stopped answering to a search for
+it. Nothing there needs it — `current` and a handler's `state` are read for `.name`
+alone, an input for `.type` alone, and a payload is only ever spread — so
+`StateVocab`, `InputVocab | undefined` and `object` type the whole runtime with no
+cast added and a byte-identical bundle.
+
+`machine`'s implementation signature took `any` on the recorded grounds that a row's
+value can be the poison string literal. `unknown` implements it too: overload
+compatibility is an assignability check, and the body casts before reading. Not
+academic, since declarations are generated from these signatures — a rollup that
+preferred an implementation signature to its overload would hand callers `any`
+rather than merely losing precision.
