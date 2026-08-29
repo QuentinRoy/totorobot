@@ -383,7 +383,8 @@ row key comes back from the contextual return type only while the table's row ty
 and the wrapper's signature name the **same alias**. Write the identical expression
 out twice instead and the key falls back to `string`, with nothing else changed.
 Satisfying this means factoring the row type behind an alias over `S`, which is
-what [I18](#i18) forbids, so the two findings close the wrapper from both ends.
+what [I18](#i18) forbids. Between them the two findings leave the wrapper no
+spelling that works.
 
 ### <a id="i26"></a>I26 — A wrapper's return type reopens the inference site `NoInfer` closes on the parameters
 
@@ -393,5 +394,5 @@ type parameters are recovered from context rather than handed in defeats that: i
 **return** type names the vocabulary outside the guard, the table becomes an
 inference site again, and the vocabulary widens to whatever the rows say — an
 undeclared state name in a key stops being an error. This is a soundness hole rather
-than a lost narrowing, and it is invisible on the well-formed rows that a first
-probe reaches for.
+than a lost narrowing, and the well-formed rows a probe writes first do not show
+it.

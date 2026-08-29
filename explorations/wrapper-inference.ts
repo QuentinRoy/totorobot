@@ -6,8 +6,8 @@
  * call reads better than a record. In `transitions` it does not survive, for two
  * independent reasons either of which is enough on its own. **In `actions` it
  * does** — section 6 — and the line between them is whether the block is an
- * inference site, not whether the value is a call. `observe` is further clear
- * still, since a started host's vocabulary is already concrete.
+ * inference site, not whether the value is a call. `observe` is clear of it
+ * entirely, since a started host's vocabulary is already concrete.
  *
  * **A wrapper needs the vocabulary before the table is contextually typed, and
  * the shipped signature does not have it yet.** `machine` resolves the
@@ -27,11 +27,11 @@
  * satisfy that is what [I18](../docs/implementation-record.md#i18) warns against,
  * since it costs the per-row diagnostics the notation exists to give.
  *
- * The failure is also not merely ergonomic. A wrapper that infers the vocabulary
- * from its own context rather than being handed it reopens the table as an
+ * A wrapper that infers the vocabulary from its own context, rather than being
+ * handed it, is unsound as well as inconvenient. It reopens the table as an
  * inference site for `S`, one level outside the `NoInfer` that
- * [I14](../docs/implementation-record.md#i14) put on the handler's parameters,
- * and an undeclared state name in a key stops being an error (section 5).
+ * [I14](../docs/implementation-record.md#i14) put on the handler's parameters, so
+ * an undeclared state name in a key stops being an error (section 5).
  *
  * A **record** — `{ run: fn, … }` — has none of this, because it is not a call:
  * contextual typing reaches `run` from the table directly and nothing new
@@ -213,8 +213,8 @@ const mini = miniKit<In, St>().transition
 
 /**
  * One tier, and the wrapper is fine: both parameters narrow, and a malformed
- * neighbour reports on its own line instead of poisoning the row above it. This
- * is the encouraging result, and it is the one to distrust.
+ * neighbour reports on its own line instead of poisoning the row above it.
+ * Sections 3 and 4 are why none of that survives the shipped signature.
  */
 oneTier({
 	inputs,

@@ -1450,19 +1450,19 @@ provides without a third key form.
 only the exception spells the record out, which answers the objection to
 constructors-everywhere without a constructor. The block stays inspectable as data,
 and a new policy is a new field rather than new syntax. A constructor
-(`persistent(fn)`) could still front the same record here, and the measurement says
-so: an `actions` block is keyed off the already-declared vocabulary, contributes
-nothing to inference, and accepts a wrapper with its narrowing intact
-([I24](implementation-record.md#i24)). What it costs is a vocabulary handed to the
-wrapper — a kit call, since recovering it from context leaves the payload `never`
-([I25](implementation-record.md#i25), [I26](implementation-record.md#i26)) — and
-that is a second naming of what `type<…>()` already declared. The same wrapper in
+(`persistent(fn)`) could still front the same record here. An `actions` block is
+keyed off the already-declared vocabulary, contributes nothing to inference, and
+accepts a wrapper with its narrowing intact ([I24](implementation-record.md#i24)).
+It costs a kit call: recovering the vocabulary from context leaves the payload
+`never` ([I25](implementation-record.md#i25), [I26](implementation-record.md#i26)),
+so something has to hand it over, which names a second time what `type<…>()`
+already declares. The same wrapper in
 `transitions` does not typecheck at all, so a constructor could never have been the
 one spelling across the definition. Pinned in
 [`explorations/wrapper-inference.ts`](../explorations/wrapper-inference.ts).
 
-The design argument decides it, and did before the measurement. `observe`
-and `actions` are nearly the same API, differing only in that `observe` gets no
+The design argument settles it, and settled it before any of this was measured.
+`observe` and `actions` are nearly the same API, differing only in that `observe` gets no
 `emit` and lives on the host, so one spelling across both call sites is worth more
 than the bare-call ergonomics a constructor buys at one of them. Options also
 uniquely admit `signal: AbortSignal`, which no wrapper can express.
