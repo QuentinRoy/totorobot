@@ -114,16 +114,19 @@ describe('observing', () => {
 				input: { type: 'submit', quota: 1 },
 				from: { name: 'draft' },
 				to: { name: 'checking', quota: 1 },
+				send: expect.any(Function),
 			},
 			{
 				input: undefined,
 				from: { name: 'checking', quota: 1 },
 				to: { name: 'allowed', quota: 1 },
+				send: expect.any(Function),
 			},
 			{
 				input: { type: 'reset' },
 				from: { name: 'allowed', quota: 1 },
 				to: { name: 'draft' },
+				send: expect.any(Function),
 			},
 		])
 	})
@@ -196,5 +199,91 @@ describe('observing', () => {
 
 		doc.send({ type: 'ping' })
 		expect(log).toEqual(['exit', 'entry'])
+	})
+
+	test("a record's send is the host's own: a reaction drives the machine without closing over it", () => {
+		const host = toggle.start()
+		let seen: unknown
+
+		host.observe('* -> on', (e) => {
+			seen = e.send
+		})
+
+		host.send({ type: 'toggle' })
+		expect(seen).toBe(host.send)
+	})
+
+	test('a send from a listener is queued: the listener is not re-entered, and the machine settles afterwards', () => {
+		const relay = machine({
+			initial: 'a',
+			inputs: type<{ type: 'x' } | { type: 'y' }>(),
+			states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
+			transitions: {
+				'a -x> b': () => {},
+				'b -y> c': () => {},
+			},
+		})
+
+		const host = relay.start()
+		const log: string[] = []
+
+		host.observe('* -> b', (e) => {
+			log.push(`fired in ${host.current.name}`)
+			e.send({ type: 'y' })
+			// Queued, not nested: the send has not moved the machine yet.
+			log.push(`after send, still ${host.current.name}`)
+		})
+
+		host.send({ type: 'x' })
+
+		expect(log).toEqual(['fired in b', 'after send, still b'])
+		expect(host.current).toEqual({ name: 'c' })
+	})
+
+	test('a send from a listener is read at drain time, so it may correctly find no row', () => {
+		const fork = machine({
+			initial: 'a',
+			inputs: type<{ type: 'x' } | { type: 'z' }>(),
+			states: type<{ name: 'a' } | { name: 'b' } | { name: 'd' }>(),
+			transitions: {
+				'a -x> b': () => {},
+				'a -z> d': () => {},
+			},
+		})
+
+		const host = fork.start()
+		const log: string[] = []
+		host.observe('* -> *', (e) => log.push(e.to.name))
+
+		// `z` is a row on `a`, the state the listener is told about — but the
+		// machine is in `b` by the time the queue reads it, and `b` has no rows.
+		host.observe('a -x> b', (e) => e.send({ type: 'z' }))
+		host.send({ type: 'x' })
+
+		expect(log).toEqual(['b'])
+		expect(host.current).toEqual({ name: 'b' })
+	})
+
+	test('a listener that sends its own trigger is not re-entered within the dispatch that notified it', () => {
+		const host = toggle.start()
+		let depth = 0
+		let maxDepth = 0
+		let fired = 0
+
+		host.observe('* -> *', (e) => {
+			fired++
+			maxDepth = Math.max(maxDepth, ++depth)
+			// Runs after this listener returns, so the next notification is a fresh
+			// call rather than a nested one.
+			if (fired < 3) e.send({ type: 'toggle' })
+			depth--
+		})
+
+		host.send({ type: 'toggle' })
+
+		// off -> on -> off -> on: three transitions, each notified at depth 1.
+		expect(fired).toBe(3)
+		expect(maxDepth).toBe(1)
+		expect(host.current).toEqual({ name: 'on' })
 	})
 })

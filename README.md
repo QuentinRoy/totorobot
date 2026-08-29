@@ -377,11 +377,24 @@ doc.observe('draft -cancel> *', () => track('cancelled'))
 Listeners go on the host, never on the definition, which is inert. `observe()`
 returns an unsubscribe function.
 
-**The listener receives the transition record**, `{ input, from, to }`,
+**The listener receives the transition record**, `{ input, from, to, send }`,
 discriminated by `input?.type` or by `if (e.input)`. `e.from` and `e.to` are the
 states at each end, tags included, so narrowing on `e.from.name` or `e.to.name`
 narrows their fields the way `current` does. An immediate transition carries
 `input: undefined`.
+
+**`e.send` is the host's own `send`**, so a reaction drives the machine without
+closing over the host it was registered on:
+
+```ts
+doc.observe('* -> review', (e) => e.send({ type: 'publish' }))
+```
+
+It takes the whole declared input vocabulary, however narrow the pattern is —
+not just what `e.from` or `e.to` handles. A send from a listener is
+[queued](#commit-ordering) and read when the queue reaches it, by which point
+the machine has usually moved on, so narrowing to the notified state's rows
+would reject the ordinary case.
 
 **Patterns are the key language with coordinates left open.** `*` stands for any
 state and an unlabelled arrow means any input, or none:
