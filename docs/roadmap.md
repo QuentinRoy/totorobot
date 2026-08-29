@@ -21,7 +21,7 @@ actions: {
 }
 ```
 
-One action per trigger — a state name for entry, or a transition key for an edge. An
+One action per trigger: a state name for entry, or a transition key for an edge. An
 action is a bare function, or a record with a `restart` field: the default is to restart
 on every entry, `restart: false` survives it, and a predicate over the resident data
 before and after decides case by case. Policy is a field rather than syntax. An action's

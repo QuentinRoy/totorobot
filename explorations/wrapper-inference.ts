@@ -5,7 +5,7 @@
  * and `action(fn, { restart: false })` beside it, on the grounds that a named
  * call reads better than a record. In `transitions` it does not survive, for two
  * independent reasons either of which is enough on its own. **In `actions` it
- * does** — section 6 — and the line between them is whether the block is an
+ * does**, in section 6, and the line between them is whether the block is an
  * inference site, not whether the value is a call. `observe` is clear of it
  * entirely, since a started host's vocabulary is already concrete.
  *
@@ -15,8 +15,8 @@
  * properties, and `I`/`S` are *defaulted* type parameters computed off them
  * through `Declared`. A default is resolved after inference, so when a row's
  * generic call is checked `I` and `S` are not there yet, the call's own `P`
- * falls back to its constraint, and every row — well formed or not — is rejected
- * as `not a transition: '…'`. Section 3 isolates this to the tier alone: the
+ * falls back to its constraint, and every row is rejected as
+ * `not a transition: '…'`, well formed or not. Section 3 isolates this to the tier alone: the
  * same alias and the same call pass on one tier and fail on two. Collapsing the
  * pair is not available, per [I19](../docs/implementation-record.md#i19).
  *
@@ -33,7 +33,7 @@
  * [I14](../docs/implementation-record.md#i14) put on the handler's parameters, so
  * an undeclared state name in a key stops being an error (section 5).
  *
- * A **record** — `{ run: fn, … }` — has none of this, because it is not a call:
+ * A **record**, `{ run: fn, … }`, has none of this, because it is not a call:
  * contextual typing reaches `run` from the table directly and nothing new
  * becomes an inference site. Measured against a patched copy of
  * `src/totorobot.ts` whose row value was widened to
@@ -293,8 +293,8 @@ oneTier({
 /**
  * Inferring it instead, the same row compiles. `free`'s **return** type names `S`
  * outside the `NoInfer` that `MiniTable` puts on the handler's parameters, so the
- * table is an inference site for the vocabulary again — I14's bug, one level out —
- * and `MiniKey<I, S>` widens to admit whatever the row says. No `@ts-expect-error`
+ * table is an inference site for the vocabulary again, which is I14's bug one
+ * level out, and `MiniKey<I, S>` widens to admit whatever the row says. No `@ts-expect-error`
  * can pin a negative like this: if a future TypeScript starts rejecting the row,
  * this file keeps compiling and the improvement goes unannounced.
  */
@@ -308,7 +308,7 @@ oneTier({
 
 // ---------------------------------------------------------------------------
 // 6. The scope of section 3's failure. Same signature, same tier, same kind of
-//    wrapper — but in a block that supplies nothing to inference, and it works.
+//    wrapper, but in a block that supplies nothing to inference, and it works.
 // ---------------------------------------------------------------------------
 
 declare function actionKit<S extends StateVocab>(): {
@@ -318,7 +318,7 @@ declare function actionKit<S extends StateVocab>(): {
 const { persistent } = actionKit<St>()
 
 /**
- * `transitions` is an inference site — it is where `K` comes from — so it is
+ * `transitions` is an inference site, since `K` comes from it, so it is
  * checked while `I` and `S` are still defaults, which is I24. `actions` is keyed
  * off `S['name']`, contributes nothing, and is therefore checked after `S`
  * resolves. The wrapper that cannot work one property up works here.
@@ -364,7 +364,7 @@ twoTier({
 
 /**
  * The kit is still doing the work, though. Without a vocabulary handed in, the
- * wrapper's own parameters fall back and `data` is `never` — the trigger key is
+ * wrapper's own parameters fall back and `data` is `never`. The trigger key is
  * still constrained by the mapped type, so a probe that only checks whether bad
  * keys are rejected will report success here.
  */
