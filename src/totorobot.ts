@@ -167,6 +167,15 @@ type Select<Coordinate extends string, All extends string> = [
 	: Coordinate & All
 
 /**
+ * `send` is the whole declared vocabulary from every state, never narrowed to
+ * what `from` or `to` handles: a queued input is read at drain time, by which
+ * point the machine has moved, so the normal reaction sends something the state
+ * it was notified about does not handle (§12). Spelled into both arms rather
+ * than intersected onto the union, so a discriminant still narrows the record.
+ */
+type Send<I extends InputVocab> = (input: I) => void
+
+/**
  * Narrowed by the listener's own pattern. The immediate hop is a separate arm
  * because the mapped type is indexed by input type; a labelled pattern drops it.
  */
@@ -180,6 +189,7 @@ type Transition<
 				readonly input: Extract<I, { type: N }>
 				readonly from: StateNamed<S, Select<From<P>, StateName<S>>>
 				readonly to: StateNamed<S, Select<To<P>, StateName<S>>>
+				readonly send: Send<I>
 			}
 	  }[Select<Label<P>, InputType<I>>]
 	| ([Label<P>] extends ['']
@@ -187,6 +197,7 @@ type Transition<
 					readonly input: undefined
 					readonly from: StateNamed<S, Select<From<P>, StateName<S>>>
 					readonly to: StateNamed<S, Select<To<P>, StateName<S>>>
+					readonly send: Send<I>
 				}
 			: never)
 
@@ -212,7 +223,7 @@ interface Host<
 	S extends StateVocab = StateVocab,
 > {
 	readonly current: S
-	readonly send: (input: I) => void
+	readonly send: Send<I>
 	// Generic in the pattern, so a listener's record is narrowed by it.
 	readonly observe: <P extends Pattern<I, S>>(
 		pattern: P,
@@ -407,7 +418,9 @@ export function machine(definition: unknown): unknown {
 					// source into the return cannot leave the source's tag behind.
 					let from = current
 					current = { ...payload, name: to }
-					let record: Transition = { input, from, to: current }
+					// The same `send` the host exposes: a reaction drives the machine
+					// without closing over the host it was registered on.
+					let record: Transition = { input, from, to: current, send }
 					for (let [f, l, t, listener] of listeners) {
 						if (
 							(f === '*' || f === from.name) &&
@@ -437,6 +450,18 @@ export function machine(definition: unknown): unknown {
 					}
 				}
 			}
+			// Declared before the first `step` runs, because every transition record
+			// carries it; the host below re-exports this one binding.
+			let send = (input: InputVocab): void => {
+				// Queued rather than run, whether the call came from this host's
+				// listener, another host's, or a hop `start` is settling.
+				queue.push(() => {
+					// Read at drain time, so a queued send may correctly find no row.
+					if (step(index[current.name]?.[input?.type], input)) settle()
+				})
+				dispatch()
+			}
+
 			// Under the drain `send` takes, so a send from one of these hops runs after
 			// the chain settles (§11, "`start` settles under the drain").
 			dispatch(settle)
@@ -457,15 +482,7 @@ export function machine(definition: unknown): unknown {
 					}
 				},
 
-				send: (input: InputVocab): void => {
-					// Queued rather than run, whether the call came from this host's
-					// listener, another host's, or a hop `start` is settling.
-					queue.push(() => {
-						// Read at drain time, so a queued send may correctly find no row.
-						if (step(index[current.name]?.[input?.type], input)) settle()
-					})
-					dispatch()
-				},
+				send,
 			}
 		},
 	} as unknown

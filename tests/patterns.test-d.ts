@@ -148,6 +148,38 @@ test('an immediate transition is distinguished from a payload-free input by inpu
 	})
 })
 
+test('the record carries a send typed with the whole declared vocabulary, however narrow the pattern', () => {
+	const host = doc.start()
+
+	host.observe('draft -submit> review', (e) => {
+		expectTypeOf(e.send).not.toBeAny()
+		expectTypeOf(e.send).toEqualTypeOf<(input: Inputs) => void>()
+
+		// The pattern still narrows both ends: `send` is additive.
+		expectTypeOf(e.from).toEqualTypeOf<{ name: 'draft'; text: string }>()
+		expectTypeOf(e.to).toEqualTypeOf<{
+			name: 'review'
+			text: string
+			reviewer: string
+		}>()
+
+		// Deliberately not narrowed to what `from` or `to` handles: the send is
+		// read at drain time, by when the machine has moved (design record §12).
+		e.send({ type: 'open', text: 'hello' })
+		e.send({ type: 'submit', route: 'publish' })
+		e.send({ type: 'cancel' })
+
+		// @ts-expect-error - "nope" is not a declared input
+		e.send({ type: 'nope' })
+	})
+
+	// An immediate arm carries it too, and it is the host's own signature.
+	host.observe('* -> *', (e) => {
+		expectTypeOf(e.send).toEqualTypeOf<typeof host.send>()
+		if (!e.input) expectTypeOf(e.send).toEqualTypeOf<(input: Inputs) => void>()
+	})
+})
+
 test('observe returns an unsubscribe function, not `any`', () => {
 	const off = doc.start().observe('* -> *', () => {})
 	expectTypeOf(off).not.toBeAny()

@@ -102,6 +102,7 @@ describe('sending', () => {
 			input: { type: 'revise', text: 'goodbye' },
 			from: { name: 'draft', text: 'hello', revision: 0 },
 			to: { name: 'draft', text: 'goodbye', revision: 1 },
+			send: expect.any(Function),
 		})
 		expect(host.current).toEqual({
 			name: 'draft',
