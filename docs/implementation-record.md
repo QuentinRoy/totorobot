@@ -349,3 +349,50 @@ compatibility is an assignability check, and the body casts before reading. Not
 academic, since declarations are generated from these signatures — a rollup that
 preferred an implementation signature to its overload would hand callers `any`
 rather than merely losing precision.
+
+### <a id="i24"></a>I24 — A generic call in a table value cannot see a vocabulary that arrives as a default
+
+`machine` resolves the vocabulary in two tiers: `RawI`/`RawS` infer from the
+`inputs`/`states` properties, and `I`/`S` are defaulted type parameters computed
+off them through `Declared`. Defaults resolve after inference, so a generic call in
+a row value is checked while `I` and `S` are still absent: its own row parameter
+falls back to `string`, `Key<I, S>` collapses, and every row is rejected as
+`not a transition: '…'`, well formed or not. The collapse does not stay in the table
+either; with `S` gone, `initial` stops resolving against `StateName<NoInfer<S>>`.
+
+Isolated in [`explorations/wrapper-inference.ts`](../explorations/wrapper-inference.ts)
+to the tier alone: the same alias and the same call pass under a signature that
+infers `I`/`S` directly and fail under one that defaults them. The pair cannot be
+collapsed to remove the tier ([I19](#i19)). A **record** value has none of this,
+because it is not a call: contextual typing reaches its function-valued field from
+the table directly.
+
+**The scope is the block, not the value.** This bites where the block is an
+inference site. `transitions` is one, since `K` comes from it. A block keyed off the
+already-declared vocabulary, which is the shape `actions` would take, contributes
+nothing to inference, is therefore checked after `S` resolves, and accepts a wrapper with
+its narrowing intact, in the same two-tier signature. The wrapper still has to be
+handed the vocabulary ([I25](#i25)); recovering it from context leaves the
+payload `never` while the trigger key stays constrained by the mapped type, so a
+probe that only checks whether bad keys are rejected will call that a success.
+
+### <a id="i25"></a>I25 — Inference through a wrapper recovers the row key by alias identity, not structurally
+
+Where a wrapper does work, on a single-tier vocabulary handed to it up front, the
+row key comes back from the contextual return type only while the table's row type
+and the wrapper's signature name the **same alias**. Write the identical expression
+out twice instead and the key falls back to `string`, with nothing else changed.
+Satisfying this means factoring the row type behind an alias over `S`, which is
+what [I18](#i18) forbids. Between them the two findings leave the wrapper no
+spelling that works.
+
+### <a id="i26"></a>I26 — A wrapper's return type reopens the inference site `NoInfer` closes on the parameters
+
+[I14](#i14) put `NoInfer` on the handler's parameters so a context-sensitive handler
+stops inferring the state vocabulary contravariantly from the table. A wrapper whose
+type parameters are recovered from context rather than handed in defeats that: its
+**return** type names the vocabulary outside the guard, the table becomes an
+inference site again, and the vocabulary widens to whatever the rows say, so an
+undeclared state name in a key stops being an error. This is a soundness hole rather
+than a lost narrowing, and the well-formed rows a probe writes first do not show
+it.
