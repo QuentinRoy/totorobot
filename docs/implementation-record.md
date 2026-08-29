@@ -350,7 +350,7 @@ academic, since declarations are generated from these signatures — a rollup th
 preferred an implementation signature to its overload would hand callers `any`
 rather than merely losing precision.
 
-### <a id="i24"></a>I24: a generic call in a table value cannot see a vocabulary that arrives as a default
+### <a id="i24"></a>I24 — A generic call in a table value cannot see a vocabulary that arrives as a default
 
 `machine` resolves the vocabulary in two tiers: `RawI`/`RawS` infer from the
 `inputs`/`states` properties, and `I`/`S` are defaulted type parameters computed
@@ -376,7 +376,7 @@ handed the vocabulary ([I25](#i25)); recovering it from context leaves the
 payload `never` while the trigger key stays constrained by the mapped type, so a
 probe that only checks whether bad keys are rejected will call that a success.
 
-### <a id="i25"></a>I25: inference through a wrapper recovers the row key by alias identity, not structurally
+### <a id="i25"></a>I25 — Inference through a wrapper recovers the row key by alias identity, not structurally
 
 Where a wrapper does work, on a single-tier vocabulary handed to it up front, the
 row key comes back from the contextual return type only while the table's row type
@@ -386,7 +386,7 @@ Satisfying this means factoring the row type behind an alias over `S`, which is
 what [I18](#i18) forbids. Between them the two findings leave the wrapper no
 spelling that works.
 
-### <a id="i26"></a>I26: a wrapper's return type reopens the inference site `NoInfer` closes on the parameters
+### <a id="i26"></a>I26 — A wrapper's return type reopens the inference site `NoInfer` closes on the parameters
 
 [I14](#i14) put `NoInfer` on the handler's parameters so a context-sensitive handler
 stops inferring the state vocabulary contravariantly from the table. A wrapper whose
