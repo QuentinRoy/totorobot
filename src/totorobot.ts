@@ -24,7 +24,7 @@ const SKIP = Symbol()
 export type Skip = typeof SKIP
 
 /** One shared function for every call: the sentinel captures nothing (I16). */
-const skip = (): Skip => SKIP
+let skip = (): Skip => SKIP
 
 // ---------------------------------------------------------------------------
 // The key grammar
@@ -35,9 +35,9 @@ const skip = (): Skip => SKIP
  * leaves an unlabelled arrow's label empty: hence `''` as the label wildcard.
  * Shared by `machine()` and `observe()`, so the two cannot drift.
  */
-const parse = (key: string): [from: string, input: string, to: string] => {
-	const parts = key.split(/ -|> /)
-	const [from, input, to] = parts
+let parse = (key: string): [from: string, input: string, to: string] => {
+	let parts = key.split(/ -|> /)
+	let [from, input, to] = parts
 	if (parts.length !== 3 || !from || !to) {
 		throw new SyntaxError(`not a transition: '${key}'`)
 	}
@@ -299,7 +299,7 @@ type ImmediateRows = Record<string, Row[] | undefined>
  * Carries a vocabulary at the type level and returns `undefined`, all a caller
  * observes. `T | undefined` needs no cast; `machine` subtracts it back out.
  */
-export const type = <T>(): T | undefined => undefined
+export let type = <T>(): T | undefined => undefined
 
 /**
  * One queue and one flag for every host: peer composition is two machines wired
@@ -315,7 +315,7 @@ let draining = false
  * `send` queued its work already; `start` runs its chain inline, but inside the
  * window.
  */
-const dispatch = (work?: () => void): void => {
+let dispatch = (work?: () => void): void => {
 	// Already inside a dispatch: the outermost call owns the drain.
 	if (draining) return work?.()
 	draining = true
@@ -363,21 +363,21 @@ export function machine<
 // The implementation signature, never seen by a caller. `unknown` because a row's
 // value can be the poison string literal, which no concrete type implements (I23).
 export function machine(definition: unknown): unknown {
-	const { initial, transitions } = definition as unknown as {
+	let { initial, transitions } = definition as unknown as {
 		readonly initial: string
 		readonly transitions: Readonly<Record<string, UncheckedHandler>>
 	}
-	const index: InputRows = Object.create(null)
-	const immediates: ImmediateRows = Object.create(null)
+	let index: InputRows = Object.create(null)
+	let immediates: ImmediateRows = Object.create(null)
 
-	for (const key in transitions) {
-		const [from, input, to] = parse(key)
-		const row: Row = [to, transitions[key]!]
+	for (let key in transitions) {
+		let [from, input, to] = parse(key)
+		let row: Row = [to, transitions[key]!]
 		// An empty label means an unlabelled arrow, `parse` having rejected the rest.
 		if (input === '') {
 			;(immediates[from] ??= []).push(row)
 		} else {
-			const bySource = (index[from] ??= Object.create(null))
+			let bySource = (index[from] ??= Object.create(null))
 			;(bySource[input as string] ??= []).push(row)
 		}
 	}
@@ -396,19 +396,19 @@ export function machine(definition: unknown): unknown {
 			// that does not decline, and report whether the machine moved. Fusing this
 			// with the chain below, or splitting a `commit` helper out of it, both
 			// measured larger (I16).
-			const step = (rows: Row[] = [], input?: InputVocab): boolean => {
-				for (const [to, handler] of rows) {
-					const payload = handler({ state: current, input, skip })
+			let step = (rows: Row[] = [], input?: InputVocab): boolean => {
+				for (let [to, handler] of rows) {
+					let payload = handler({ state: current, input, skip })
 					// Declining is ordinary and silent: try the next row for this pair.
 					if (payload === SKIP) continue
 
 					// Commit, then notify, so every listener sees a machine that agrees
 					// with the record. The tag is spread last, so a handler that spread its
 					// source into the return cannot leave the source's tag behind.
-					const from = current
+					let from = current
 					current = { ...payload, name: to }
-					const record: Transition = { input, from, to: current }
-					for (const [f, l, t, listener] of listeners) {
+					let record: Transition = { input, from, to: current }
+					for (let [f, l, t, listener] of listeners) {
 						if (
 							(f === '*' || f === from.name) &&
 							(l === '' || l === input?.type) &&
@@ -425,7 +425,7 @@ export function machine(definition: unknown): unknown {
 
 			// A chain is one arrival's worth of work, however many hops; the budget is
 			// per call, so settling the initial state does not spend the first send's.
-			const settle = (): void => {
+			let settle = (): void => {
 				let hops = 0
 				while (step(immediates[current.name])) {
 					// Far above any real chain: `'a -> a'` is legal, and a handler rewriting
@@ -449,7 +449,7 @@ export function machine(definition: unknown): unknown {
 				observe: (pattern: string, listener: Listener): (() => void) => {
 					// Parsed once, rather than matched by generating the eight patterns a
 					// transition could answer to — larger, and a `Set` per dispatch (I16).
-					const registration: Registration = [...parse(pattern), listener]
+					let registration: Registration = [...parse(pattern), listener]
 					listeners = [...listeners, registration]
 					// Idempotent because removing what is already gone is a no-op.
 					return () => {
