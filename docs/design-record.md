@@ -74,7 +74,7 @@ unbuilt.
 | 7   | Returned commands (`emit`) | ~~out~~ — **reopened** as `emit` in `actions`, §10's revision                                                | 7, 10  |
 | 8   | Fall-through refusal       | no `else` and no warning — a decline is silent                                                               | 4      |
 | 9   | Async / work-in-flight     | subsumed by axis 10                                                                                          | 8      |
-| 10  | Actions in the machine     | `actions:`, keyed by trigger, wrappers for policy                                                            | 9      |
+| 10  | Actions in the machine     | `actions:`, keyed by trigger, a `restart` field for policy                                                   | 9      |
 | 11  | The word for what you send | `inputs`, not `events` — the core is not a mailbox                                                           | 5      |
 | 12  | Typed send site            | **dropped** — broad `send` only; reversible later                                                            | 12     |
 | 13  | Composition                | **deferred from v1** — shape unsettled; a design to return to                                                | 10     |
@@ -1446,30 +1446,50 @@ function value. Putting the policy in the **key** (`'-> loading'` for each entry
 advantage was a spelling for entry and exit, which the pattern grammar already
 provides without a third key form.
 
-**Wrappers won.** The common case stays a bare function and a constructor appears
-only at the exception, which answers the objection to constructors-everywhere. And
-the wrapper **returns a record** (`persistent(fn)` → `{ run: fn, restart: 'never' }`),
-so a bare function is sugar for `{ run: fn }`, the block stays
-inspectable as data, and new policies are new wrappers rather than new syntax.
-**That is the records proposition with a constructor as its ergonomic front door**,
-and the convergence is the strongest argument for it.
+**Records won.** The common case stays a bare function, sugar for `{ run: fn }`, and
+only the exception spells the record out, which answers the objection to
+constructors-everywhere without a constructor. The block stays inspectable as data,
+and a new policy is a new field rather than new syntax. A constructor
+(`persistent(fn)`) could still front the same record here, and the measurement says
+so: an `actions` block is keyed off the already-declared vocabulary, contributes
+nothing to inference, and accepts a wrapper with its narrowing intact
+([I24](implementation-record.md#i24)). What it costs is a vocabulary handed to the
+wrapper — a kit call, since recovering it from context leaves the payload `never`
+([I25](implementation-record.md#i25), [I26](implementation-record.md#i26)) — and
+that is a second naming of what `type<…>()` already declared. The same wrapper in
+`transitions` does not typecheck at all, so a constructor could never have been the
+one spelling across the definition. Pinned in
+[`explorations/wrapper-inference.ts`](../explorations/wrapper-inference.ts).
 
-That property also absorbed what looked like a separate question. A finer-grained
-policy (restart only when something relevant changed, spelled as an object value
-`{ run: fn, key: ({ id }) => id }`) appeared to need a second value shape, which
-was the main cost counted against wrappers. It does not: written as `keyed(k, fn)`
-it is one more constructor producing one more field. So the layering is not
-"coarse now, object values later"; it is **one mechanism that grows**. `keyed` is
-therefore _not_ in the initial API: there is no use case for it yet, and the whole
-point of the shape is that adding it later costs nothing. Same for `once` or
-`debounced`.
+The design argument decides it, and did before the measurement. `observe`
+and `actions` are nearly the same API, differing only in that `observe` gets no
+`emit` and lives on the host, so one spelling across both call sites is worth more
+than the bare-call ergonomics a constructor buys at one of them. Options also
+uniquely admit `signal: AbortSignal`, which no wrapper can express.
+
+**The field is `restart`, and it takes `boolean | ((from, to) => boolean)`.** `false`
+survives re-entry; a predicate decides case by case from the resident data before and
+after. It is named for the decision rather than for the occasion, which is what makes
+the boolean readable: `restart: false` says what does not happen, where
+`reentry: false` would deny the re-entry itself. `boolean` rather than `false` alone,
+so that a computed flag typechecks and `{ ...base, restart: true }` can put the
+default back.
+
+The predicate absorbs what looked like a separate question. A finer-grained policy
+(restart only when something relevant changed) was expected to need a second field,
+`key: ({ id }) => id`, and that second value shape was the main cost counted against
+a single field. It needs neither: `restart: (from, to) => from.id !== to.id` is the
+same field, and it hands the comparison to the caller instead of making the host
+define when two keys are equal. So the layering is not "coarse now, object values
+later"; it is **one field that grows**. `keyed` is therefore not in the API at all,
+and `once` or `debounced` would be further fields on the same record.
 
 **The default is to restart**, for two reasons:
 
-- **It fails safe.** Forgetting the wrapper under a survive-default leaves an
+- **It fails safe.** Forgetting the field under a survive-default leaves an
   activity closed over stale data, a correctness bug. Forgetting it under a
   restart-default tears something down unnecessarily, a performance bug.
-- **It puts the wrapper on the rarer thing.** A fetch should restart when you
+- **It puts the field on the rarer thing.** A fetch should restart when you
   re-enter `loading`; a long-lived socket is the exception.
 
 It is also consistent with the pattern grammar: `'draft -> *'` matches
@@ -1919,9 +1939,9 @@ or partial wiring. And it needs **no new types whatsoever**.
 concessions both have answers elsewhere: reading a running child's progress is a
 **view** concern and belongs on the host (`doc.children.fetch.current`, read-only,
 no definition change); and sending downward is, in almost every real case,
-_restart with different data_, which residency plus `keyed()` already expresses
-without a handle. Once those are subtracted, the callback's remaining advantage is
-generality nobody has a use for yet, and its cost is a protocol the compiler cannot
+_restart with different data_, which residency plus a `restart` predicate already
+expresses without a handle. Once those are subtracted, the callback's remaining
+advantage is generality nobody has a use for yet, and its cost is a protocol the compiler cannot
 see. That is the same trade this project has made every time: prefer the less
 powerful thing the type system can check.
 
@@ -1978,7 +1998,7 @@ express concurrency, which the strongest external evidence says is the case that
 matters. It solves async beautifully and modularity not at all.
 
 What makes it affordable is that everything hard was decided for other reasons:
-residency defines the child's lifetime (§9), wrappers carry the restart policy
+residency defines the child's lifetime (§9), the `restart` field carries the policy
 (§9), and declaring the child means the vocabulary grows from a declared type
 rather than an inferred sibling, the mechanism §5 built for a different problem.
 
@@ -2046,8 +2066,8 @@ Two results fell out of owning the timer:
   corrected by note 02, demonstrated rather than argued.
 - **Two residents of one state wanted opposite restart policies** — the dwell must
   survive a wiggle, the trail must restart on every track. That is §9's argument for
-  policy-as-wrapper, and both models need it identically. Forgetting `persistent` on
-  an announce-once action duplicates the output silently.
+  policy-per-action, and both models need it identically. Forgetting `restart: false`
+  on an announce-once action duplicates the output silently.
 
 **Cross-machine dispatch nests, under both models.** [Commit
 ordering](#commit-ordering) rule 4, that a listener is never re-entered while an
@@ -2320,6 +2340,11 @@ two implementations of one host lifetime, but one lifetime and one
 interpretation of a block, needing only "actions before listeners", which the commit
 order needs regardless. And residency **can arrive at any time without any version
 having been wrong**, because nothing about it is breaking to add.
+
+The answer above is scoped to v1. If `actions` lands, `observe` takes the bare key
+with it and the same `restart` field (§9), so a caller-side residency and a declared
+one do not end up with two policy vocabularies; the
+[roadmap](roadmap.md#residency--a-recipe-today-maybe-declared-later) carries it.
 
 ### Commit ordering
 
@@ -2907,23 +2932,25 @@ pinned) · a class or `new` for instantiation.
   candidate rows are tried is invisible. It stops being invisible the moment
   anything puts effects back in a handler — true of all three layouts.
 
-Opened by the two late revisions (outputs, actions, and policy remain open):
+Opened by the two late revisions (outputs and actions remain open; how policy is
+spelled closed in [§9](#restart-and-how-the-policy-is-spelled), as options on both
+`observe` and `actions`):
 
-- **How policy is spelled**, for `observe` and `actions` alike: a wrapper
-  (`persistent(fn)`, §9's answer) or a third argument of options in the
-  `addEventListener` shape. Options uniquely admit `signal: AbortSignal`, which is not
-  expressible as a wrapper. The two will be nearly the same API — differing only in
-  that `observe` gets no `emit` and lives on the host — so the spelling wants choosing
-  once, with both call sites in view. That is why the rename ships without it.
-- **Whether `persistent` survives inference in the action bag.** In the prototype's
+- **Whether the record survives inference in the action bag.** In the prototype's
   shim, wrapping a context-sensitive action collapsed every argument bag to `never` —
   implementation record [I3](implementation-record.md#i3) and
   [I6](implementation-record.md#i6), where a type parameter appearing in a closure
-  parameter is fixed to its constraint before inference runs. The fix was to key `actions` off the states and transitions already
-  declared rather than off the block, and it cost wildcard triggers like
-  `'draft -cancel> *'`, which §9's own sketch uses. **Not settled**: comparable APIs
-  have been made to work before, and it has not been re-run against the real
-  `machine()`.
+  parameter is fixed to its constraint before inference runs. The fix was to key
+  `actions` off the states and transitions already declared rather than off the block,
+  and it cost wildcard triggers like `'draft -cancel> *'`, which §9's own sketch uses.
+  Both shapes have now been re-run against the real `machine()`
+  ([I24](implementation-record.md#i24)–[I26](implementation-record.md#i26)). A record
+  value passes. A **wrapper** passes too in a block keyed off the declared
+  vocabulary, which is what `actions` would be, provided something hands it that
+  vocabulary; it fails outright in `transitions`, which is an inference site. So the
+  choice between them is the design argument in §9, not a type-layer verdict.
+  **Still open**: the block does not exist yet, and the wildcard-trigger cost above
+  was never about the value shape.
 
 ## Where the code is
 

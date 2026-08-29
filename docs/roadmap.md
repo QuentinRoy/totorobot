@@ -12,16 +12,21 @@ has to remember:
 
 ```ts
 actions: {
-	loading:              ({ data, send }) => fetchUser(data.id, send),   // residency
-	connected: persistent(({ data, send }) => subscribe(data.url, send)), // survives re-entry
-	'draft -cancel> *':   () => track('cancelled'),                       // an edge
+	loading: ({ data, send }) => fetchUser(data.id, send), // residency
+	connected: {
+		run: ({ data, send }) => subscribe(data.url, send),
+		restart: false, // survives re-entry
+	},
+	'draft -cancel> *': () => track('cancelled'), // an edge
 }
 ```
 
-One action per trigger — a state name for entry, or a transition key for an edge. The
-default is to restart on every entry; policy is a wrapper rather than syntax, the way
-`persistent` is above. An action's `send` accepts only already-declared inputs, so
-`actions` adds nothing to the vocabulary.
+One action per trigger — a state name for entry, or a transition key for an edge. An
+action is a bare function, or a record with a `restart` field: the default is to restart
+on every entry, `restart: false` survives it, and a predicate over the resident data
+before and after decides case by case. Policy is a field rather than syntax. An action's
+`send` accepts only already-declared inputs, so `actions` adds nothing to the
+vocabulary.
 
 It comes first among the directions here because `emit`, below, has nowhere to live
 without it: a handler may `skip()`, and declaration order is priority order, so a
@@ -39,7 +44,10 @@ _is_:
 outputs: type<{ type: 'opened'; center: Point } | { type: 'ended' }>(),
 
 actions: {
-	novice: persistent(({ data, emit }) => emit({ type: 'opened', center: data.origin })),
+	novice: {
+		run: ({ data, emit }) => emit({ type: 'opened', center: data.origin }),
+		restart: false,
+	},
 },
 ```
 
@@ -57,7 +65,10 @@ Scoping setup and teardown to "while resident in a state" already works as a
 [caller-side recipe](../README.md#residency) over two `observe` patterns; the
 bare key in the key language is reserved for it. If `actions` lands, the
 same scoping could be declared directly instead of assembled by hand — the
-`// residency` comment on `loading`, above, is what that would look like.
+`// residency` comment on `loading`, above, is what that would look like. `observe`
+would take the bare key at the same time, with the same `restart` field, so a residency
+written by the caller and one declared in the definition do not end up with two policy
+vocabularies.
 
 This entry makes no ordering claim against `actions` or `emit`. The host not owning
 residency is a decision already made, not a gap waiting on the others, and adding it
