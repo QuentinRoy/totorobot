@@ -396,3 +396,23 @@ inference site again, and the vocabulary widens to whatever the rows say, so an
 undeclared state name in a key stops being an error. This is a soundness hole rather
 than a lost narrowing, and the well-formed rows a probe writes first do not show
 it.
+
+### <a id="i27"></a>I27 — A block-body action with no `return` infers `void`, not `undefined`
+
+In an `actions` block, a plain block body — `on: () => { log.push('setup') }` — is
+inferred **independently**, as `() => void`, rather than checked against the
+property's contextual type. `void` is not assignable to `undefined`, so every
+ordinary no-teardown action failed under `undefined | Teardown` alone, though the
+identical body typechecks given straight to a variable of that type. It holds even
+with `inputs`/`states` declared, so it is not [I24](#i24)'s defaulting tier.
+
+The fix is a wider signature, the shape `Table` already uses for a payload-free
+target: union `| void` in. That does not reopen the hole plain `undefined` was
+chosen to close, because void-return bivariance fires only when a return type
+**is** `void`; as one arm of a union, a wrong-shaped return, a stray `Teardown` on
+an edge, and an `async` body's `Promise` are all still rejected. Keep `undefined`
+in the union too: `Teardown | void` also rejects the stray teardown, but nothing
+left in the signature would say which arm did it.
+
+Pinned in `tests/actions.test-d.ts`, both directions — the plain body is accepted,
+and each rejection still fires.

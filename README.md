@@ -92,6 +92,7 @@ has shed it again, and neither carries it as a nullable placeholder.
   - [Declining, and row precedence](#declining-and-row-precedence)
   - [Immediate transitions: an edge with no input](#immediate-transitions-an-edge-with-no-input)
   - [What the table gives you for free](#what-the-table-gives-you-for-free)
+- [`actions`: lifetime-scoped work](#actions-lifetime-scoped-work)
 - [The host](#the-host)
   - [Reading](#reading)
   - [Sending](#sending)
@@ -113,12 +114,12 @@ has shed it again, and neither carries it as a nullable placeholder.
 
 Everything the package exports:
 
-| export                                                      | is                                                               |
-| ----------------------------------------------------------- | ---------------------------------------------------------------- |
-| `machine({ inputs?, states?, initial, transitions })`       | a definition: inert data, never mutated                          |
-| `type<T>()`                                                 | a declaration carrying `T`; returns `undefined` at runtime       |
-| `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>` | derived types, over `M = typeof publication`                     |
-| `Skip`                                                      | what `skip()` returns; it appears in every handler's return type |
+| export                                                          | is                                                               |
+| --------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `machine({ inputs?, states?, initial, transitions, actions? })` | a definition: inert data, never mutated                          |
+| `type<T>()`                                                     | a declaration carrying `T`; returns `undefined` at runtime       |
+| `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>`     | derived types, over `M = typeof publication`                     |
+| `Skip`                                                          | what `skip()` returns; it appears in every handler's return type |
 
 ## `inputs` and `states`: the vocabulary
 
@@ -306,6 +307,54 @@ an exact text search:
 Two of the three are derivable as types as well: `Handled<M, 'draft'>` and
 `Sources<M, 'review'>`, so the reverse index never has to be maintained by hand.
 
+## `actions`: lifetime-scoped work
+
+Work scoped to a state, or to a transition, declared with the machine rather
+than assembled by every caller:
+
+```ts
+const publication = machine({
+	// ...
+	actions: {
+		loading: ({ to, send }) => {
+			const ctrl = new AbortController()
+			fetchUser(to.id, ctrl.signal).then(
+				(user) => send({ type: 'loaded', user }),
+				(reason) => send({ type: 'failed', reason }),
+			)
+			return () => ctrl.abort()
+		},
+		'draft -submit> review': (e) => track('submitted', e.to.text),
+	},
+})
+```
+
+**The key decides how it is read.** No `->` names a state: the function runs on
+entry, and the function it returns runs on exit. With `->` it is an edge, firing
+once per matching transition, in the same [pattern language](#observing) —
+wildcards included.
+
+**Every action receives the transition record**, `{ input, from, to, send }`,
+whichever kind of trigger fired it and identical to what a matching
+[listener](#observing) gets. A residency is an arrival, so its `to` is the
+resident state. On the initial state, which no transition caused, `from` and
+`input` are `undefined`, so reading `from` needs a narrowing first.
+
+**Only a residency may return a teardown.** Returning one from an edge is a
+compile error, so moving a helper between the two cannot silently strand its
+cleanup. An `async` body is rejected for the same reason: it returns a promise.
+
+**A self-transition tears down and sets up again**, exactly as the
+[caller-side recipe](#residency) does, and residency runs on every hop of an
+immediate chain — including a state entered and left within one drain. Opting
+out with a `restart` policy is
+[a roadmap direction](docs/roadmap.md#residency-on-observe--the-same-record-actions-takes).
+
+**Per commit:** the teardown of the residency being left, the commit, every
+matching action in declaration order, then the listeners
+([commit ordering](#commit-ordering) is otherwise unchanged). A throwing action
+propagates and abandons the rest of that commit, like a throwing listener.
+
 ## The host
 
 `definition.start(data)` returns the stateful thing that owns the current state
@@ -428,9 +477,13 @@ free, and the policy variants come along too: `persistent` is
 `if (e.to.name !== e.from.name)` in the exit handler, and `keyed` compares a key
 computed from each end.
 
-Declaring it in the definition instead of assembling it by hand is
-[a roadmap direction](docs/roadmap.md#residency--a-recipe-today-maybe-declared-later).
-The full recipe, with the argument for leaving it to the caller today, is in
+Declaring it in the definition instead of assembling it by hand is a bare-key
+trigger in [`actions`](#actions-lifetime-scoped-work), for a machine's own
+states; this recipe stays the way to scope work to a state you did not declare
+the machine with. The two agree by construction — a declared residency is
+asserted to produce the same log as this recipe, for the same machine, as a
+test oracle. The full recipe, with the argument for leaving observer-side
+residency to the caller, is in
 [rationale §11](docs/design-record.md#residency-is-derivable-not-a-host-feature),
 and `tests/helpers.ts` carries it as working code.
 
@@ -540,7 +593,8 @@ is waiting for; starting and abandoning the work stays the caller's.
 
 - **Per-state data.** Narrowing the state narrows its data, with no nullable
   padding in states that logically guarantee a field.
-- Unknown state or input names anywhere in a transition key or a pattern.
+- Unknown state or input names anywhere in a transition key, a pattern, or an
+  `actions` trigger.
 - **A handler returning the wrong shape for its target state, with no
   exceptions.** A target with no payload accepts only nothing or `{}`. A fresh
   literal with extra properties, a wider-typed variable, an interface-typed
@@ -615,9 +669,9 @@ an odd name by hand is deliberate in a way a doubled space never is.
 
 ## Beyond v1
 
-`actions`, a declared `emit` channel, residency as a declared feature, and
-horizontal composition are sketched in [the roadmap](docs/roadmap.md), and none
-of it is promised.
+A `restart` policy and several actions per trigger, `observe` accepting the same
+record `actions` does, a declared `emit` channel, and horizontal composition are
+sketched in [the roadmap](docs/roadmap.md), and none of it is promised.
 
 ## Documentation
 

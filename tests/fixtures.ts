@@ -117,6 +117,32 @@ export const chain = machine({
 	},
 })
 
+/**
+ * A resource-shaped residency — kind 3 in §9's table, the one activation and
+ * teardown alone cannot express — on `b`, in the middle of the same three-hop
+ * chain as `chain`: `b` is occupied only mid-chain, so a host that sends `go`
+ * enters and leaves it within one drain. `activityLog` cannot be test-local,
+ * since the action closes over it at declaration time along with the rest of
+ * the definition; every test using this fixture clears it first.
+ */
+export let activityLog: string[] = []
+export const activity = machine({
+	initial: 'a',
+	inputs: type<{ type: 'go' }>(),
+	states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' } | { name: 'd' }>(),
+	transitions: {
+		'a -go> b': () => {},
+		'b -> c': () => {},
+		'c -> d': () => {},
+	},
+	actions: {
+		b: () => {
+			activityLog.push('setup')
+			return () => activityLog.push('teardown')
+		},
+	},
+})
+
 export const editor = machine({
 	initial: 'idle',
 	inputs: type<EditorInputs>(),

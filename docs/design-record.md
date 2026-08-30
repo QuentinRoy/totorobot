@@ -1513,6 +1513,32 @@ nothing to the vocabulary; this works _because_ it is less powerful than a mount
 **it is the standard answer** (Harel, SCXML, XState and `gen_statem` all attach
 activities to nodes).
 
+### Revision: one argument for every action, not a bag per kind
+
+The spec gave each trigger kind its own bag: `{ state, send }` for a residency,
+`{ transition, send }` for an edge. Built, both were wrong.
+
+**The edge bag wrapped what it should have been.** An edge action and a listener
+react to the same committed transition, so nothing justifies two shapes, and the
+wrapper carried `send` twice — once as `bag.send`, once inside `bag.transition`.
+Unwrapping it then left residency as the only shape still differing.
+
+**One fix, and the constraints force it.** Edge must equal listener and residency
+must equal edge, so all three take the transition record. A residency is an
+arrival, so its `to` _is_ the resident state, which is what `state` was; `from`
+and `input` come free. Dispatch already builds one such record per commit and now
+passes it to both kinds unchanged.
+
+**The initial state is the only cost.** `start()` enters without a hop, so `from`
+and `input` are `undefined` there, extending the vocabulary `input: undefined`
+already carries for an immediate (§6) rather than inventing a second one. Reading
+`from` then needs a narrowing; most actions read only `to`. Synthesising a
+self-transition was rejected as a lie a caller can observe, and not firing on the
+initial state would delete the feature's main case.
+
+This supersedes the bag recorded in the `actions` epic, and `observe`'s own
+residency form should take the same argument when it lands.
+
 ### The bare-key conflict, and the rule that closed it
 
 Residency wants a bare key, and the listener language already gave bare keys a
@@ -1605,8 +1631,9 @@ That is the cost, and it is the thing `actions` exists to delete.
 
 **Required coverage, and the one entry here that is a decision rather than a
 description.** The first action a machine ever runs is the one `start()` triggers:
-residency on the initial state, or on whatever its immediate chain settles into, plus
-any edge action on the hops of that chain. `start` settles that chain under the same
+residency on the initial state and, since residency runs on every hop of an
+immediate chain rather than only on wherever it settles, on every state that chain
+passes through, plus any edge action on the hops themselves. `start` settles that chain under the same
 drain ownership `send` takes ([§11](#start-settles-under-the-drain)), so an action
 sending from one of those hops queues and lands after the chain settles. That is
 already true; what is not yet written is anything holding it true through the actions
@@ -1623,17 +1650,19 @@ host and an action is the first thing that will do it from inside. Carry them ov
 - An action that throws while `start` is settling: whatever the rule for a throwing
   action turns out to be, `start`'s copy of it has to match `send`'s.
 
-**And one question the fix does not answer, because it cannot be asked yet.** An
-action gets `send` bound to its own host, and that binding exists before `start`
-returns — so an action on the initial state that sends to itself would queue, drain
-while `start` still holds the drain, and hand back a host that has already moved past
-the state its chain settled into, with no listener having seen the hop. Today that is
-unreachable: nothing can hold a reference to a host that has not been returned. The
-options are `start` returning post-drain state, actions on the initial chain deferring
-differently from actions everywhere else, or the initial chain's own sends draining
-after `start` returns — which would break "the queue drains before the outermost call
-returns". **Decide it with `actions`, not before**, but decide it deliberately: it is
-the half of this that a fix to `start` alone could not settle.
+**The question this could not answer before now settles itself, by construction.**
+An action gets `send` bound to its own host, and that binding exists before `start`
+returns — so an action on the initial state that sends to itself queues, and drains
+while `start` still holds the drain. Of the three options on the table when this was
+only a question — `start` returning post-drain state, actions on the initial chain
+deferring differently from actions everywhere else, or the initial chain's own sends
+draining after `start` returns — the first one is what wrapping the initial
+residency and `settle()` in one `dispatch()` call already gives for free: the queue
+drains inside that call, before `start`'s own `dispatch()` returns, so the host
+handed back already reflects a self-send's outcome. No listener misses the hop,
+because none could exist yet to miss it — `observe` stays unreachable until `start`
+returns, same as always. Pinned in `tests/queue.test.ts`, "actions fired by
+`start()`".
 
 ## 10. Composition
 
@@ -2949,8 +2978,12 @@ spelled closed in [§9](#restart-and-how-the-policy-is-spelled), as options on b
   vocabulary, which is what `actions` would be, provided something hands it that
   vocabulary; it fails outright in `transitions`, which is an inference site. So the
   choice between them is the design argument in §9, not a type-layer verdict.
-  **Still open**: the block does not exist yet, and the wildcard-trigger cost above
-  was never about the value shape.
+  **Narrower now than it was**: the block exists, as bare functions, and its bag
+  does not collapse — [I27](implementation-record.md#i27) is a separate,
+  unrelated inference gap in the same code, closed the way `Table` already
+  closes it for a payload-free target. **Still open**: the record form,
+  `restart`, and the array arm are not built yet, and the wildcard-trigger cost
+  above was never about the value shape.
 
 ## Where the code is
 
