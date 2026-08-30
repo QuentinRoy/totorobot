@@ -65,6 +65,15 @@ const rootMenu: Menu = {
 	children: [{ label: 'copy' }, { label: 'paste' }],
 }
 
+/**
+ * Two residents of `startup`, opposite `restart` policies — the scenario the
+ * design record's composition chapter records as wanting exactly this (§10):
+ * a dwell that must survive a wiggle beside a trail that redraws on every
+ * track. Cleared per test, like `activityLog` elsewhere.
+ */
+const dwellLog: string[] = []
+const trailLog: string[] = []
+
 const markingMenu = machine({
 	initial: 'idle',
 	inputs: type<MarkingMenuInputs>(),
@@ -110,6 +119,20 @@ const markingMenu = machine({
 		'startup -cancel> idle': ({ state }) => ({ nextToken: state.nextToken }),
 		'expert -cancel> idle': ({ state }) => ({ nextToken: state.nextToken }),
 		'novice -cancel> idle': ({ state }) => ({ nextToken: state.nextToken }),
+	},
+	actions: {
+		startup: [
+			{
+				run: () => {
+					dwellLog.push('schedule')
+					return () => dwellLog.push('cancel')
+				},
+				restart: false,
+			},
+			() => {
+				trailLog.push('track')
+			},
+		],
 	},
 })
 
@@ -215,5 +238,23 @@ describe('acceptance: Reduced Marking Menu', () => {
 
 		expect(doc.current).toEqual(before)
 		expect(log).toEqual([])
+	})
+
+	test('two residents of startup hold opposite restart policies: the dwell survives a wiggle, the trail restarts on every track', () => {
+		dwellLog.length = 0
+		trailLog.length = 0
+
+		const doc = markingMenu.start({ nextToken: 0 })
+		doc.send({ type: 'down', point: p0 }) // enters startup: both residents set up
+		expect(dwellLog).toEqual(['schedule'])
+		expect(trailLog).toEqual(['track'])
+
+		doc.send({ type: 'move', point: p1Near }) // wiggle: within the dwell threshold
+		doc.send({ type: 'move', point: p1Near }) // wiggle again
+		expect(dwellLog).toEqual(['schedule']) // restart: false: no reschedule
+		expect(trailLog).toEqual(['track', 'track', 'track']) // default: redraws each time
+
+		doc.send({ type: 'up', point: p1Near }) // leaves startup: dwell is cancelled
+		expect(dwellLog).toEqual(['schedule', 'cancel'])
 	})
 })

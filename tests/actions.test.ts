@@ -96,6 +96,84 @@ describe('actions', () => {
 		expect(log).toEqual(['setup', 'teardown', 'setup'])
 	})
 
+	test('`restart: false` survives a self-transition: no teardown, no second setup', () => {
+		const log: string[] = []
+		const doc = machine({
+			initial: 'idle',
+			inputs: type<{ type: 'ping' }>(),
+			states: type<{ name: 'idle' }>(),
+			transitions: { 'idle -ping> idle': () => {} },
+			actions: {
+				idle: {
+					run: () => {
+						log.push('setup')
+						return () => log.push('teardown')
+					},
+					restart: false,
+				},
+			},
+		}).start()
+
+		expect(log).toEqual(['setup'])
+		doc.send({ type: 'ping' })
+		doc.send({ type: 'ping' })
+		expect(log).toEqual(['setup'])
+	})
+
+	test('`restart: false` still tears down on a genuine departure to a different state: the policy only governs self-transitions', () => {
+		const log: string[] = []
+		const doc = machine({
+			initial: 'off',
+			inputs: type<{ type: 'ping' } | { type: 'toggle' }>(),
+			states: type<{ name: 'off' } | { name: 'on' }>(),
+			transitions: {
+				'off -toggle> on': () => {},
+				'on -ping> on': () => {},
+				'on -toggle> off': () => {},
+			},
+			actions: {
+				on: {
+					run: () => {
+						log.push('setup')
+						return () => log.push('teardown')
+					},
+					restart: false,
+				},
+			},
+		}).start()
+
+		doc.send({ type: 'toggle' }) // off -> on: setup
+		doc.send({ type: 'ping' }) // on -> on: restart: false, survives
+		expect(log).toEqual(['setup'])
+		doc.send({ type: 'toggle' }) // on -> off: always tears down
+		expect(log).toEqual(['setup', 'teardown'])
+	})
+
+	test('a `restart` predicate decides case by case from the resident data either side of the self-transition', () => {
+		const log: string[] = []
+		const doc = machine({
+			initial: 'idle',
+			inputs: type<{ type: 'set'; id: number }>(),
+			states: type<{ name: 'idle'; id: number }>(),
+			transitions: { 'idle -set> idle': ({ input }) => ({ id: input.id }) },
+			actions: {
+				idle: {
+					run: ({ to }) => {
+						log.push(`setup:${to.id}`)
+						return () => log.push('teardown')
+					},
+					restart: (from, to) => from.id !== to.id,
+				},
+			},
+		}).start({ id: 0 })
+
+		expect(log).toEqual(['setup:0'])
+		doc.send({ type: 'set', id: 0 }) // same id: survives
+		expect(log).toEqual(['setup:0'])
+		doc.send({ type: 'set', id: 1 }) // different id: restarts
+		expect(log).toEqual(['setup:0', 'teardown', 'setup:1'])
+	})
+
 	test('a key containing -> is an edge: it fires once per matching transition', () => {
 		const log: string[] = []
 		const doc = machine({
@@ -321,6 +399,116 @@ describe('actions', () => {
 		// the host is usable afterwards
 		doc.send({ type: 'toggle' })
 		expect(doc.current).toEqual({ name: 'off' })
+	})
+
+	test('an array of actions on one trigger sets up in declaration order and tears down in reverse', () => {
+		const log: string[] = []
+		const doc = machine({
+			initial: 'off',
+			inputs: type<{ type: 'toggle' }>(),
+			states: type<{ name: 'off' } | { name: 'on' }>(),
+			transitions: {
+				'off -toggle> on': () => {},
+				'on -toggle> off': () => {},
+			},
+			actions: {
+				on: [
+					() => {
+						log.push('setup 1')
+						return () => log.push('teardown 1')
+					},
+					() => {
+						log.push('setup 2')
+						return () => log.push('teardown 2')
+					},
+				],
+			},
+		}).start()
+
+		doc.send({ type: 'toggle' }) // off -> on
+		expect(log).toEqual(['setup 1', 'setup 2'])
+		doc.send({ type: 'toggle' }) // on -> off
+		expect(log).toEqual(['setup 1', 'setup 2', 'teardown 2', 'teardown 1'])
+	})
+
+	test('two residents of one state can hold opposite restart policies: one survives a self-transition, the other restarts', () => {
+		const log: string[] = []
+		const doc = machine({
+			initial: 'on',
+			inputs: type<{ type: 'ping' }>(),
+			states: type<{ name: 'on' }>(),
+			transitions: { 'on -ping> on': () => {} },
+			actions: {
+				on: [
+					{
+						run: () => {
+							log.push('persistent:setup')
+							return () => log.push('persistent:teardown')
+						},
+						restart: false,
+					},
+					() => {
+						log.push('restarting:setup')
+						return () => log.push('restarting:teardown')
+					},
+				],
+			},
+		}).start()
+
+		expect(log).toEqual(['persistent:setup', 'restarting:setup'])
+		doc.send({ type: 'ping' })
+		expect(log).toEqual([
+			'persistent:setup',
+			'restarting:setup',
+			'restarting:teardown',
+			'restarting:setup',
+		])
+	})
+
+	test('a throwing teardown, among several actions on one trigger, leaves the later ones (earlier in declaration order) unrun', () => {
+		const log: string[] = []
+		const doc = machine({
+			initial: 'off',
+			inputs: type<{ type: 'toggle' }>(),
+			states: type<{ name: 'off' } | { name: 'on' }>(),
+			transitions: {
+				'off -toggle> on': () => {},
+				'on -toggle> off': () => {},
+			},
+			actions: {
+				on: [
+					() => () => log.push('teardown 1'),
+					() => () => {
+						throw new Error('boom')
+					},
+				],
+			},
+		}).start()
+
+		doc.send({ type: 'toggle' }) // off -> on
+
+		expect(() => doc.send({ type: 'toggle' })).toThrow('boom')
+		expect(log).toEqual([]) // teardown 2 threw before teardown 1 (reverse order) ran
+	})
+
+	test('a record with `run` behaves the same as a bare function, for a residency and an edge alike', () => {
+		const log: string[] = []
+		const doc = machine({
+			initial: 'off',
+			inputs: type<{ type: 'toggle' }>(),
+			states: type<{ name: 'off' } | { name: 'on' }>(),
+			transitions: {
+				'off -toggle> on': () => {},
+				'on -toggle> off': () => {},
+			},
+			actions: {
+				on: { run: () => void log.push('setup') },
+				'off -toggle> on': { run: () => void log.push('edge') },
+			},
+		}).start()
+
+		doc.send({ type: 'toggle' })
+		expect(log).toEqual(['setup', 'edge'])
 	})
 
 	test('an undeclared trigger is silently unreachable at runtime, matching the rest of the library: naming something absent is a no-op', () => {

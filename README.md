@@ -316,13 +316,16 @@ than assembled by every caller:
 const publication = machine({
 	// ...
 	actions: {
-		loading: ({ to, send }) => {
-			const ctrl = new AbortController()
-			fetchUser(to.id, ctrl.signal).then(
-				(user) => send({ type: 'loaded', user }),
-				(reason) => send({ type: 'failed', reason }),
-			)
-			return () => ctrl.abort()
+		loading: {
+			run: ({ to, send }) => {
+				const ctrl = new AbortController()
+				fetchUser(to.id, ctrl.signal).then(
+					(user) => send({ type: 'loaded', user }),
+					(reason) => send({ type: 'failed', reason }),
+				)
+				return () => ctrl.abort()
+			},
+			restart: false, // survives re-entry; a fetch already in flight keeps running
 		},
 		'draft -submit> review': (e) => track('submitted', e.to.text),
 	},
@@ -344,16 +347,26 @@ resident state. On the initial state, which no transition caused, `from` and
 compile error, so moving a helper between the two cannot silently strand its
 cleanup. An `async` body is rejected for the same reason: it returns a promise.
 
-**A self-transition tears down and sets up again**, exactly as the
+**An action is a bare function, a record with `run`, or an array of either.**
+The record is what carries `restart`; the array lets one trigger carry several,
+set up in declaration order and torn down in reverse — so two residents of one
+state can hold opposite policies.
+
+**A self-transition tears down and sets up again by default**, exactly as the
 [caller-side recipe](#residency) does, and residency runs on every hop of an
-immediate chain — including a state entered and left within one drain. Opting
-out with a `restart` policy is
-[a roadmap direction](docs/roadmap.md#residency-on-observe--the-same-record-actions-takes).
+immediate chain — including a state entered and left within one drain.
+`restart: false` survives it instead: no teardown, no second setup. A predicate,
+`(from, to) => boolean`, decides case by case from the resident data either
+side. `restart` is consulted only on a self-transition — a genuine departure
+always tears down — and is a compile error on an edge, since an edge has
+nothing to restart.
 
 **Per commit:** the teardown of the residency being left, the commit, every
 matching action in declaration order, then the listeners
 ([commit ordering](#commit-ordering) is otherwise unchanged). A throwing action
-propagates and abandons the rest of that commit, like a throwing listener.
+propagates and abandons the rest of that commit, like a throwing listener —
+including a throwing teardown among several on one trigger, which leaves the
+rest of that reverse-order unwind unrun.
 
 ## The host
 
@@ -669,9 +682,9 @@ an odd name by hand is deliberate in a way a doubled space never is.
 
 ## Beyond v1
 
-A `restart` policy and several actions per trigger, `observe` accepting the same
-record `actions` does, a declared `emit` channel, and horizontal composition are
-sketched in [the roadmap](docs/roadmap.md), and none of it is promised.
+`observe` accepting the same record `actions` does, a declared `emit` channel,
+and horizontal composition are sketched in [the roadmap](docs/roadmap.md), and
+none of it is promised.
 
 ## Documentation
 

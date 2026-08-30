@@ -192,6 +192,67 @@ test('a returned teardown is rejected on an edge trigger, so moving a helper fro
 	})
 })
 
+test('a residency or edge action may be a record with `run`, sugar for the bare function', () => {
+	machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
+		actions: {
+			on: { run: () => {} },
+			'off -toggle> on': { run: () => {} },
+		},
+	})
+})
+
+test('a residency or edge action may be an array of bare functions and records', () => {
+	machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
+		actions: {
+			on: [() => {}, { run: () => {} }],
+			'off -toggle> on': [() => {}, { run: () => {} }],
+		},
+	})
+})
+
+test('a residency record accepts `restart` as a boolean or a predicate over the narrowed state either side', () => {
+	machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
+		actions: {
+			on: { run: () => {}, restart: false },
+			gone: {
+				run: () => {},
+				restart: (from, to) => {
+					expectTypeOf(from).toEqualTypeOf<{ name: 'gone' }>()
+					expectTypeOf(to).toEqualTypeOf<{ name: 'gone' }>()
+					return true
+				},
+			},
+		},
+	})
+})
+
+test('`restart` on an edge trigger is a compile error, in the record and in the array', () => {
+	machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
+		actions: {
+			// @ts-expect-error - `restart` has no meaning on an edge
+			'off -toggle> on': { run: () => {}, restart: false },
+			// @ts-expect-error - same, inside the array arm
+			'off -> *': [{ run: () => {}, restart: false }],
+		},
+	})
+})
+
 test('an async body is rejected on both a residency and an edge trigger, since it returns a Promise rather than a teardown', () => {
 	machine({
 		initial: 'off',
