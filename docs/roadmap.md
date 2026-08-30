@@ -5,13 +5,8 @@
 
 ## `actions` — the record form, `restart`, and several per trigger
 
-A bare-function `actions` block has landed: a state-name key means residency, an
-edge key (drawn from the same pattern language `observe` uses) fires once per
-matching transition, and both kinds receive the same transition record a
-matching listener does, `{ input, from, to, send }` — a residency arrival's `to`
-being the resident state, and its `from` `undefined` on the initial state alone.
-See [the README](../README.md#actions-lifetime-scoped-work). What is left is the
-record form the design chapter below argued for from the start:
+Bare-function `actions` [have landed](../README.md#actions-lifetime-scoped-work).
+What is left is the record form the design chapter argued for from the start:
 
 ```ts
 actions: {
@@ -25,19 +20,15 @@ actions: {
 ```
 
 An action becomes a bare function, a record with `run` and an optional `restart`,
-or an array of either. `restart` takes `boolean | ((from, to) => boolean)`,
-consulted only on a self-transition: the default is to restart on every entry,
-`restart: false` survives it, and a predicate over the resident data before and
-after decides case by case. It is rejected at compile time on an edge trigger.
-The array arm lets one trigger carry more than one action, set up in
-declaration order and torn down in reverse. None of this changes what shipped:
-an action's `send` still accepts only already-declared inputs, so `actions`
-still adds nothing to the vocabulary.
+or an array of either. `restart` takes `boolean | ((from, to) => boolean)` and is
+consulted only on a self-transition: restart by default, `restart: false`
+survives, a predicate decides case by case. It is a compile error on an edge. The
+array arm lets one trigger carry several actions, set up in declaration order and
+torn down in reverse. `send` stays as it is, so the vocabulary does not grow.
 
-`emit`, below, needed `actions` to exist first: a handler may `skip()`, and
-declaration order is priority order, so a handler that emitted would announce a
-transition that then loses. `emit` needs a post-commit home, and the action bag
-is the only one.
+`emit`, below, needed `actions` first: a handler may `skip()`, and declaration
+order is priority order, so a handler that emitted would announce a transition
+that then loses. `emit` needs a post-commit home.
 
 _Argued in: [rationale §9](design-record.md#9-actions)._
 

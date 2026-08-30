@@ -366,27 +366,6 @@ type UncheckedHandler = (args: {
 
 type Row = readonly [to: string, handler: UncheckedHandler]
 
-/**
- * One shape for every action call, residency and edge alike: the transition
- * record dispatch already built. `from` is absent only for the initial
- * state's own arrival, which no transition caused.
- */
-type UncheckedAction = (arrival: {
-	readonly input: InputVocab | undefined
-	readonly from: StateVocab | undefined
-	readonly to: StateVocab
-	readonly send: (input: InputVocab) => void
-}) => Teardown | undefined
-
-/**
- * A residency row, by state name, or an edge row, by its parsed pattern —
- * decided once, when `actions` is read (§9). Told apart at dispatch by length,
- * the way `Row` and `Registration` are already told apart by shape.
- */
-type ActionRow =
-	| readonly [name: string, action: UncheckedAction]
-	| readonly [from: string, input: string, to: string, action: UncheckedAction]
-
 interface UncheckedHost {
 	readonly current: StateVocab
 	readonly send: (input: InputVocab) => void
@@ -477,7 +456,7 @@ export function machine(definition: unknown): unknown {
 	let { initial, transitions, actions } = definition as unknown as {
 		readonly initial: string
 		readonly transitions: Readonly<Record<string, UncheckedHandler>>
-		readonly actions?: Readonly<Record<string, UncheckedAction>>
+		readonly actions?: Readonly<Record<string, Registration[3]>>
 	}
 	let index: InputRows = Object.create(null)
 	let immediates: ImmediateRows = Object.create(null)
@@ -494,14 +473,18 @@ export function machine(definition: unknown): unknown {
 		}
 	}
 
-	// A bare key has no arrow, so splitting on the transition separators leaves
-	// it in one piece; anything else is an edge and goes through `parse`, which
-	// throws on a malformed one the same way a malformed transition key does.
-	let actionRows: ActionRow[] = []
+	// A bare key has no arrow, so splitting on the separators leaves it in one
+	// piece. Residency on `N` *is* the pattern `* -> N`, so it is stored as one and
+	// only the trailing teardown key tells the two kinds apart — which is what lets
+	// one loop match both, and listeners besides (I16). A bare key is taken at face
+	// value: naming a state nothing declares is a silent no-op, as everywhere else.
+	// An arrow means `parse`, which throws on a malformed key like a row does.
+	let actionRows: Registration[] = []
 	for (let key in actions) {
-		let fn = actions[key]!
 		actionRows.push(
-			key.split(/ -|> /).length === 1 ? [key, fn] : [...parse(key), fn],
+			key.split(/ -|> /).length === 1
+				? ['*', '', key, actions[key]!, key]
+				: [...parse(key), actions[key]!, ''],
 		)
 	}
 
@@ -516,8 +499,27 @@ export function machine(definition: unknown): unknown {
 			let listeners: Registration[] = []
 
 			// Keyed by state name: at most one residency is ever in flight for it,
-			// since re-entering overwrites the slot with a fresh teardown (§9).
+			// since re-entering overwrites the slot with a fresh teardown (§9). Per
+			// host, never on the rows, which the definition shares across hosts.
 			let teardowns: Record<string, Teardown | undefined> = Object.create(null)
+
+			// The wildcard rules, once, for actions and listeners alike: `*` and `''`
+			// stand for any. A residency row carries a teardown key and stores what it
+			// returns; an edge row and a listener carry `''` and do not. `from` is
+			// optional only for the initial arrival, which no transition caused, and
+			// which this same loop therefore fires without a case of its own (§9).
+			let fire = (rows: Registration[], e: Arrival): void => {
+				for (let [f, l, t, run, key] of rows) {
+					if (
+						(f === '*' || f === e.from?.name) &&
+						(l === '' || l === e.input?.type) &&
+						(t === '*' || t === e.to.name)
+					) {
+						let teardown = run(e)
+						if (key) teardowns[key] = teardown as Teardown | undefined
+					}
+				}
+			}
 
 			// One row-scanning path for both kinds of transition: commit the first row
 			// that does not decline, and report whether the machine moved. Fusing this
@@ -542,34 +544,10 @@ export function machine(definition: unknown): unknown {
 					// without closing over the host it was registered on.
 					let record: Transition = { input, from, to: current, send }
 
-					// Actions run in block declaration order, ahead of every listener, and
-					// every one of them receives this same record: a residency entry
-					// stores its teardown, an edge just runs (§9).
-					for (let row of actionRows) {
-						if (row.length === 2) {
-							let [name, fn] = row
-							if (to === name) teardowns[name] = fn(record)
-						} else {
-							let [f, l, t, fn] = row
-							if (
-								(f === '*' || f === from.name) &&
-								(l === '' || l === input?.type) &&
-								(t === '*' || t === to)
-							) {
-								fn(record)
-							}
-						}
-					}
-
-					for (let [f, l, t, listener] of listeners) {
-						if (
-							(f === '*' || f === from.name) &&
-							(l === '' || l === input?.type) &&
-							(t === '*' || t === to)
-						) {
-							listener(record)
-						}
-					}
+					// Actions in block declaration order, then listeners, both given this
+					// same record (§9).
+					fire(actionRows, record)
+					fire(listeners, record)
 					// One input yields at most one transition.
 					return true
 				}
@@ -605,19 +583,15 @@ export function machine(definition: unknown): unknown {
 			// Under the drain `send` takes, so a send from one of these hops — the
 			// initial state's own residency included — runs after the chain settles
 			// (§11, "`start` settles under the drain"). Entering `initial` is not a
-			// transition, so only residency, never an edge, can fire on it here, and
-			// the arrival it receives is the one with no `from` (§9).
+			// transition, so the arrival carries no `from`, which is also what stops
+			// an edge row from matching it (§9).
 			dispatch(() => {
-				for (let row of actionRows) {
-					if (row.length === 2 && row[0] === initial) {
-						teardowns[initial] = row[1]({
-							input: undefined,
-							from: undefined,
-							to: current,
-							send,
-						})
-					}
-				}
+				fire(actionRows, {
+					input: undefined,
+					from: undefined,
+					to: current,
+					send,
+				})
 				settle()
 			})
 
@@ -629,7 +603,13 @@ export function machine(definition: unknown): unknown {
 				observe: (pattern: string, listener: Listener): (() => void) => {
 					// Parsed once, rather than matched by generating the eight patterns a
 					// transition could answer to — larger, and a `Set` per dispatch (I16).
-					let registration: Registration = [...parse(pattern), listener]
+					// Cast because a listener is declared over `Transition`, which has a
+					// `from`, while `fire` accepts the wider `Arrival`. Sound: only
+					// `step` fires listeners, and it always has a real transition.
+					let registration: Registration = [
+						...parse(pattern),
+						listener as Registration[3],
+					]
 					listeners = [...listeners, registration]
 					// Idempotent because removing what is already gone is a no-op.
 					return () => {
@@ -643,9 +623,30 @@ export function machine(definition: unknown): unknown {
 	} as unknown
 }
 
+/**
+ * What `fire` hands whatever it matched. The transition record, except that
+ * `from` is absent on the initial state's arrival, which no transition caused;
+ * only an action can see that one, since a missing `from` matches no edge (§9).
+ */
+type Arrival = {
+	readonly input: InputVocab | undefined
+	readonly from: StateVocab | undefined
+	readonly to: StateVocab
+	readonly send: (input: InputVocab) => void
+}
+
+/**
+ * One row shape for a listener, an edge action and a residency action alike:
+ * a parsed pattern and what to run. `key` is the state a residency stores its
+ * teardown under, and `''` for the two kinds that have none — the only thing
+ * telling them apart, which is what lets `fire` serve all three (I16). The
+ * return is `unknown` because only a residency's is read, and the type layer
+ * has already checked it is a teardown (I23).
+ */
 type Registration = readonly [
 	from: string,
 	input: string,
 	to: string,
-	listener: Listener,
+	run: (arrival: Arrival) => unknown,
+	key?: string,
 ]

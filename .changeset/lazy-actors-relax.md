@@ -2,39 +2,24 @@
 'totorobot': minor
 ---
 
-Add an `actions` block to `machine({…})`, so lifetime-scoped work travels with a
-definition instead of being bookkeeping every caller writes by hand:
+Add an `actions` block, so work scoped to a state travels with the definition
+instead of being bookkeeping every caller writes:
 
 ```ts
 actions: {
 	loading: ({ to, send }) => {
-		const controller = new AbortController()
-		fetchUser(to.id, controller.signal).then(
-			(user) => send({ type: 'loaded', user }),
-			(reason) => send({ type: 'failed', reason }),
-		)
-		return () => controller.abort()
+		const ctrl = new AbortController()
+		fetchUser(to.id, ctrl.signal).then((user) => send({ type: 'loaded', user }))
+		return () => ctrl.abort()
 	},
 	'draft -submit> review': () => track('submitted'),
 }
 ```
 
-A key with no `->` names a state and means residency: the function runs on entry,
-and the function it returns runs on exit, including across a self-transition and
-on every hop of an immediate chain. A key containing `->` is an edge, drawn from
-the same pattern language `observe` uses, and fires once per matching transition.
+A key with no `->` names a state: it runs on entry, and what it returns runs on
+exit. A key with `->` is an edge, firing once per matching transition, with the
+same patterns `observe` uses.
 
-Every action receives the same thing whichever kind of trigger fired it: the
-transition record `{ input, from, to, send }`, identical to what a matching
-`observe` listener gets. A residency arrival's `to` is the resident state; on the
-initial state, the one arrival no transition caused, `from` and `input` are
-`undefined`. Actions run in block declaration order, ahead of every listener, and
-a throwing action propagates the same way a throwing listener does.
-
-Only bare functions are supported for now; a `restart` policy, the record form,
-and several actions per trigger are tracked separately. `machine()` and its
-definitions are otherwise unchanged.
-
-    raw     1,091 B -> 1,471 B
-    gzip      640 B ->   772 B
-    brotli    577 B ->   706 B
+Every action receives the transition record a listener gets. On the initial
+state, which no transition caused, `from` and `input` are `undefined`. Actions
+run in declaration order, before listeners.

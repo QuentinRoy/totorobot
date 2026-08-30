@@ -309,67 +309,51 @@ Two of the three are derivable as types as well: `Handled<M, 'draft'>` and
 
 ## `actions`: lifetime-scoped work
 
-A definition can declare an `actions` block, so work scoped to a state — or fired
-by a transition — travels with the machine when it is imported, instead of being
-bookkeeping every caller writes by hand:
+Work scoped to a state, or to a transition, declared with the machine rather
+than assembled by every caller:
 
 ```ts
 const publication = machine({
 	// ...
 	actions: {
 		loading: ({ to, send }) => {
-			const controller = new AbortController()
-			fetchUser(to.id, controller.signal).then(
+			const ctrl = new AbortController()
+			fetchUser(to.id, ctrl.signal).then(
 				(user) => send({ type: 'loaded', user }),
 				(reason) => send({ type: 'failed', reason }),
 			)
-			return () => controller.abort()
+			return () => ctrl.abort()
 		},
 		'draft -submit> review': (e) => track('submitted', e.to.text),
 	},
 })
 ```
 
-**One trigger is one key, and the key decides how it is read.** A key with no
-`->` names a state and means residency: the function runs on entry, and the
-function it returns runs on exit. A key containing `->` is an edge, drawn from
-the same [pattern language `observe` uses](#observing) — wildcards included —
-and fires once per matching transition, even when both ends are `*`.
+**The key decides how it is read.** No `->` names a state: the function runs on
+entry, and the function it returns runs on exit. With `->` it is an edge, firing
+once per matching transition, in the same [pattern language](#observing) —
+wildcards included.
 
-**Every action receives the same thing, whichever kind of trigger fired it**:
-the transition record `{ input, from, to, send }`, identical to what a matching
-[listener](#observing) gets. There is no per-kind bag to learn and no second
-wrapper carrying `send` twice. A residency trigger is an arrival, so its `to`
-is the resident state; an edge trigger's is whatever its pattern targets.
+**Every action receives the transition record**, `{ input, from, to, send }`,
+whichever kind of trigger fired it and identical to what a matching
+[listener](#observing) gets. A residency is an arrival, so its `to` is the
+resident state. On the initial state, which no transition caused, `from` and
+`input` are `undefined`, so reading `from` needs a narrowing first.
 
-**The initial state is the one arrival no transition caused**, so `from` and
-`input` are `undefined` there — the same discriminant style an immediate
-transition already uses for `input`. A residency action that reads `from` has
-to narrow it first; most only want `to`, which is always present.
+**Only a residency may return a teardown.** Returning one from an edge is a
+compile error, so moving a helper between the two cannot silently strand its
+cleanup. An `async` body is rejected for the same reason: it returns a promise.
 
-**A residency action may return a teardown**, a niladic function that releases
-what it opened; an edge action may not. Returning one there is a compile error,
-so moving a helper from a state key to an edge key can never silently strand its
-cleanup. An `async` body is rejected the same way, since it returns a `Promise`
-rather than a teardown.
+**A self-transition tears down and sets up again**, exactly as the
+[caller-side recipe](#residency) does, and residency runs on every hop of an
+immediate chain — including a state entered and left within one drain. Opting
+out with a `restart` policy is
+[a roadmap direction](docs/roadmap.md#residency-on-observe--the-same-record-actions-takes).
 
-**A self-transition tears down and sets up again.** This falls out for free, the
-same way it does for the [caller-side residency recipe](#residency): a bare-key
-trigger's teardown runs on leaving its state and its setup runs on entering it,
-and a self-transition is both at once. A per-action `restart` policy to opt out
-is a later addition, not yet in this release
-([roadmap](docs/roadmap.md#residency--a-recipe-today-maybe-declared-later)).
-
-**Ordering, per commit:** the teardown of the residency being left, then the
-commit, then every matching action in the order the block declares them, then
-every listener ([commit ordering](#commit-ordering) unchanged otherwise). An
-action that throws propagates and abandons the rest of that commit's work, the
-same way a throwing listener does — what already committed stays committed, and
-every host stays usable afterwards.
-
-**Residency runs on every hop of an immediate chain**, including a state entered
-and left within the same drain: declaring it is never a shortcut that skips a
-transient state the caller-side recipe would have seen.
+**Per commit:** the teardown of the residency being left, the commit, every
+matching action in declaration order, then the listeners
+([commit ordering](#commit-ordering) is otherwise unchanged). A throwing action
+propagates and abandons the rest of that commit, like a throwing listener.
 
 ## The host
 
