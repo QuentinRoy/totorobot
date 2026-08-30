@@ -187,9 +187,8 @@ describe('actions', () => {
 		expect(seenSend).toBe(doc.send)
 	})
 
-	test('an edge bag carries the transition and send', () => {
+	test("an edge action's argument is the transition it fired on, identical to what a matching listener receives", () => {
 		let seenTransition: unknown
-		let seenSend: unknown
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ type: 'toggle' }>(),
@@ -198,9 +197,8 @@ describe('actions', () => {
 				'off -toggle> on': () => {},
 			},
 			actions: {
-				'off -toggle> on': ({ transition, send }) => {
+				'off -toggle> on': (transition) => {
 					seenTransition = transition
-					seenSend = send
 				},
 			},
 		}).start()
@@ -213,7 +211,6 @@ describe('actions', () => {
 			send: expect.any(Function),
 		})
 		expect((seenTransition as { send: unknown }).send).toBe(doc.send)
-		expect(seenSend).toBe(doc.send)
 	})
 
 	test('residency runs on every hop of an immediate chain, including a state entered and left within one drain', () => {

@@ -7,8 +7,10 @@
 
 A bare-function `actions` block has landed: a state-name key means residency, an
 edge key (drawn from the same pattern language `observe` uses) fires once per
-matching transition, and both get `{ state, send }` or `{ transition, send }`.
-See [the README](../README.md#actions-lifetime-scoped-work). What is left is the
+matching transition. A residency action gets `{ state, send }`; an edge action
+gets the transition record itself, `{ input, from, to, send }`, identical to
+what a matching listener receives rather than a second bag around it. See
+[the README](../README.md#actions-lifetime-scoped-work). What is left is the
 record form the design chapter below argued for from the start:
 
 ```ts

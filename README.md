@@ -325,8 +325,7 @@ const publication = machine({
 			)
 			return () => controller.abort()
 		},
-		'draft -submit> review': ({ transition }) =>
-			track('submitted', transition.to.text),
+		'draft -submit> review': (e) => track('submitted', e.to.text),
 	},
 })
 ```
@@ -337,12 +336,13 @@ function it returns runs on exit. A key containing `->` is an edge, drawn from
 the same [pattern language `observe` uses](#observing) — wildcards included —
 and fires once per matching transition, even when both ends are `*`.
 
-**The bag differs by kind.** A residency trigger's action receives
-`{ state, send }`, the state it just entered, tag included. An edge trigger's
-receives `{ transition, send }`, the same record a matching listener would get.
-Both get `send`, the host's own, so an action can drive the machine without
-closing over a host that does not exist yet — `.start()` has not returned while
-the initial state's own actions run.
+**The argument differs by kind.** A residency trigger's action receives
+`{ state, send }`, the state it just entered, tag included, and `send`. An edge
+trigger's action receives the transition record itself — `{ input, from, to, send }`
+— identical to what a matching listener gets, not a second bag wrapping it, so
+`send` is never carried twice. Either way, an action can drive the machine
+without closing over a host that does not exist yet — `.start()` has not
+returned while the initial state's own actions run.
 
 **A residency action may return a teardown**, a niladic function that releases
 what it opened; an edge action may not. Returning one there is a compile error,

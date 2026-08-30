@@ -233,20 +233,19 @@ type ResidencyAction<
 }) => undefined | Teardown | void
 
 /**
- * An edge trigger's bag: the transition it fired on, and `send`. Not bare
- * `void`: that alone lets a function return anything, `Teardown` included,
- * stranding it uncalled on every matching edge. Unioned with `undefined` the
- * hole closes — an explicit `Teardown` return is still rejected (I27) — while
- * still taking a plain block body with nothing to return.
+ * An edge trigger's argument is the transition it fired on, `send` included —
+ * identical to what a matching listener receives, not a second bag wrapping
+ * it, so `send` is not carried twice. Not bare `void`: that alone lets a
+ * function return anything, `Teardown` included, stranding it uncalled on
+ * every matching edge. Unioned with `undefined` the hole closes — an explicit
+ * `Teardown` return is still rejected (I27) — while still taking a plain
+ * block body with nothing to return.
  */
 type EdgeAction<
 	I extends InputVocab,
 	S extends StateVocab,
 	P extends string,
-> = (bag: {
-	readonly transition: NoInfer<Transition<I, S, P>>
-	readonly send: Send<I>
-}) => undefined | void
+> = (transition: NoInfer<Transition<I, S, P>>) => undefined | void
 
 /**
  * Checked row by row, like `Table`: decidable from the string alone (§9), an
@@ -348,10 +347,16 @@ type UncheckedHandler = (args: {
 
 type Row = readonly [to: string, handler: UncheckedHandler]
 
-/** One shape for every action call: a row hands it whichever bag its own kind builds. */
+/**
+ * One shape for every action call: a residency row calls it with a bag, an
+ * edge row with the bare transition record `send` included, so only the
+ * fields the actual call sites pass are ever required.
+ */
 type UncheckedAction = (bag: {
 	readonly state?: StateVocab
-	readonly transition?: Transition
+	readonly input?: InputVocab | undefined
+	readonly from?: StateVocab
+	readonly to?: StateVocab
 	readonly send: (input: InputVocab) => void
 }) => Teardown | undefined
 
@@ -532,7 +537,7 @@ export function machine(definition: unknown): unknown {
 								(l === '' || l === input?.type) &&
 								(t === '*' || t === to)
 							) {
-								fn({ transition: record, send })
+								fn(record)
 							}
 						}
 					}

@@ -27,7 +27,7 @@ test("a residency trigger's bag narrows state to that trigger's own state, tag i
 	})
 })
 
-test("an edge trigger's bag narrows the transition the way a listener's pattern narrows its record", () => {
+test("an edge trigger's argument narrows the transition exactly the way a listener's pattern narrows its record — same type, not a second bag around it", () => {
 	machine({
 		initial: 'off',
 		inputs: type<Inputs>(),
@@ -37,13 +37,14 @@ test("an edge trigger's bag narrows the transition the way a listener's pattern 
 			'on -toggle> off': () => {},
 		},
 		actions: {
-			'off -toggle> on': ({ transition }) => {
+			'off -toggle> on': (transition) => {
 				expectTypeOf(transition.from).toEqualTypeOf<{ name: 'off' }>()
 				expectTypeOf(transition.to).toEqualTypeOf<{
 					name: 'on'
 					count: number
 				}>()
 				expectTypeOf(transition.input).toEqualTypeOf<{ type: 'toggle' }>()
+				expectTypeOf(transition.send).toEqualTypeOf<(input: Inputs) => void>()
 			},
 		},
 	})
@@ -124,8 +125,8 @@ test('a plain block body with nothing to tear down is accepted on both a residen
 			on: ({ state }) => {
 				state.count // no return statement at all: infers as `void`, not `undefined`
 			},
-			'off -toggle> on': ({ transition }) => {
-				transition.to.count
+			'off -toggle> on': ({ to }) => {
+				to.count // no return statement at all: infers as `void`, not `undefined`
 			},
 		},
 	})
