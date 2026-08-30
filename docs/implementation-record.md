@@ -396,3 +396,31 @@ inference site again, and the vocabulary widens to whatever the rows say, so an
 undeclared state name in a key stops being an error. This is a soundness hole rather
 than a lost narrowing, and the well-formed rows a probe writes first do not show
 it.
+
+### <a id="i27"></a>I27 — A block-body action with no `return` infers `void`, not `undefined`
+
+`actions` sits behind the same `Declared<Raw, Default>` tier [I24](#i24) describes for
+`transitions`: `I`/`S` default off `K`, itself inferred from `transitions`' own keys.
+Even with `inputs`/`states` declared explicitly, so `I`/`S` resolve to `RawI`/`RawS`
+directly and do not depend on `K` at all, a plain block-body action —
+`on: () => { log.push('setup') }` — is inferred **independently**, as `() => void`,
+rather than checked against the property's contextual type. `void` is not
+assignable to `undefined`, so every ordinary, no-teardown action failed under
+`undefined | Teardown` alone, though the identical body typechecks fine given
+directly to a variable of that function type with no generic call around it.
+Pinned in `tests/actions.test-d.ts`, both directions: a plain block body is
+accepted, and each rejection this finding's fix has to keep is still there.
+
+The fix is not a narrower signature but a wider one, the same shape `Table` already
+uses for a payload-free target: `EmptyObject | void`. Unioning `| void` onto
+`ResidencyAction` and `EdgeAction` looks like it reopens what plain `undefined` was
+chosen to close ([the design record, "Restart, and how the policy is
+spelled"](design-record.md#restart-and-how-the-policy-is-spelled)), but does not:
+TypeScript's void-return bivariance — a function assignable regardless of what it
+returns — fires only when a signature's return type **is** `void`; once `void` is one
+arm of a union, a wrong-shaped return, a stray `Teardown` from `EdgeAction`, and an
+`async` body's `Promise` are all still rejected structurally, the same way
+`EmptyObject | void` already rejects a wrong-shaped object literal. `undefined`
+alone still has to stay in the union — dropping it for bare `Teardown | void` would
+still reject a stray `Teardown` on an edge, but nothing left in the signature would
+tell a reader which of the two closed that gap.

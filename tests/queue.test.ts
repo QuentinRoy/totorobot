@@ -440,9 +440,8 @@ describe('commit ordering across hosts', () => {
 // dispatch like any other: it runs under the same drain ownership `send` takes,
 // so a send issued from one of its hops queues rather than nesting. Nothing on
 // the host being started can issue one — it has no listeners yet — so these go
-// through a handler reaching into another host, which is also the shape
-// `actions` will make ordinary. See `docs/design-record.md`, "`start` settles
-// under the drain".
+// through a handler reaching into another host. See `docs/design-record.md`,
+// "`start` settles under the drain".
 describe('commit ordering while `start` settles', () => {
 	test('a send issued while the initial chain settles queues rather than nesting, and drains after the chain has settled', () => {
 		const sink = toggle.start()
@@ -529,5 +528,130 @@ describe('commit ordering while `start` settles', () => {
 		// the drain was released: an ordinary send still works
 		sink.send({ type: 'toggle' })
 		expect(sink.current).toEqual({ name: 'on' })
+	})
+})
+
+// The first action a machine ever runs is residency on the initial state (or on
+// whatever its immediate chain settles into, since actions run on every hop).
+// `start` settles that chain under the same drain `send` takes, so an action
+// sending from one of those hops queues like any other send and lands only once
+// the chain has settled — the same assertions the two describe blocks above make
+// for a handler, made here for a declared residency. See `docs/design-record.md`,
+// "What to test when it lands: actions fired by `start()`".
+describe('actions fired by `start()`', () => {
+	test('residency on the initial state, sending synchronously, lands after the initial chain has settled — even with no chain to settle beyond the state itself', () => {
+		const sink = toggle.start()
+		const log: string[] = []
+		sink.observe('* -> *', (e) => log.push(`sink listener: -> ${e.to.name}`))
+
+		machine({
+			initial: 'a',
+			states: type<{ name: 'a' }>(),
+			transitions: {},
+			actions: {
+				a: () => {
+					log.push('residency on a')
+					sink.send({ type: 'toggle' })
+					// deferred: the queue belongs to the drain `start` is holding
+					log.push(`sink right after send: ${sink.current.name}`)
+				},
+			},
+		}).start()
+
+		expect(log).toEqual([
+			'residency on a',
+			'sink right after send: off',
+			'sink listener: -> on',
+		])
+		// drained before `start` returned
+		expect(sink.current).toEqual({ name: 'on' })
+	})
+
+	test('the same, over two or more hops: the send still lands only once every hop has run', () => {
+		const sink = toggle.start()
+		const log: string[] = []
+		sink.observe('* -> *', (e) => log.push(`sink listener: -> ${e.to.name}`))
+
+		const started = machine({
+			initial: 'a',
+			states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
+			transitions: {
+				'a -> b': () => {},
+				'b -> c': () => {},
+			},
+			actions: {
+				a: () => {
+					log.push('residency on a')
+					sink.send({ type: 'toggle' })
+					log.push(`sink right after send: ${sink.current.name}`)
+				},
+				c: () => {
+					log.push('residency on c')
+				},
+			},
+		}).start()
+
+		expect(started.current).toEqual({ name: 'c' })
+		expect(log).toEqual([
+			'residency on a',
+			'sink right after send: off',
+			'residency on c',
+			'sink listener: -> on',
+		])
+		// drained before `start` returned, after every hop had already run
+		expect(sink.current).toEqual({ name: 'on' })
+	})
+
+	test('`start` called from inside a dispatch settles its residency inline but leaves the queue to the outer drain', () => {
+		const driver = toggle.start()
+		const sink = toggle.start()
+		const log: string[] = []
+		sink.observe('* -> *', (e) => log.push(`sink listener: -> ${e.to.name}`))
+
+		const late = machine({
+			initial: 'a',
+			states: type<{ name: 'a' }>(),
+			transitions: {},
+			actions: {
+				a: () => {
+					sink.send({ type: 'toggle' })
+					log.push(`sink right after send: ${sink.current.name}`)
+				},
+			},
+		})
+
+		driver.observe('* -> *', () => {
+			// settled inline: the caller cannot be handed a host whose residency
+			// has not yet run
+			late.start()
+			log.push('driver listener done')
+		})
+
+		driver.send({ type: 'toggle' })
+		expect(log).toEqual([
+			'sink right after send: off',
+			'driver listener done',
+			'sink listener: -> on',
+		])
+	})
+
+	test('a self-send from the initial residency drains before `start` returns, so the host it hands back already reflects it — with no listener able to have missed the hop, since none could yet exist', () => {
+		const selfSender = machine({
+			initial: 'a',
+			inputs: type<{ type: 'go' }>(),
+			states: type<{ name: 'a' } | { name: 'b' }>(),
+			transitions: {
+				'a -go> b': () => {},
+			},
+			actions: {
+				a: ({ send }) => {
+					send({ type: 'go' })
+				},
+			},
+		})
+
+		const host = selfSender.start()
+		// drained inside `start`'s own dispatch, before it returned
+		expect(host.current).toEqual({ name: 'b' })
 	})
 })

@@ -3,35 +3,39 @@
 > **None of this is promised.** These are directions the design record argues for,
 > past what v1 ships. Whether any of them lands, and in what shape, stays open.
 
-## `actions` — effects owned by the definition
+## `actions` — the record form, `restart`, and several per trigger
 
-v1's answer to effects is "the caller writes a function." `actions` would be
-trigger-keyed and declared inside `machine({…})`, so behaviour travels with the
-definition when it is imported, rather than living beside it as a convention a caller
-has to remember:
+A bare-function `actions` block has landed: a state-name key means residency, an
+edge key (drawn from the same pattern language `observe` uses) fires once per
+matching transition, and both get `{ state, send }` or `{ transition, send }`.
+See [the README](../README.md#actions-lifetime-scoped-work). What is left is the
+record form the design chapter below argued for from the start:
 
 ```ts
 actions: {
-	loading: ({ data, send }) => fetchUser(data.id, send), // residency
+	loading: ({ state, send }) => fetchUser(state.id, send), // residency, bare function
 	connected: {
-		run: ({ data, send }) => subscribe(data.url, send),
+		run: ({ state, send }) => subscribe(state.url, send),
 		restart: false, // survives re-entry
 	},
-	'draft -cancel> *': () => track('cancelled'), // an edge
+	'draft -cancel> *': () => track('cancelled'), // an edge, bare function
 }
 ```
 
-One action per trigger: a state name for entry, or a transition key for an edge. An
-action is a bare function, or a record with a `restart` field: the default is to restart
-on every entry, `restart: false` survives it, and a predicate over the resident data
-before and after decides case by case. Policy is a field rather than syntax. An action's
-`send` accepts only already-declared inputs, so `actions` adds nothing to the
-vocabulary.
+An action becomes a bare function, a record with `run` and an optional `restart`,
+or an array of either. `restart` takes `boolean | ((from, to) => boolean)`,
+consulted only on a self-transition: the default is to restart on every entry,
+`restart: false` survives it, and a predicate over the resident data before and
+after decides case by case. It is rejected at compile time on an edge trigger.
+The array arm lets one trigger carry more than one action, set up in
+declaration order and torn down in reverse. None of this changes what shipped:
+an action's `send` still accepts only already-declared inputs, so `actions`
+still adds nothing to the vocabulary.
 
-It comes first among the directions here because `emit`, below, has nowhere to live
-without it: a handler may `skip()`, and declaration order is priority order, so a
-handler that emitted would announce a transition that then loses. `emit` needs a
-post-commit home, and the action bag is the only one.
+`emit`, below, needed `actions` to exist first: a handler may `skip()`, and
+declaration order is priority order, so a handler that emitted would announce a
+transition that then loses. `emit` needs a post-commit home, and the action bag
+is the only one.
 
 _Argued in: [rationale §9](design-record.md#9-actions)._
 
@@ -45,7 +49,7 @@ outputs: type<{ type: 'opened'; center: Point } | { type: 'ended' }>(),
 
 actions: {
 	novice: {
-		run: ({ data, emit }) => emit({ type: 'opened', center: data.origin }),
+		run: ({ state, emit }) => emit({ type: 'opened', center: state.origin }),
 		restart: false,
 	},
 },
@@ -59,21 +63,21 @@ syntax is claimed ahead of the design that would justify it.
 
 _Argued in: [rationale §10](design-record.md#revision-the-composition-boundary)._
 
-## Residency — a recipe today, maybe declared later
+## Residency on `observe` — the same record `actions` takes
 
-Scoping setup and teardown to "while resident in a state" already works as a
-[caller-side recipe](../README.md#residency) over two `observe` patterns; the
-bare key in the key language is reserved for it. If `actions` lands, the
-same scoping could be declared directly instead of assembled by hand — the
-`// residency` comment on `loading`, above, is what that would look like. `observe`
-would take the bare key at the same time, with the same `restart` field, so a residency
-written by the caller and one declared in the definition do not end up with two policy
-vocabularies.
+Scoping setup and teardown to "while resident in a state" works two ways now:
+the [caller-side recipe](../README.md#residency) over two `observe` patterns,
+for a machine you did not declare it with, and a bare-key trigger in
+[`actions`](../README.md#actions-lifetime-scoped-work), for one you did. What is
+left is `observe` accepting the same record `actions` does —
+`observe(pattern, { run, restart })` beside the unchanged
+`observe(pattern, listener)` — including a bare state key meaning residency
+there too, so a caller-side residency and a declared one share one policy
+vocabulary instead of two.
 
-This entry makes no ordering claim against `actions` or `emit`. The host not owning
-residency is a decision already made, not a gap waiting on the others, and adding it
-later breaks nothing that exists today. Whether it ever does is as open as everything
-else here.
+Whether this lands is as open as everything else here, but it breaks nothing
+that exists today either way: `actions` already settled the shape, this is only
+`observe` learning to accept it.
 
 _Argued in: [rationale §11](design-record.md#residency-is-derivable-not-a-host-feature)._
 

@@ -207,6 +207,63 @@ type Listener<
 	P extends string = '* -> *',
 > = (transition: Transition<I, S, P>) => void
 
+// ---------------------------------------------------------------------------
+// Actions
+// ---------------------------------------------------------------------------
+
+/** What a residency action may return, to release what it opened on exit. */
+type Teardown = () => void
+
+/**
+ * A residency trigger's bag: the resident state, tag included, and `send`.
+ * Fires on entry; the teardown it returns runs on exit (§9). The trailing
+ * `| void` is not the bivariance hole it looks like — that only opens when a
+ * signature's return type *is* `void`, not when `void` is one arm of a union,
+ * where an explicit wrong-shaped or `async` return is still rejected (I27).
+ * It is what lets a setup with nothing to tear down end in a plain statement
+ * rather than an explicit `return undefined`.
+ */
+type ResidencyAction<
+	I extends InputVocab,
+	S extends StateVocab,
+	N extends string,
+> = (bag: {
+	readonly state: NoInfer<StateNamed<S, N>>
+	readonly send: Send<I>
+}) => undefined | Teardown | void
+
+/**
+ * An edge trigger's bag: the transition it fired on, and `send`. Not bare
+ * `void`: that alone lets a function return anything, `Teardown` included,
+ * stranding it uncalled on every matching edge. Unioned with `undefined` the
+ * hole closes — an explicit `Teardown` return is still rejected (I27) — while
+ * still taking a plain block body with nothing to return.
+ */
+type EdgeAction<
+	I extends InputVocab,
+	S extends StateVocab,
+	P extends string,
+> = (bag: {
+	readonly transition: NoInfer<Transition<I, S, P>>
+	readonly send: Send<I>
+}) => undefined | void
+
+/**
+ * Checked row by row, like `Table`: decidable from the string alone (§9), an
+ * edge-shaped key (`from -input> to`, wildcards included) against `Pattern`,
+ * else a bare key against the declared state names. Either miss reports its
+ * own `not a trigger: '…'` rather than poisoning a well-formed neighbour.
+ */
+type Actions<I extends InputVocab, S extends StateVocab, A extends string> = {
+	readonly [P in A]: P extends `${string} -${string}> ${string}`
+		? P extends Pattern<I, S>
+			? EdgeAction<I, S, P>
+			: `not a trigger: '${P}'`
+		: P extends StateName<S>
+			? ResidencyAction<I, S, P>
+			: `not a trigger: '${P}'`
+}
+
 /** Arity follows the initial state's payload, by `Table`'s three-way rule. */
 type Start<S extends StateVocab, Init extends string> = keyof Omit<
 	Extract<S, { name: Init }>,
@@ -291,6 +348,22 @@ type UncheckedHandler = (args: {
 
 type Row = readonly [to: string, handler: UncheckedHandler]
 
+/** One shape for every action call: a row hands it whichever bag its own kind builds. */
+type UncheckedAction = (bag: {
+	readonly state?: StateVocab
+	readonly transition?: Transition
+	readonly send: (input: InputVocab) => void
+}) => Teardown | undefined
+
+/**
+ * A residency row, by state name, or an edge row, by its parsed pattern —
+ * decided once, when `actions` is read (§9). Told apart at dispatch by length,
+ * the way `Row` and `Registration` are already told apart by shape.
+ */
+type ActionRow =
+	| readonly [name: string, action: UncheckedAction]
+	| readonly [from: string, input: string, to: string, action: UncheckedAction]
+
 interface UncheckedHost {
 	readonly current: StateVocab
 	readonly send: (input: InputVocab) => void
@@ -355,6 +428,8 @@ let dispatch = (work?: () => void): void => {
  * and the defaults hold only because `Table`'s `NoInfer` closes the handler
  * parameters — as would overloads, at the cost of per-row diagnostics (I14). `K`
  * comes from the mapped type in `transitions`, with no second one beside it (I20).
+ * `A` is the same idea again for `actions`: inferred from that block's own
+ * keys, contributing nothing back to `I`, `S` or `K` (§9).
  */
 export function machine<
 	Init extends string,
@@ -363,6 +438,7 @@ export function machine<
 	RawS extends StateVocab | undefined = undefined,
 	I extends InputVocab = Declared<RawI, InputsFromKeys<K>>,
 	S extends StateVocab = Declared<RawS, StatesFromKeys<K>>,
+	A extends string = never,
 >(definition: {
 	readonly initial: Init & StateName<NoInfer<S>>
 	// `| undefined` is what `type()` returns, and inference subtracts it. Spelled
@@ -370,13 +446,15 @@ export function machine<
 	readonly inputs?: RawI | undefined
 	readonly states?: RawS | undefined
 	readonly transitions: Table<I, S, K>
+	readonly actions?: Actions<I, S, A> | undefined
 }): Machine<I, S, K, Init>
 // The implementation signature, never seen by a caller. `unknown` because a row's
 // value can be the poison string literal, which no concrete type implements (I23).
 export function machine(definition: unknown): unknown {
-	let { initial, transitions } = definition as unknown as {
+	let { initial, transitions, actions } = definition as unknown as {
 		readonly initial: string
 		readonly transitions: Readonly<Record<string, UncheckedHandler>>
+		readonly actions?: Readonly<Record<string, UncheckedAction>>
 	}
 	let index: InputRows = Object.create(null)
 	let immediates: ImmediateRows = Object.create(null)
@@ -393,6 +471,17 @@ export function machine(definition: unknown): unknown {
 		}
 	}
 
+	// A bare key has no arrow, so splitting on the transition separators leaves
+	// it in one piece; anything else is an edge and goes through `parse`, which
+	// throws on a malformed one the same way a malformed transition key does.
+	let actionRows: ActionRow[] = []
+	for (let key in actions) {
+		let fn = actions[key]!
+		actionRows.push(
+			key.split(/ -|> /).length === 1 ? [key, fn] : [...parse(key), fn],
+		)
+	}
+
 	return {
 		start: (data?: object): UncheckedHost => {
 			// A closure variable behind a getter, not a property `send` mutates:
@@ -402,6 +491,10 @@ export function machine(definition: unknown): unknown {
 			// Copy-on-write at registration, iteration at dispatch: allocation lands on
 			// the path that runs least, and it measures smaller (I16).
 			let listeners: Registration[] = []
+
+			// Keyed by state name: at most one residency is ever in flight for it,
+			// since re-entering overwrites the slot with a fresh teardown (§9).
+			let teardowns: Record<string, Teardown | undefined> = Object.create(null)
 
 			// One row-scanning path for both kinds of transition: commit the first row
 			// that does not decline, and report whether the machine moved. Fusing this
@@ -413,14 +506,37 @@ export function machine(definition: unknown): unknown {
 					// Declining is ordinary and silent: try the next row for this pair.
 					if (payload === SKIP) continue
 
+					// The residency being left tears down before the commit: a throw
+					// here abandons the hop with nothing of it committed yet (§9).
+					let from = current
+					teardowns[from.name]?.()
+
 					// Commit, then notify, so every listener sees a machine that agrees
 					// with the record. The tag is spread last, so a handler that spread its
 					// source into the return cannot leave the source's tag behind.
-					let from = current
 					current = { ...payload, name: to }
 					// The same `send` the host exposes: a reaction drives the machine
 					// without closing over the host it was registered on.
 					let record: Transition = { input, from, to: current, send }
+
+					// Actions run in block declaration order, ahead of every listener: a
+					// residency entry stores its teardown, an edge just runs (§9).
+					for (let row of actionRows) {
+						if (row.length === 2) {
+							let [name, fn] = row
+							if (to === name) teardowns[name] = fn({ state: current, send })
+						} else {
+							let [f, l, t, fn] = row
+							if (
+								(f === '*' || f === from.name) &&
+								(l === '' || l === input?.type) &&
+								(t === '*' || t === to)
+							) {
+								fn({ transition: record, send })
+							}
+						}
+					}
+
 					for (let [f, l, t, listener] of listeners) {
 						if (
 							(f === '*' || f === from.name) &&
@@ -462,9 +578,18 @@ export function machine(definition: unknown): unknown {
 				dispatch()
 			}
 
-			// Under the drain `send` takes, so a send from one of these hops runs after
-			// the chain settles (§11, "`start` settles under the drain").
-			dispatch(settle)
+			// Under the drain `send` takes, so a send from one of these hops — the
+			// initial state's own residency included — runs after the chain settles
+			// (§11, "`start` settles under the drain"). Entering `initial` is not a
+			// transition, so only residency, never an edge, can fire on it here.
+			dispatch(() => {
+				for (let row of actionRows) {
+					if (row.length === 2 && row[0] === initial) {
+						teardowns[initial] = row[1]({ state: current, send })
+					}
+				}
+				settle()
+			})
 
 			return {
 				get current(): StateVocab {
