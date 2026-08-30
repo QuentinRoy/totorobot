@@ -10,7 +10,7 @@ import { machine, type } from 'totorobot'
 type Inputs = { type: 'toggle' } | { type: 'go' }
 type States = { name: 'off' } | { name: 'on'; count: number } | { name: 'gone' }
 
-test("a residency trigger's bag narrows state to that trigger's own state, tag included", () => {
+test("a residency trigger's arrival narrows `to` to that trigger's own state, tag included, whichever way the state was entered", () => {
 	machine({
 		initial: 'off',
 		inputs: type<Inputs>(),
@@ -20,8 +20,40 @@ test("a residency trigger's bag narrows state to that trigger's own state, tag i
 			'on -toggle> off': () => {},
 		},
 		actions: {
-			on: ({ state }) => {
-				expectTypeOf(state).toEqualTypeOf<{ name: 'on'; count: number }>()
+			on: ({ to }) => {
+				expectTypeOf(to).toEqualTypeOf<{ name: 'on'; count: number }>()
+			},
+		},
+	})
+})
+
+test("a residency trigger's `from` covers every state that can reach it, plus `undefined` for the initial arrival no transition caused", () => {
+	machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: {
+			'off -toggle> on': () => ({ count: 0 }),
+			'on -toggle> off': () => {},
+		},
+		actions: {
+			on: ({ from }) => {
+				expectTypeOf(from).toEqualTypeOf<States | undefined>()
+			},
+		},
+	})
+})
+
+test('a residency action reading `from` without narrowing away the initial arrival is a compile error', () => {
+	machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
+		actions: {
+			on: ({ from }) => {
+				// @ts-expect-error - `from` is `undefined` on the initial arrival
+				from.name
 			},
 		},
 	})
@@ -122,8 +154,8 @@ test('a plain block body with nothing to tear down is accepted on both a residen
 		states: type<States>(),
 		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
 		actions: {
-			on: ({ state }) => {
-				state.count // no return statement at all: infers as `void`, not `undefined`
+			on: ({ to }) => {
+				to.count // no return statement at all: infers as `void`, not `undefined`
 			},
 			'off -toggle> on': ({ to }) => {
 				to.count // no return statement at all: infers as `void`, not `undefined`

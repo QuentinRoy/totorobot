@@ -209,37 +209,56 @@ type Listener<
 
 // ---------------------------------------------------------------------------
 // Actions
+//
+// Every action takes the same one argument, whichever kind of trigger fired
+// it: the transition record, `send` included, exactly what a matching listener
+// receives (§9). A residency trigger is an arrival, so its `to` is the resident
+// state; an edge trigger's is whatever its pattern targets. One shape across
+// both kinds and `observe`, rather than a bag per kind that would carry `send`
+// twice. Only the return types differ, and only to keep a teardown from being
+// stranded on an edge.
 // ---------------------------------------------------------------------------
 
 /** What a residency action may return, to release what it opened on exit. */
 type Teardown = () => void
 
 /**
- * A residency trigger's bag: the resident state, tag included, and `send`.
- * Fires on entry; the teardown it returns runs on exit (§9). The trailing
- * `| void` is not the bivariance hole it looks like — that only opens when a
- * signature's return type *is* `void`, not when `void` is one arm of a union,
- * where an explicit wrong-shaped or `async` return is still rejected (I27).
- * It is what lets a setup with nothing to tear down end in a plain statement
- * rather than an explicit `return undefined`.
+ * Entering the initial state is the one arrival no transition caused, so
+ * `from` and `input` are `undefined` there. Its own arm rather than a widened
+ * `Transition`, which `observe` and every edge share: `input: undefined`
+ * already discriminates an immediate hop, so `from: undefined` extends that
+ * vocabulary instead of inventing a second one (§9).
+ */
+type Initial<I extends InputVocab, S extends StateVocab, N extends string> = {
+	readonly input: undefined
+	readonly from: undefined
+	readonly to: NoInfer<StateNamed<S, N>>
+	readonly send: Send<I>
+}
+
+/**
+ * Fires on arrival at its state, by any route `* -> N` covers; the teardown it
+ * returns runs on exit (§9). The trailing `| void` is not the bivariance hole
+ * it looks like — that only opens when a signature's return type *is* `void`,
+ * not when `void` is one arm of a union, where an explicit wrong-shaped or
+ * `async` return is still rejected (I27). It is what lets a setup with nothing
+ * to tear down end in a plain statement rather than an explicit
+ * `return undefined`.
  */
 type ResidencyAction<
 	I extends InputVocab,
 	S extends StateVocab,
 	N extends string,
-> = (bag: {
-	readonly state: NoInfer<StateNamed<S, N>>
-	readonly send: Send<I>
-}) => undefined | Teardown | void
+> = (
+	arrival: NoInfer<Transition<I, S, `* -> ${N}`>> | Initial<I, S, N>,
+) => undefined | Teardown | void
 
 /**
- * An edge trigger's argument is the transition it fired on, `send` included —
- * identical to what a matching listener receives, not a second bag wrapping
- * it, so `send` is not carried twice. Not bare `void`: that alone lets a
- * function return anything, `Teardown` included, stranding it uncalled on
- * every matching edge. Unioned with `undefined` the hole closes — an explicit
- * `Teardown` return is still rejected (I27) — while still taking a plain
- * block body with nothing to return.
+ * Not bare `void`: that alone lets a function return anything, `Teardown`
+ * included, stranding it uncalled on every matching edge. Unioned with
+ * `undefined` the hole closes — an explicit `Teardown` return is still
+ * rejected (I27) — while still taking a plain block body with nothing to
+ * return.
  */
 type EdgeAction<
 	I extends InputVocab,
@@ -348,15 +367,14 @@ type UncheckedHandler = (args: {
 type Row = readonly [to: string, handler: UncheckedHandler]
 
 /**
- * One shape for every action call: a residency row calls it with a bag, an
- * edge row with the bare transition record `send` included, so only the
- * fields the actual call sites pass are ever required.
+ * One shape for every action call, residency and edge alike: the transition
+ * record dispatch already built. `from` is absent only for the initial
+ * state's own arrival, which no transition caused.
  */
-type UncheckedAction = (bag: {
-	readonly state?: StateVocab
-	readonly input?: InputVocab | undefined
-	readonly from?: StateVocab
-	readonly to?: StateVocab
+type UncheckedAction = (arrival: {
+	readonly input: InputVocab | undefined
+	readonly from: StateVocab | undefined
+	readonly to: StateVocab
 	readonly send: (input: InputVocab) => void
 }) => Teardown | undefined
 
@@ -524,12 +542,13 @@ export function machine(definition: unknown): unknown {
 					// without closing over the host it was registered on.
 					let record: Transition = { input, from, to: current, send }
 
-					// Actions run in block declaration order, ahead of every listener: a
-					// residency entry stores its teardown, an edge just runs (§9).
+					// Actions run in block declaration order, ahead of every listener, and
+					// every one of them receives this same record: a residency entry
+					// stores its teardown, an edge just runs (§9).
 					for (let row of actionRows) {
 						if (row.length === 2) {
 							let [name, fn] = row
-							if (to === name) teardowns[name] = fn({ state: current, send })
+							if (to === name) teardowns[name] = fn(record)
 						} else {
 							let [f, l, t, fn] = row
 							if (
@@ -586,11 +605,17 @@ export function machine(definition: unknown): unknown {
 			// Under the drain `send` takes, so a send from one of these hops — the
 			// initial state's own residency included — runs after the chain settles
 			// (§11, "`start` settles under the drain"). Entering `initial` is not a
-			// transition, so only residency, never an edge, can fire on it here.
+			// transition, so only residency, never an edge, can fire on it here, and
+			// the arrival it receives is the one with no `from` (§9).
 			dispatch(() => {
 				for (let row of actionRows) {
 					if (row.length === 2 && row[0] === initial) {
-						teardowns[initial] = row[1]({ state: current, send })
+						teardowns[initial] = row[1]({
+							input: undefined,
+							from: undefined,
+							to: current,
+							send,
+						})
 					}
 				}
 				settle()

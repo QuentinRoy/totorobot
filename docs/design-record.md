@@ -1513,6 +1513,46 @@ nothing to the vocabulary; this works _because_ it is less powerful than a mount
 **it is the standard answer** (Harel, SCXML, XState and `gen_statem` all attach
 activities to nodes).
 
+### Revision: one argument for every action, not a bag per kind
+
+The plan through the spec was a bag per trigger kind: `{ state, send }` for a
+residency, `{ transition, send }` for an edge. Built, it was wrong twice over, and
+both faults were visible the moment the two sat next to each other in one block.
+
+**The edge bag wrapped what it should have been.** An edge action and a listener
+react to the same thing, a committed transition, so there is nothing to justify
+handing them different shapes. Wrapping the record in a bag also carried `send`
+twice, once as `bag.send` and once inside `bag.transition`, the same function
+under two names.
+
+**And then residency did not match the edge.** Unwrapping the edge fixed the
+first fault and sharpened the second: `{ state, send }` beside
+`{ input, from, to, send }` is two shapes to learn for one block, chosen by a
+distinction the caller did not ask for.
+
+**Both faults have one fix, and the constraints leave no choice about it.** Edge
+must equal listener, and residency must equal edge, so residency equals listener
+too: **every action receives the transition record, `{ input, from, to, send }`**.
+A residency trigger is an arrival, so its `to` _is_ the resident state, which is
+what the `state` field was; nothing is lost, and `from` and `input` are gained.
+The runtime shrinks to match, since dispatch already builds exactly one such
+record per commit and can now pass it to both kinds unchanged.
+
+**The initial state is the one arrival no transition caused**, and it is the only
+thing this costs. `start()` enters a state without a hop, so `from` and `input`
+are `undefined` there. That is not a new idea to explain: `input: undefined`
+already discriminates an immediate hop from a payload-free input (§6), and
+`from: undefined` extends the same vocabulary rather than inventing a second one.
+A residency action that reads `from` must narrow it first; most read only `to`,
+which is always there. The rejected alternatives were worse: synthesising a
+self-transition (`from === to`) would be a lie a caller can observe, and not
+firing residency on the initial state would delete the feature's main case.
+
+This supersedes the bag shape recorded in the `actions` epic, and the same one
+argument is what `observe`'s own residency form should take when it lands
+([the roadmap](roadmap.md)), so the caller-side and definition-side forms stay
+one spelling rather than two.
+
 ### The bare-key conflict, and the rule that closed it
 
 Residency wants a bare key, and the listener language already gave bare keys a

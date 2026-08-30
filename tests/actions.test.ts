@@ -164,9 +164,8 @@ describe('actions', () => {
 		expect(log).toEqual(['wildcard', 'exact'])
 	})
 
-	test('a residency bag carries the resident state, tag included, and send', () => {
-		let seenState: unknown
-		let seenSend: unknown
+	test('a residency action receives the arrival that entered its state, the same record shape an edge action and a listener get, with `to` the resident state', () => {
+		let seenArrival: unknown
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ type: 'toggle' }>(),
@@ -175,16 +174,45 @@ describe('actions', () => {
 				'off -toggle> on': () => {},
 			},
 			actions: {
-				on: ({ state, send }) => {
-					seenState = state
-					seenSend = send
+				on: (arrival) => {
+					seenArrival = arrival
 				},
 			},
 		}).start()
 
 		doc.send({ type: 'toggle' })
-		expect(seenState).toEqual({ name: 'on' })
-		expect(seenSend).toBe(doc.send)
+		expect(seenArrival).toEqual({
+			input: { type: 'toggle' },
+			from: { name: 'off' },
+			to: { name: 'on' },
+			send: expect.any(Function),
+		})
+		expect((seenArrival as { send: unknown }).send).toBe(doc.send)
+	})
+
+	test('residency on the initial state receives the one arrival with no transition behind it: from and input are undefined', () => {
+		let seenArrival: unknown
+		const doc = machine({
+			initial: 'off',
+			inputs: type<{ type: 'toggle' }>(),
+			states: type<{ name: 'off' } | { name: 'on' }>(),
+			transitions: {
+				'off -toggle> on': () => {},
+			},
+			actions: {
+				off: (arrival) => {
+					seenArrival = arrival
+				},
+			},
+		}).start()
+
+		expect(seenArrival).toEqual({
+			input: undefined,
+			from: undefined,
+			to: { name: 'off' },
+			send: expect.any(Function),
+		})
+		expect((seenArrival as { send: unknown }).send).toBe(doc.send)
 	})
 
 	test("an edge action's argument is the transition it fired on, identical to what a matching listener receives", () => {

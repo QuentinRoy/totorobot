@@ -7,17 +7,17 @@
 
 A bare-function `actions` block has landed: a state-name key means residency, an
 edge key (drawn from the same pattern language `observe` uses) fires once per
-matching transition. A residency action gets `{ state, send }`; an edge action
-gets the transition record itself, `{ input, from, to, send }`, identical to
-what a matching listener receives rather than a second bag around it. See
-[the README](../README.md#actions-lifetime-scoped-work). What is left is the
+matching transition, and both kinds receive the same transition record a
+matching listener does, `{ input, from, to, send }` — a residency arrival's `to`
+being the resident state, and its `from` `undefined` on the initial state alone.
+See [the README](../README.md#actions-lifetime-scoped-work). What is left is the
 record form the design chapter below argued for from the start:
 
 ```ts
 actions: {
-	loading: ({ state, send }) => fetchUser(state.id, send), // residency, bare function
+	loading: ({ to, send }) => fetchUser(to.id, send), // residency, bare function
 	connected: {
-		run: ({ state, send }) => subscribe(state.url, send),
+		run: ({ to, send }) => subscribe(to.url, send),
 		restart: false, // survives re-entry
 	},
 	'draft -cancel> *': () => track('cancelled'), // an edge, bare function
@@ -51,7 +51,7 @@ outputs: type<{ type: 'opened'; center: Point } | { type: 'ended' }>(),
 
 actions: {
 	novice: {
-		run: ({ state, emit }) => emit({ type: 'opened', center: state.origin }),
+		run: ({ to, emit }) => emit({ type: 'opened', center: to.origin }),
 		restart: false,
 	},
 },

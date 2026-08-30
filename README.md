@@ -317,9 +317,9 @@ bookkeeping every caller writes by hand:
 const publication = machine({
 	// ...
 	actions: {
-		loading: ({ state, send }) => {
+		loading: ({ to, send }) => {
 			const controller = new AbortController()
-			fetchUser(state.id, controller.signal).then(
+			fetchUser(to.id, controller.signal).then(
 				(user) => send({ type: 'loaded', user }),
 				(reason) => send({ type: 'failed', reason }),
 			)
@@ -336,13 +336,16 @@ function it returns runs on exit. A key containing `->` is an edge, drawn from
 the same [pattern language `observe` uses](#observing) — wildcards included —
 and fires once per matching transition, even when both ends are `*`.
 
-**The argument differs by kind.** A residency trigger's action receives
-`{ state, send }`, the state it just entered, tag included, and `send`. An edge
-trigger's action receives the transition record itself — `{ input, from, to, send }`
-— identical to what a matching listener gets, not a second bag wrapping it, so
-`send` is never carried twice. Either way, an action can drive the machine
-without closing over a host that does not exist yet — `.start()` has not
-returned while the initial state's own actions run.
+**Every action receives the same thing, whichever kind of trigger fired it**:
+the transition record `{ input, from, to, send }`, identical to what a matching
+[listener](#observing) gets. There is no per-kind bag to learn and no second
+wrapper carrying `send` twice. A residency trigger is an arrival, so its `to`
+is the resident state; an edge trigger's is whatever its pattern targets.
+
+**The initial state is the one arrival no transition caused**, so `from` and
+`input` are `undefined` there — the same discriminant style an immediate
+transition already uses for `input`. A residency action that reads `from` has
+to narrow it first; most only want `to`, which is always present.
 
 **A residency action may return a teardown**, a niladic function that releases
 what it opened; an edge action may not. Returning one there is a compile error,
