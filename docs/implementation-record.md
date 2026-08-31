@@ -245,6 +245,10 @@ figures from the shipped build.
 - **`dispatch(work?)`, not a required parameter.** The optional call is one cheap
   token; a required parameter pushes `send` into allocating a closure per call
   just to hand its `queue.push` over.
+- **The departure loop over `[acts, listeners]`, not a `leave` helper called
+  twice.** The two-element array literal plus one nested loop measures smaller
+  than factoring the row scan into a named function and calling it once per row
+  array (1,790 B vs 1,810 B raw).
 
 ### <a id="i17"></a>I17 — The empty-payload encoding is tagged, not an index signature
 
