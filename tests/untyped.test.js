@@ -3,7 +3,7 @@
  * untyped path (item 21) needs a caller the type checker never sees.
  */
 
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import { machine } from 'totorobot'
 
@@ -18,8 +18,8 @@ describe('the untyped path', () => {
 		})
 
 		const host = untyped.start()
-		const log = []
-		host.observe('* -> *', (e) => log.push(`${e.from.name}->${e.to.name}`))
+		const log = vi.fn()
+		host.observe('* -> *', (e) => log(`${e.from.name}->${e.to.name}`))
 
 		expect(host.current).toEqual({ name: 'off' })
 
@@ -29,7 +29,9 @@ describe('the untyped path', () => {
 		host.send({ type: 'toggle' })
 		expect(host.current).toEqual({ name: 'off' })
 
-		expect(log).toEqual(['off->on', 'on->off'])
+		expect(log).toHaveBeenCalledTimes(2)
+		expect(log).toHaveBeenNthCalledWith(1, 'off->on')
+		expect(log).toHaveBeenNthCalledWith(2, 'on->off')
 	})
 
 	test('an input name outside the vocabulary changes nothing', () => {
@@ -42,13 +44,13 @@ describe('the untyped path', () => {
 		})
 
 		const host = untyped.start()
-		const log = []
-		host.observe('* -> *', () => log.push('fired'))
+		const observer = vi.fn()
+		host.observe('* -> *', observer)
 
 		host.send({ type: 'bogus' })
 
 		expect(host.current).toEqual({ name: 'off' })
-		expect(log).toEqual([])
+		expect(observer).not.toHaveBeenCalled()
 	})
 
 	test('a bad state name in a listener pattern does not throw and never fires', () => {
@@ -61,26 +63,24 @@ describe('the untyped path', () => {
 		})
 
 		const host = untyped.start()
-		const log = []
+		const observer = vi.fn()
 
-		expect(() =>
-			host.observe('bogus -> *', () => log.push('fired')),
-		).not.toThrow()
+		expect(() => host.observe('bogus -> *', observer)).not.toThrow()
 
 		host.send({ type: 'toggle' })
 
-		expect(log).toEqual([])
+		expect(observer).not.toHaveBeenCalled()
 	})
 
 	describe('immediate transitions', () => {
 		test('an immediate row fires on entry with no vocabulary declared, and its handler receives input as undefined', () => {
-			let receivedInput = 'unset'
+			const immediate = vi.fn()
 			const untyped = machine({
 				initial: 'draft',
 				transitions: {
 					'draft -submit> checking': () => ({ via: 'submit' }),
 					'checking -> settled': ({ input }) => {
-						receivedInput = input
+						immediate(input)
 						return { via: 'immediate' }
 					},
 				},
@@ -93,7 +93,7 @@ describe('the untyped path', () => {
 				name: 'settled',
 				via: 'immediate',
 			})
-			expect(receivedInput).toBeUndefined()
+			expect(immediate).toHaveBeenCalledExactlyOnceWith(undefined)
 		})
 	})
 
@@ -112,13 +112,13 @@ describe('the untyped path', () => {
 
 			const host = untyped.start()
 			const before = host.current
-			const log = []
-			host.observe('* -> *', () => log.push('fired'))
+			const observer = vi.fn()
+			host.observe('* -> *', observer)
 
 			host.send({ type: '' })
 
 			expect(host.current).toEqual(before)
-			expect(log).toEqual([])
+			expect(observer).not.toHaveBeenCalled()
 		})
 
 		test('a bare key throws instead of quietly building a live row (#16)', () => {

@@ -13,7 +13,7 @@
  * queue drains.
  */
 
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import { toggle } from '../fixtures.ts'
 
@@ -31,13 +31,13 @@ describe('acceptance: two-state ceremony floor', () => {
 
 	test('live-runtime trace 1: a toggle queued while observing off -> on drains to on -> off before the outer call returns', () => {
 		const doc = toggle.start()
-		const log: string[] = []
+		const log = vi.fn()
 		let queued = false
 
 		doc.observe('* -> *', (e) => {
 			// the first commit-and-observation cycle finishes before the queued
 			// input is applied to `on`
-			log.push(`${e.from.name} -> ${e.to.name}`)
+			log(`${e.from.name} -> ${e.to.name}`)
 			if (!queued) {
 				queued = true
 				doc.send({ type: 'toggle' }) // an observer submits a second input while observing the first transition
@@ -48,7 +48,9 @@ describe('acceptance: two-state ceremony floor', () => {
 
 		// the outermost call returns only after the queue drains — no await,
 		// no microtask flush, both transitions have already happened
-		expect(log).toEqual(['off -> on', 'on -> off'])
+		expect(log).toHaveBeenCalledTimes(2)
+		expect(log).toHaveBeenNthCalledWith(1, 'off -> on')
+		expect(log).toHaveBeenNthCalledWith(2, 'on -> off')
 		expect(doc.current).toEqual({ name: 'off' })
 	})
 })
