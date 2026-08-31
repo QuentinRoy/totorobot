@@ -122,6 +122,24 @@ test('a malformed trigger key reports on its own row, and does not poison a well
 	})
 })
 
+test('an undeclared trigger is still rejected, and a malformed key still reports on its own row, when the value is a record or an array', () => {
+	machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
+		actions: {
+			// @ts-expect-error - "nope" is not a declared state
+			nope: { run: () => {} },
+			// @ts-expect-error - "nope" is not a declared state
+			alsoNope: [() => {}],
+			// @ts-expect-error - a space after "-", before the input name
+			'off - toggle> on': [{ run: () => {} }],
+			on: { run: () => {} }, // still checked on its own terms, unpoisoned by the row above
+		},
+	})
+})
+
 test('a wildcard is legal in an edge trigger, as in observe patterns', () => {
 	machine({
 		initial: 'off',

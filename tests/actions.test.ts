@@ -431,6 +431,25 @@ describe('actions', () => {
 		expect(log).toEqual(['setup 1', 'setup 2', 'teardown 2', 'teardown 1'])
 	})
 
+	test('an array of actions on an edge trigger all fire, in declaration order', () => {
+		const log: string[] = []
+		const doc = machine({
+			initial: 'off',
+			inputs: type<{ type: 'toggle' }>(),
+			states: type<{ name: 'off' } | { name: 'on' }>(),
+			transitions: { 'off -toggle> on': () => {} },
+			actions: {
+				'off -toggle> on': [
+					() => void log.push('fired 1'),
+					{ run: () => void log.push('fired 2') },
+				],
+			},
+		}).start()
+
+		doc.send({ type: 'toggle' })
+		expect(log).toEqual(['fired 1', 'fired 2'])
+	})
+
 	test('two residents of one state can hold opposite restart policies: one survives a self-transition, the other restarts', () => {
 		const log: string[] = []
 		const doc = machine({
