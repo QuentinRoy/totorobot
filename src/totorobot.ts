@@ -421,10 +421,10 @@ interface UncheckedHost {
 }
 
 /**
- * Every row of the table, in order, under the pair that reaches it: a labelled
- * row under `from \0 input`, an immediate one under `from` alone. One flat map
- * rather than a map of maps — smaller to build and to read (I16) — and the two
- * key shapes are what keeps an immediate unreachable from `send`, which would
+ * Every row of the table, in order, under the pair that reaches it, an immediate
+ * row being one whose input half is empty. One flat map
+ * rather than a map of maps — smaller to build and to read (I16) — and the empty
+ * input half is what keeps an immediate unreachable from `send`, which would
  * otherwise find it by sending the empty input type. Null-prototype, so
  * `send({ type: 'toString' })` finds nothing to call (I16).
  */
@@ -481,11 +481,11 @@ let dispatch = (work?: () => void): void => {
  * `restart` mean nothing on one, and a row that simply ends is as good as a row
  * padded with the blanks nothing reads (I16).
  */
-let toRow = (key: string, item: any): Registration => {
+let toRow = (key: string, item: UncheckedItem): Registration => {
 	let run = item.run ?? item
 	return / -|> /.test(key)
 		? ([...parse(key), run] as Registration)
-		: ['*', '', key, run, key, item.restart]
+		: (['*', '', key, run, key, item.restart] as Registration)
 }
 
 /**
@@ -563,7 +563,8 @@ export let machine: <
 		// so the array arm costs nothing beyond this loop (§9).
 		let actionRows: Registration[] = []
 		for (let key in actions) {
-			for (let item of [actions[key]!].flat()) actionRows.push(toRow(key, item))
+			for (let item of [actions[key]!].flat())
+				actionRows.push(toRow(key, item as UncheckedItem))
 		}
 
 		return {
@@ -590,7 +591,8 @@ export let machine: <
 					r: Registration[5],
 					from: StateVocab,
 					to: StateVocab,
-				): boolean => ((r as any)?.call ? (r as any)(from, to) : r !== false)
+				): boolean =>
+					(r as Predicate)?.call ? (r as Predicate)(from, to) : r !== false
 
 				// A teardown runs at most once: `void` discards whatever it returned and
 				// blanks the slot in the same assignment, so nothing it happened to hand
@@ -734,7 +736,7 @@ export let machine: <
 					): (() => void) => {
 						// `toRow` reads a bare `pattern` as residency on that state, the same
 						// as a bare key in `actions`, so the two share one parser (§11).
-						let registration = toRow(pattern, action)
+						let registration = toRow(pattern, action as UncheckedItem)
 						listeners = [...listeners, registration]
 						// Already resident when observed: no arrival will announce it, so it
 						// runs once here instead — registration order cannot decide whether a
@@ -754,7 +756,7 @@ export let machine: <
 				}
 			},
 		} as unknown
-	}) as any
+	}) as typeof machine
 
 /**
  * What `fire` hands whatever it matched. The transition record, except that
@@ -793,3 +795,16 @@ type Registration = [
 type ActionItem =
 	| Registration[3]
 	| { readonly run: Registration[3]; readonly restart?: Registration[5] }
+
+/**
+ * The two item shapes as one, which is what `item.run ?? item` reads (I23): a
+ * union would make `run` unreadable on the function arm, and this is exactly the
+ * value that arm is checked to be before it reaches the runtime.
+ */
+type UncheckedItem = Registration[3] & {
+	readonly run?: Registration[3]
+	readonly restart?: Registration[5]
+}
+
+/** The predicate arm of `restart`, the only arm with a `.call` to test (I23). */
+type Predicate = Extract<Registration[5], Function>

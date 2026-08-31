@@ -358,6 +358,14 @@ alone, an input for `.type` alone, and a payload is only ever spread — so
 `StateVocab`, `InputVocab | undefined` and `object` type the whole runtime with no
 cast added and a byte-identical bundle.
 
+The golfed runtime reintroduced three, and none of them survived either, at a
+byte-identical bundle: an item that is read for both `run` and a call is an
+intersection rather than a union (a union makes `run` unreadable on the function
+arm), the `restart` predicate is `Extract<Registration[5], Function>` where its
+`.call` is tested, and the annotated `machine` binding casts its initializer to
+`typeof machine` rather than to `any`. Assertions are erased, so a cast is free;
+`any` buys nothing here that a name for the shape does not.
+
 `machine`'s implementation signature took `any` on the recorded grounds that a row's
 value can be the poison string literal. `unknown` implements it too: overload
 compatibility is an assignability check, and the body casts before reading. Not
