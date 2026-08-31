@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import { machine, type } from 'totorobot'
 import { activity, activityLog, chain, gate, toggle } from './fixtures.ts'
@@ -235,6 +235,54 @@ describe('observing', () => {
 
 		expect(() => off()).not.toThrow()
 		expect(log).toEqual(['setup', 'teardown'])
+	})
+
+	test('a residency attached to a noninitial current state runs immediately too: current, not initial, decides it', () => {
+		const host = toggle.start()
+		host.send({ type: 'toggle' }) // off -> on: 'on' is current now, and it is not the initial state
+
+		const setup = vi.fn()
+		host.observe('on', setup)
+
+		expect(setup).toHaveBeenCalledOnce()
+	})
+
+	test('a residency attached while resident receives an arrival with no source or input, the same as machine startup', () => {
+		const host = toggle.start()
+		const observer = vi.fn()
+
+		host.observe('off', observer)
+
+		expect(observer).toHaveBeenCalledExactlyOnceWith({
+			input: undefined,
+			from: undefined,
+			to: { name: 'off' },
+			send: expect.any(Function),
+		})
+	})
+
+	test('restart does not gate registration setup: a false-returning predicate still runs setup and is never called for a synthetic arrival', () => {
+		const host = toggle.start()
+		const setup = vi.fn()
+		const restart = vi.fn(() => false)
+
+		host.observe('off', { run: setup, restart })
+
+		expect(setup).toHaveBeenCalledOnce()
+		expect(restart).not.toHaveBeenCalled()
+	})
+
+	test('unsubscribing a residency registered outside its state, before it is ever entered, is harmless', () => {
+		const host = toggle.start()
+		const teardown = vi.fn()
+		const setup = vi.fn(() => teardown)
+
+		const off = host.observe('on', setup)
+		off()
+
+		host.send({ type: 'toggle' }) // off -> on: would have entered, had it stayed subscribed
+		expect(setup).not.toHaveBeenCalled()
+		expect(teardown).not.toHaveBeenCalled()
 	})
 
 	test('observe(state, fn) tears down and sets up again on a self-transition: restart falls out of matching both directions, same as a declared residency', () => {
