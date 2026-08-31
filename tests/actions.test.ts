@@ -242,6 +242,32 @@ describe('actions', () => {
 		expect(log).toEqual(['wildcard', 'exact'])
 	})
 
+	test('startup invokes no edge action, whichever pattern shape declares it: wildcard source, wildcard target, fully wildcard, pinned', () => {
+		const log: string[] = []
+		machine({
+			initial: 'a',
+			inputs: type<{ type: 'x' }>(),
+			states: type<{ name: 'a' } | { name: 'b' }>(),
+			transitions: { 'a -x> b': () => {} },
+			actions: {
+				'* -> a': () => {
+					log.push('wildcard source')
+				},
+				'a -> *': () => {
+					log.push('wildcard target')
+				},
+				'* -> *': () => {
+					log.push('fully wildcard')
+				},
+				'b -> a': () => {
+					log.push('pinned')
+				},
+			},
+		}).start()
+
+		expect(log).toEqual([])
+	})
+
 	test('a residency action receives the arrival that entered its state, the same record shape an edge action and a listener get, with `to` the resident state', () => {
 		let seenArrival: unknown
 		const doc = machine({
@@ -317,6 +343,29 @@ describe('actions', () => {
 			send: expect.any(Function),
 		})
 		expect((seenTransition as { send: unknown }).send).toBe(doc.send)
+	})
+
+	test('an initial immediate chain still emits each real transition separately, with a defined source, after the initial residency has run', () => {
+		const log: string[] = []
+		const doc = machine({
+			initial: 'a',
+			states: type<{ name: 'a' } | { name: 'b' }>(),
+			transitions: { 'a -> b': () => {} },
+			actions: {
+				a: () => {
+					log.push('residency a')
+				},
+				'a -> b': ({ from }) => {
+					log.push(`edge a -> b, from ${from.name}`)
+				},
+				b: () => {
+					log.push('residency b')
+				},
+			},
+		}).start()
+
+		expect(log).toEqual(['residency a', 'edge a -> b, from a', 'residency b'])
+		expect(doc.current).toEqual({ name: 'b' })
 	})
 
 	test('residency runs on every hop of an immediate chain, including a state entered and left within one drain', () => {
