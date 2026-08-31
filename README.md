@@ -20,7 +20,7 @@ be optional everywhere and checked everywhere.
 
 A definition is inert data. `.start()` hands you a running host to send inputs to
 and observe, and that host is the only thing that ever changes. The whole library
-is 1.1 kB minified, 570 bytes over the wire, with no dependencies.
+is 1.6 kB minified, 820 bytes over the wire, with no dependencies.
 
 The design keeps asking one question: how much state-machine correctness can
 TypeScript enforce while the creation API stays small enough to hold in your
@@ -313,8 +313,8 @@ Work scoped to a state, or to a transition, declared with the machine rather
 than assembled by every caller:
 
 ```ts
-const publication = machine({
-	// ...
+const profile = machine({
+	// ... a `loading` state carrying an `id`, and `loaded` / `failed` inputs
 	actions: {
 		loading: {
 			run: ({ to, send }) => {
@@ -629,7 +629,7 @@ Per-state capabilities are not enforced by the compiler.
 - **Big steps terminate**, because one input causes at most one transition.
 - **Stale results are free.** A `loaded` arriving after we left `loading`
   matches no row and does nothing. That ignores the result; cancelling the work
-  is still the caller's job.
+  is a residency teardown's job, or the caller's where no action declares one.
 - **States have no runtime existence.** The definition carries transition keys
   rather than a list of states, so there is no source for a visualiser or a
   "valid states are …" message, and a state with no transitions is invisible at
@@ -688,8 +688,8 @@ none of it is promised.
 
 ## Documentation
 
-- [Roadmap](docs/roadmap.md) — what might come after v1: effects, a declared
-  output channel, residency, and composition.
+- [Roadmap](docs/roadmap.md) — what might come after v1: a declared output
+  channel, residency on `observe`, and composition.
 - [Design record](docs/design-record.md) — the decision ledger: what was
   considered and rejected, and on what evidence.
 - [Research notes](docs/research/) — ten prior-art notes on automata theory,
