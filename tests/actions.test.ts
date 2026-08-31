@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from 'vitest'
 
 import { machine, type } from 'totorobot'
-import { activity, activityLog, chain } from './fixtures.ts'
+import { activity, chain } from './fixtures.ts'
 import { residency } from './helpers.ts'
 
 describe('actions', () => {
@@ -351,27 +351,37 @@ describe('actions', () => {
 	})
 
 	test('residency runs on every hop of an immediate chain, including a state entered and left within one drain', () => {
-		activityLog.length = 0
-		const doc = activity.start()
+		const setup = vi.fn()
+		const teardown = vi.fn()
+		const doc = activity(setup, teardown).start()
 
 		doc.send({ type: 'go' }) // a -go> b (setup), b -> c (teardown), c -> d
-		expect(activityLog).toEqual(['setup', 'teardown'])
+		expect(setup).toHaveBeenCalledOnce()
+		expect(teardown).toHaveBeenCalledOnce()
+		expect(setup).toHaveBeenCalledBefore(teardown)
 		expect(doc.current).toEqual({ name: 'd' })
 	})
 
 	test('a declared residency produces the same log as the residency recipe documented in the README', () => {
-		const recipeLog: string[] = []
+		const recipeSetup = vi.fn()
+		const recipeTeardown = vi.fn()
 		const recipeHost = chain.start()
 		residency(recipeHost, 'b', () => {
-			recipeLog.push('setup')
-			return () => recipeLog.push('teardown')
+			recipeSetup()
+			return recipeTeardown
 		})
 		recipeHost.send({ type: 'go' })
 
-		activityLog.length = 0
-		activity.start().send({ type: 'go' })
+		const declaredSetup = vi.fn()
+		const declaredTeardown = vi.fn()
+		activity(declaredSetup, declaredTeardown).start().send({ type: 'go' })
 
-		expect(activityLog).toEqual(recipeLog)
+		expect(recipeSetup).toHaveBeenCalledOnce()
+		expect(recipeTeardown).toHaveBeenCalledOnce()
+		expect(recipeSetup).toHaveBeenCalledBefore(recipeTeardown)
+		expect(declaredSetup).toHaveBeenCalledOnce()
+		expect(declaredTeardown).toHaveBeenCalledOnce()
+		expect(declaredSetup).toHaveBeenCalledBefore(declaredTeardown)
 	})
 
 	test('per commit: teardown of the residency being left, then the commit, then the actions in declaration order, then listeners', () => {

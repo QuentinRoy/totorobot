@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from 'vitest'
 
 import { machine, type } from 'totorobot'
-import { activity, activityLog, chain, gate, toggle } from './fixtures.ts'
+import { activity, chain, gate, toggle } from './fixtures.ts'
 import { residency } from './helpers.ts'
 
 describe('observing', () => {
@@ -199,18 +199,25 @@ describe('observing', () => {
 	})
 
 	test('observe(state, fn) residency produces the same log as an actions-declared residency, for the same machine', () => {
-		const recipeLog: string[] = []
+		const recipeSetup = vi.fn()
+		const recipeTeardown = vi.fn()
 		const recipeHost = chain.start()
 		recipeHost.observe('b', () => {
-			recipeLog.push('setup')
-			return () => recipeLog.push('teardown')
+			recipeSetup()
+			return recipeTeardown
 		})
 		recipeHost.send({ type: 'go' })
 
-		activityLog.length = 0
-		activity.start().send({ type: 'go' })
+		const declaredSetup = vi.fn()
+		const declaredTeardown = vi.fn()
+		activity(declaredSetup, declaredTeardown).start().send({ type: 'go' })
 
-		expect(activityLog).toEqual(recipeLog)
+		expect(recipeSetup).toHaveBeenCalledOnce()
+		expect(recipeTeardown).toHaveBeenCalledOnce()
+		expect(recipeSetup).toHaveBeenCalledBefore(recipeTeardown)
+		expect(declaredSetup).toHaveBeenCalledOnce()
+		expect(declaredTeardown).toHaveBeenCalledOnce()
+		expect(declaredSetup).toHaveBeenCalledBefore(declaredTeardown)
 	})
 
 	test('a residency attached while the host already occupies its state runs immediately: registration order does not decide it', () => {
