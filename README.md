@@ -84,6 +84,7 @@ export const publication = machine({
 })
 
 const doc = publication.start()
+doc.observe('* -> published', (e) => notify(e.to))
 doc.send({ type: 'open', text: 'hello' })
 doc.send({ type: 'submit', reviewer: 'Quentin' })
 ```
@@ -91,7 +92,8 @@ doc.send({ type: 'submit', reviewer: 'Quentin' })
 `reviewer` exists on `review` alone: `draft` does not have it yet, `published`
 has shed it again, and neither carries it as a nullable placeholder. While the
 document is in review, the action schedules an input back to the same host. Its
-teardown clears the timer if review ends first.
+teardown clears the timer if review ends first. Publication notification stays
+with the caller, attached through `observe`.
 
 ## Contents
 
