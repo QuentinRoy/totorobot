@@ -68,6 +68,16 @@ test('a bare key means residency, typed as the same record `actions` takes (#76)
 	host.observe('nope', () => {})
 })
 
+test("observe's residency shares actions' arrival-capable type: `from` is `undefined` on registration's synthetic arrival (#92)", () => {
+	const host = doc.start()
+
+	host.observe('draft', ({ from }) => {
+		expectTypeOf(from).toEqualTypeOf<States | undefined>()
+		// @ts-expect-error - `from` is `undefined` on the synthetic arrival
+		from.name
+	})
+})
+
 test('a block-bodied restart predicate on observe does not reopen the host as an inference site (I28)', () => {
 	const host = doc.start()
 

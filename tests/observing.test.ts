@@ -237,6 +237,67 @@ describe('observing', () => {
 		expect(log).toEqual(['setup', 'teardown'])
 	})
 
+	test('a residency attached to a noninitial current state runs immediately too: current, not initial, decides it', () => {
+		const host = toggle.start()
+		host.send({ type: 'toggle' }) // off -> on: 'on' is current now, and it is not the initial state
+
+		const log: string[] = []
+		host.observe('on', () => {
+			log.push('setup')
+		})
+
+		expect(log).toEqual(['setup'])
+	})
+
+	test('a residency attached while resident receives an arrival with no source or input, the same as machine startup', () => {
+		const host = toggle.start()
+		let seenArrival: unknown
+
+		host.observe('off', (arrival) => {
+			seenArrival = arrival
+		})
+
+		expect(seenArrival).toEqual({
+			input: undefined,
+			from: undefined,
+			to: { name: 'off' },
+			send: expect.any(Function),
+		})
+	})
+
+	test('restart does not gate registration setup: a false-returning predicate still runs setup and is never called for a synthetic arrival', () => {
+		const host = toggle.start()
+		const log: string[] = []
+		let calls = 0
+
+		host.observe('off', {
+			run: () => {
+				log.push('setup')
+			},
+			restart: () => {
+				calls++
+				return false
+			},
+		})
+
+		expect(log).toEqual(['setup'])
+		expect(calls).toBe(0)
+	})
+
+	test('unsubscribing a residency registered outside its state, before it is ever entered, is harmless', () => {
+		const host = toggle.start()
+		const log: string[] = []
+
+		const off = host.observe('on', () => {
+			log.push('setup')
+			return () => log.push('teardown')
+		})
+		off()
+
+		host.send({ type: 'toggle' }) // off -> on: would have entered, had it stayed subscribed
+		expect(log).toEqual([])
+	})
+
 	test('observe(state, fn) tears down and sets up again on a self-transition: restart falls out of matching both directions, same as a declared residency', () => {
 		const pinger = machine({
 			initial: 'idle',
