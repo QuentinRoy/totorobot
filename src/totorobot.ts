@@ -267,18 +267,40 @@ type EdgeAction<
 > = (transition: NoInfer<Transition<I, S, P>>) => undefined | void
 
 /**
+ * An action is its run function alone, a record with `run`, or an array of
+ * either — declaration order for setup, reverse for teardown. `Extra` widens
+ * the record with fields only some kinds take, so the same shape serves an
+ * edge (nothing extra) and a residency (`restart`) alike (§9).
+ */
+type Action<Run, Extra extends object = {}> =
+	| Run
+	| ({ readonly run: Run } & Extra)
+	| readonly (Run | ({ readonly run: Run } & Extra))[]
+
+/**
+ * `restart` is consulted only on a self-transition; the default is to restart
+ * (§9). `NoInfer` on the predicate's parameters for the same reason `Table`'s
+ * handler needs it on `state` (I14): unguarded, a block-bodied predicate
+ * reopens `S` as an inference site and the whole table collapses (I28).
+ */
+type Restart<N extends StateVocab> = {
+	readonly restart?: boolean | ((from: NoInfer<N>, to: NoInfer<N>) => boolean)
+}
+
+/**
  * Checked row by row, like `Table`: decidable from the string alone (§9), an
  * edge-shaped key (`from -input> to`, wildcards included) against `Pattern`,
  * else a bare key against the declared state names. Either miss reports its
  * own `not a trigger: '…'` rather than poisoning a well-formed neighbour.
+ * `restart` has no meaning on an edge, so only the residency arm widens with it.
  */
 type Actions<I extends InputVocab, S extends StateVocab, A extends string> = {
 	readonly [P in A]: P extends `${string} -${string}> ${string}`
 		? P extends Pattern<I, S>
-			? EdgeAction<I, S, P>
+			? Action<EdgeAction<I, S, P>>
 			: `not a trigger: '${P}'`
 		: P extends StateName<S>
-			? ResidencyAction<I, S, P>
+			? Action<ResidencyAction<I, S, P>, Restart<StateNamed<S, P>>>
 			: `not a trigger: '${P}'`
 }
 
@@ -456,7 +478,9 @@ export function machine(definition: unknown): unknown {
 	let { initial, transitions, actions } = definition as unknown as {
 		readonly initial: string
 		readonly transitions: Readonly<Record<string, UncheckedHandler>>
-		readonly actions?: Readonly<Record<string, Registration[3]>>
+		readonly actions?: Readonly<
+			Record<string, ActionItem | readonly ActionItem[]>
+		>
 	}
 	let index: InputRows = Object.create(null)
 	let immediates: ImmediateRows = Object.create(null)
@@ -479,13 +503,20 @@ export function machine(definition: unknown): unknown {
 	// one loop match both, and listeners besides (I16). A bare key is taken at face
 	// value: naming a state nothing declares is a silent no-op, as everywhere else.
 	// An arrow means `parse`, which throws on a malformed key like a row does.
+	// A value is unwrapped to one row per array element, run and restart alike,
+	// so the array arm costs nothing beyond this loop (§9).
 	let actionRows: Registration[] = []
 	for (let key in actions) {
-		actionRows.push(
-			key.split(/ -|> /).length === 1
-				? ['*', '', key, actions[key]!, key]
-				: [...parse(key), actions[key]!, ''],
-		)
+		let bare = key.split(/ -|> /).length === 1
+		let head: [string, string, string] = bare ? ['*', '', key] : parse(key)
+		for (let item of ([] as ActionItem[]).concat(actions[key]!)) {
+			actionRows.push([
+				...head,
+				typeof item === 'function' ? item : item.run,
+				bare ? key : '',
+				bare && typeof item !== 'function' ? item.restart : undefined,
+			] as Registration)
+		}
 	}
 
 	return {
@@ -498,25 +529,40 @@ export function machine(definition: unknown): unknown {
 			// the path that runs least, and it measures smaller (I16).
 			let listeners: Registration[] = []
 
-			// Keyed by state name: at most one residency is ever in flight for it,
-			// since re-entering overwrites the slot with a fresh teardown (§9). Per
-			// host, never on the rows, which the definition shares across hosts.
-			let teardowns: Record<string, Teardown | undefined> = Object.create(null)
+			// Indexed like `actionRows` itself, so several residency actions on one
+			// state each keep their own slot (§9). Per host, never on the rows, which
+			// the definition shares across hosts.
+			let teardowns: (Teardown | undefined)[] = []
+
+			// `false` survives; a predicate decides from the two full states either
+			// side of the self-transition; anything else, including an omitted
+			// `restart`, restarts (§9).
+			let restarts = (
+				r: Registration[5],
+				from: StateVocab,
+				to: StateVocab,
+			): boolean => (typeof r === 'function' ? r(from, to) : r !== false)
 
 			// The wildcard rules, once, for actions and listeners alike: `*` and `''`
 			// stand for any. A residency row carries a teardown key and stores what it
 			// returns; an edge row and a listener carry `''` and do not. `from` is
 			// optional only for the initial arrival, which no transition caused, and
 			// which this same loop therefore fires without a case of its own (§9).
+			// A residency row on a self-transition also consults `restart` here, not
+			// only in the departing teardown below, so `restart: false` neither tears
+			// down nor sets up again.
 			let fire = (rows: Registration[], e: Arrival): void => {
-				for (let [f, l, t, run, key] of rows) {
+				for (let [i, [f, l, t, run, key, restart]] of rows.entries()) {
 					if (
 						(f === '*' || f === e.from?.name) &&
 						(l === '' || l === e.input?.type) &&
-						(t === '*' || t === e.to.name)
+						(t === '*' || t === e.to.name) &&
+						(!key ||
+							e.to.name !== e.from?.name ||
+							restarts(restart, e.from, e.to))
 					) {
 						let teardown = run(e)
-						if (key) teardowns[key] = teardown as Teardown | undefined
+						if (key) teardowns[i] = teardown as Teardown | undefined
 					}
 				}
 			}
@@ -531,15 +577,26 @@ export function machine(definition: unknown): unknown {
 					// Declining is ordinary and silent: try the next row for this pair.
 					if (payload === SKIP) continue
 
-					// The residency being left tears down before the commit: a throw
-					// here abandons the hop with nothing of it committed yet (§9).
 					let from = current
-					teardowns[from.name]?.()
+					let next: StateVocab = { ...payload, name: to }
+					let self = to === from.name
+
+					// The residency being left tears down before the commit, in reverse
+					// declaration order, so several actions on one trigger unwind like a
+					// stack; a throw here abandons the hop — later teardowns unrun —
+					// with nothing of it committed yet (§9). A self-transition consults
+					// each action's own `restart` instead of always tearing down.
+					for (let i = actionRows.length; i--;) {
+						let [, , , , key, restart] = actionRows[i]!
+						if (key === from.name && (!self || restarts(restart, from, next))) {
+							teardowns[i]?.()
+						}
+					}
 
 					// Commit, then notify, so every listener sees a machine that agrees
 					// with the record. The tag is spread last, so a handler that spread its
 					// source into the return cannot leave the source's tag behind.
-					current = { ...payload, name: to }
+					current = next
 					// The same `send` the host exposes: a reaction drives the machine
 					// without closing over the host it was registered on.
 					let record: Transition = { input, from, to: current, send }
@@ -649,4 +706,10 @@ type Registration = readonly [
 	to: string,
 	run: (arrival: Arrival) => unknown,
 	key?: string,
+	restart?: boolean | ((from: StateVocab, to: StateVocab) => boolean),
 ]
+
+/** One action, unchecked: a run function alone or in a record (I23). */
+type ActionItem =
+	| Registration[3]
+	| { readonly run: Registration[3]; readonly restart?: Registration[5] }

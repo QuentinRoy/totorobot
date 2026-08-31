@@ -3,35 +3,6 @@
 > **None of this is promised.** These are directions the design record argues for,
 > past what v1 ships. Whether any of them lands, and in what shape, stays open.
 
-## `actions` — the record form, `restart`, and several per trigger
-
-Bare-function `actions` [have landed](../README.md#actions-lifetime-scoped-work).
-What is left is the record form the design chapter argued for from the start:
-
-```ts
-actions: {
-	loading: ({ to, send }) => fetchUser(to.id, send), // residency, bare function
-	connected: {
-		run: ({ to, send }) => subscribe(to.url, send),
-		restart: false, // survives re-entry
-	},
-	'draft -cancel> *': () => track('cancelled'), // an edge, bare function
-}
-```
-
-An action becomes a bare function, a record with `run` and an optional `restart`,
-or an array of either. `restart` takes `boolean | ((from, to) => boolean)` and is
-consulted only on a self-transition: restart by default, `restart: false`
-survives, a predicate decides case by case. It is a compile error on an edge. The
-array arm lets one trigger carry several actions, set up in declaration order and
-torn down in reverse. `send` stays as it is, so the vocabulary does not grow.
-
-`emit`, below, needed `actions` first: a handler may `skip()`, and declaration
-order is priority order, so a handler that emitted would announce a transition
-that then loses. `emit` needs a post-commit home.
-
-_Argued in: [rationale §9](design-record.md#9-actions)._
-
 ## `emit` — a declared output channel
 
 On top of `actions`, a machine could declare what it announces separately from what it

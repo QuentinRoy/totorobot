@@ -122,6 +122,24 @@ test('a malformed trigger key reports on its own row, and does not poison a well
 	})
 })
 
+test('an undeclared trigger is still rejected, and a malformed key still reports on its own row, when the value is a record or an array', () => {
+	machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
+		actions: {
+			// @ts-expect-error - "nope" is not a declared state
+			nope: { run: () => {} },
+			// @ts-expect-error - "nope" is not a declared state
+			alsoNope: [() => {}],
+			// @ts-expect-error - a space after "-", before the input name
+			'off - toggle> on': [{ run: () => {} }],
+			on: { run: () => {} }, // still checked on its own terms, unpoisoned by the row above
+		},
+	})
+})
+
 test('a wildcard is legal in an edge trigger, as in observe patterns', () => {
 	machine({
 		initial: 'off',
@@ -188,6 +206,67 @@ test('a returned teardown is rejected on an edge trigger, so moving a helper fro
 		actions: {
 			// @ts-expect-error - an edge action returns `undefined`; `void` would accept this, but a stranded teardown would compile
 			'off -toggle> on': () => () => {},
+		},
+	})
+})
+
+test('a residency or edge action may be a record with `run`, sugar for the bare function', () => {
+	machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
+		actions: {
+			on: { run: () => {} },
+			'off -toggle> on': { run: () => {} },
+		},
+	})
+})
+
+test('a residency or edge action may be an array of bare functions and records', () => {
+	machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
+		actions: {
+			on: [() => {}, { run: () => {} }],
+			'off -toggle> on': [() => {}, { run: () => {} }],
+		},
+	})
+})
+
+test('a residency record accepts `restart` as a boolean or a predicate over the narrowed state either side', () => {
+	machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
+		actions: {
+			on: { run: () => {}, restart: false },
+			gone: {
+				run: () => {},
+				restart: (from, to) => {
+					expectTypeOf(from).toEqualTypeOf<{ name: 'gone' }>()
+					expectTypeOf(to).toEqualTypeOf<{ name: 'gone' }>()
+					return true
+				},
+			},
+		},
+	})
+})
+
+test('`restart` on an edge trigger is a compile error, in the record and in the array', () => {
+	machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
+		actions: {
+			// @ts-expect-error - `restart` has no meaning on an edge
+			'off -toggle> on': { run: () => {}, restart: false },
+			// @ts-expect-error - same, inside the array arm
+			'off -> *': [{ run: () => {}, restart: false }],
 		},
 	})
 })

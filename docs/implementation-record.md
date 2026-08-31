@@ -416,3 +416,16 @@ left in the signature would say which arm did it.
 
 Pinned in `tests/actions.test-d.ts`, both directions — the plain body is accepted,
 and each rejection still fires.
+
+### <a id="i28"></a>I28 — `restart`'s predicate parameters need `NoInfer`, the same as a handler's `state`
+
+`Restart<N>`'s predicate is `(from: N, to: N) => boolean`, contributed into
+`Actions<I, S, A>` alongside the run function `Table` and `ResidencyAction`
+already guard with `NoInfer` ([I14](#i14)). Left bare, a block-bodied predicate
+— `restart: (from, to) => { return from.id !== to.id }` — reopens `S` as an
+inference site the same way the unguarded `state` parameter did: `S` collapses,
+every row in `transitions` is rejected as `not a transition: '…'`, and `initial`
+stops resolving. An expression-bodied predicate does not trigger it, which is why
+a probe that only writes `restart: (from, to) => from.id !== to.id` would call
+this safe. The fix is the same shape as I14's: wrap both parameters in
+`NoInfer`. Pinned in `tests/actions.test-d.ts`.
