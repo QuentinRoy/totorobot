@@ -14,7 +14,7 @@ describe('commit ordering', () => {
 			log('first')
 			if (!queued) {
 				queued = true
-				doc.send({ type: 'toggle' }) // must not take effect before the listener below runs
+				doc.send('toggle') // must not take effect before the listener below runs
 			}
 		})
 		doc.observe('* -> *', () => {
@@ -22,7 +22,7 @@ describe('commit ordering', () => {
 			secondListenerState(doc.current.name)
 		})
 
-		doc.send({ type: 'toggle' })
+		doc.send('toggle')
 		expect(log).toHaveBeenCalledTimes(4)
 		expect(log).toHaveBeenNthCalledWith(1, 'first')
 		expect(log).toHaveBeenNthCalledWith(2, 'second')
@@ -38,11 +38,11 @@ describe('commit ordering', () => {
 		doc.observe('* -> *', () => {
 			if (!queued) {
 				queued = true
-				doc.send({ type: 'toggle' })
+				doc.send('toggle')
 			}
 		})
 
-		doc.send({ type: 'toggle' })
+		doc.send('toggle')
 		// no await, no microtask flush: the queued send has already drained
 		expect(doc.current).toEqual({ name: 'off' })
 	})
@@ -50,11 +50,11 @@ describe('commit ordering', () => {
 	test('several queued sends drain first-in-first-out', () => {
 		const counter = machine({
 			initial: 'ready',
-			inputs: type<{ type: 'push'; value: number }>(),
+			inputs: type<{ push: { value: number } }>(),
 			states: type<{ name: 'ready'; order: number[] }>(),
 			transitions: {
-				'ready -push> ready': ({ state, input }) => ({
-					order: [...state.order, input.value],
+				'ready -push> ready': ({ state, inputData }) => ({
+					order: [...state.order, inputData.value],
 				}),
 			},
 		})
@@ -64,19 +64,19 @@ describe('commit ordering', () => {
 		doc.observe('* -> *', () => {
 			if (!queued) {
 				queued = true
-				doc.send({ type: 'push', value: 1 })
-				doc.send({ type: 'push', value: 2 })
+				doc.send('push', { value: 1 })
+				doc.send('push', { value: 2 })
 			}
 		})
 
-		doc.send({ type: 'push', value: 0 })
+		doc.send('push', { value: 0 })
 		expect(doc.current.order).toEqual([0, 1, 2])
 	})
 
 	test('a queued send is evaluated against the state at drain time, so it may correctly find no row and do nothing', () => {
 		const stepper = machine({
 			initial: 'a',
-			inputs: type<{ type: 'go' }>(),
+			inputs: type<{ go: undefined }>(),
 			states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
 			transitions: {
 				'a -go> b': () => {},
@@ -91,12 +91,12 @@ describe('commit ordering', () => {
 			log(e.to.name)
 			if (!queued) {
 				queued = true
-				doc.send({ type: 'go' }) // drains at b -> c
-				doc.send({ type: 'go' }) // drains at c, no row, does nothing
+				doc.send('go') // drains at b -> c
+				doc.send('go') // drains at c, no row, does nothing
 			}
 		})
 
-		doc.send({ type: 'go' })
+		doc.send('go')
 		expect(log).toHaveBeenCalledTimes(2)
 		expect(log).toHaveBeenNthCalledWith(1, 'b')
 		expect(log).toHaveBeenNthCalledWith(2, 'c')
@@ -113,7 +113,7 @@ describe('commit ordering', () => {
 			log('first')
 			if (!queued) {
 				queued = true
-				doc.send({ type: 'toggle' }) // queued; must never drain
+				doc.send('toggle') // queued; must never drain
 			}
 		})
 		doc.observe('* -> *', () => {
@@ -125,7 +125,7 @@ describe('commit ordering', () => {
 		})
 		doc.observe('* -> *', () => log('third'))
 
-		expect(() => doc.send({ type: 'toggle' })).toThrow('boom')
+		expect(() => doc.send('toggle')).toThrow('boom')
 		expect(log).toHaveBeenCalledTimes(2)
 		expect(log).toHaveBeenNthCalledWith(1, 'first')
 		expect(log).toHaveBeenNthCalledWith(2, 'second')
@@ -133,7 +133,7 @@ describe('commit ordering', () => {
 
 		// the host still works afterwards
 		log.mockClear()
-		doc.send({ type: 'toggle' })
+		doc.send('toggle')
 		expect(log).toHaveBeenCalledTimes(3)
 		expect(log).toHaveBeenNthCalledWith(1, 'first')
 		expect(log).toHaveBeenNthCalledWith(2, 'second')
@@ -146,7 +146,7 @@ describe('commit ordering', () => {
 		const offThrow = doc.observe('* -> *', () => {
 			throw new Error('boom')
 		})
-		expect(() => doc.send({ type: 'toggle' })).toThrow('boom')
+		expect(() => doc.send('toggle')).toThrow('boom')
 		offThrow()
 
 		const log = vi.fn()
@@ -155,12 +155,12 @@ describe('commit ordering', () => {
 			log('first')
 			if (!queued) {
 				queued = true
-				doc.send({ type: 'toggle' }) // sent from inside a listener, not top-level
+				doc.send('toggle') // sent from inside a listener, not top-level
 			}
 		})
 		doc.observe('* -> *', () => log('second'))
 
-		doc.send({ type: 'toggle' })
+		doc.send('toggle')
 		expect(log).toHaveBeenCalledTimes(4)
 		expect(log).toHaveBeenNthCalledWith(1, 'first')
 		expect(log).toHaveBeenNthCalledWith(2, 'second')
@@ -179,12 +179,12 @@ describe('commit ordering', () => {
 			if (active > 1) reentered = true
 			if (!queued) {
 				queued = true
-				doc.send({ type: 'toggle' }) // would re-enter this same listener if nested rather than queued
+				doc.send('toggle') // would re-enter this same listener if nested rather than queued
 			}
 			active--
 		})
 
-		doc.send({ type: 'toggle' })
+		doc.send('toggle')
 		expect(reentered).toBe(false)
 		expect(queued).toBe(true)
 	})
@@ -192,7 +192,7 @@ describe('commit ordering', () => {
 	test('a send from inside a listener mid-chain waits for the whole chain to settle, not just the current hop', () => {
 		const relay = machine({
 			initial: 'a',
-			inputs: type<{ type: 'go' } | { type: 'peek' }>(),
+			inputs: type<{ go: undefined; peek: undefined }>(),
 			states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
 			transitions: {
 				'a -go> b': () => {},
@@ -207,11 +207,11 @@ describe('commit ordering', () => {
 		const log = vi.fn()
 		doc.observe('* -> b', () => {
 			log('entered b')
-			doc.send({ type: 'peek' }) // must not be drained until the chain is fully settled
+			doc.send('peek') // must not be drained until the chain is fully settled
 		})
 		doc.observe('* -> *', (e) => log(`-> ${e.to.name}`))
 
-		doc.send({ type: 'go' })
+		doc.send('go')
 
 		expect(doc.current).toEqual({ name: 'c' })
 		expect(log).toHaveBeenCalledTimes(3)
@@ -223,7 +223,7 @@ describe('commit ordering', () => {
 	test('a chain that never settles throws RangeError after the hop budget, naming the state it could not settle', () => {
 		const doc = spinner.start()
 
-		expect(() => doc.send({ type: 'go' })).toThrow(
+		expect(() => doc.send('go')).toThrow(
 			new RangeError("maximum transitions reached in 'loop'"),
 		)
 		// no rollback: the 1e5 hops already committed stay committed
@@ -232,16 +232,16 @@ describe('commit ordering', () => {
 
 	test('the host is usable after a budget throw', () => {
 		const doc = spinner.start()
-		expect(() => doc.send({ type: 'go' })).toThrow(RangeError)
+		expect(() => doc.send('go')).toThrow(RangeError)
 
-		doc.send({ type: 'stop' })
+		doc.send('stop')
 		expect(doc.current).toEqual({ name: 'idle' })
 	})
 
 	test('an immediate self-loop that rewrites its data and eventually skips terminates normally, well inside the budget', () => {
 		const counter = machine({
 			initial: 'idle',
-			inputs: type<{ type: 'go' }>(),
+			inputs: type<{ go: undefined }>(),
 			states: type<{ name: 'idle' } | { name: 'counting'; count: number }>(),
 			transitions: {
 				'idle -go> counting': () => ({ count: 0 }),
@@ -251,7 +251,7 @@ describe('commit ordering', () => {
 		})
 
 		const doc = counter.start()
-		doc.send({ type: 'go' })
+		doc.send('go')
 
 		expect(doc.current).toEqual({ name: 'counting', count: 5 })
 	})
@@ -265,13 +265,13 @@ describe('commit ordering', () => {
 			log(e.to.name)
 			if (!queued) {
 				queued = true
-				doc.send({ type: 'toggle' })
-				doc.send({ type: 'toggle' })
-				doc.send({ type: 'toggle' })
+				doc.send('toggle')
+				doc.send('toggle')
+				doc.send('toggle')
 			}
 		})
 
-		doc.send({ type: 'toggle' })
+		doc.send('toggle')
 		// one outer send plus three queued sends: exactly four transitions, none skipped or doubled
 		expect(log).toHaveBeenCalledTimes(4)
 		expect(log).toHaveBeenNthCalledWith(1, 'on')
@@ -296,13 +296,13 @@ describe('commit ordering across hosts', () => {
 			log('A-first')
 			if (!queued) {
 				queued = true
-				hostB.send({ type: 'toggle' }) // must queue, not nest
+				hostB.send('toggle') // must queue, not nest
 			}
 		})
 		hostA.observe('* -> *', () => log('A-second'))
 		hostB.observe('* -> *', () => log('B'))
 
-		hostA.send({ type: 'toggle' })
+		hostA.send('toggle')
 		expect(log).toHaveBeenCalledTimes(3)
 		expect(log).toHaveBeenNthCalledWith(1, 'A-first')
 		expect(log).toHaveBeenNthCalledWith(2, 'A-second')
@@ -317,11 +317,11 @@ describe('commit ordering across hosts', () => {
 		hostA.observe('* -> *', () => {
 			if (!queued) {
 				queued = true
-				hostB.send({ type: 'toggle' })
+				hostB.send('toggle')
 			}
 		})
 
-		hostA.send({ type: 'toggle' })
+		hostA.send('toggle')
 		// no await, no microtask flush: hostB has already drained
 		expect(hostB.current).toEqual({ name: 'on' })
 	})
@@ -329,11 +329,11 @@ describe('commit ordering across hosts', () => {
 	test('several sends from listeners across hosts drain first-in-first-out', () => {
 		const counter = machine({
 			initial: 'ready',
-			inputs: type<{ type: 'push'; value: number }>(),
+			inputs: type<{ push: { value: number } }>(),
 			states: type<{ name: 'ready'; order: number[] }>(),
 			transitions: {
-				'ready -push> ready': ({ state, input }) => ({
-					order: [...state.order, input.value],
+				'ready -push> ready': ({ state, inputData }) => ({
+					order: [...state.order, inputData.value],
 				}),
 			},
 		})
@@ -347,13 +347,13 @@ describe('commit ordering across hosts', () => {
 			log(`A${e.to.order.at(-1)}`)
 			if (!queued) {
 				queued = true
-				hostB.send({ type: 'push', value: 1 }) // queued first
-				hostA.send({ type: 'push', value: 2 }) // queued second
+				hostB.send('push', { value: 1 }) // queued first
+				hostA.send('push', { value: 2 }) // queued second
 			}
 		})
 		hostB.observe('* -> *', (e) => log(`B${e.to.order.at(-1)}`))
 
-		hostA.send({ type: 'push', value: 0 })
+		hostA.send('push', { value: 0 })
 		expect(log).toHaveBeenCalledTimes(3)
 		expect(log).toHaveBeenNthCalledWith(1, 'A0')
 		expect(log).toHaveBeenNthCalledWith(2, 'B1')
@@ -363,7 +363,7 @@ describe('commit ordering across hosts', () => {
 	test('a send from inside a listener into another host, issued mid-chain, drains only once the chain has settled, never mid-hop', () => {
 		const relay = machine({
 			initial: 'a',
-			inputs: type<{ type: 'go' }>(),
+			inputs: type<{ go: undefined }>(),
 			states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
 			transitions: {
 				'a -go> b': () => {},
@@ -377,12 +377,12 @@ describe('commit ordering across hosts', () => {
 
 		hostA.observe('* -> b', () => {
 			log('A entered b')
-			hostB.send({ type: 'toggle' }) // must not drain until hostA's chain is fully settled
+			hostB.send('toggle') // must not drain until hostA's chain is fully settled
 		})
 		hostA.observe('* -> *', (e) => log(`A -> ${e.to.name}`))
 		hostB.observe('* -> *', () => log('B toggled'))
 
-		hostA.send({ type: 'go' })
+		hostA.send('go')
 
 		expect(hostA.current).toEqual({ name: 'c' })
 		expect(log).toHaveBeenCalledTimes(4)
@@ -403,8 +403,8 @@ describe('commit ordering across hosts', () => {
 			log('A1')
 			if (!queued) {
 				queued = true
-				hostB.send({ type: 'toggle' }) // will throw once drained
-				hostA.send({ type: 'toggle' }) // queued after it; must be discarded, never runs
+				hostB.send('toggle') // will throw once drained
+				hostA.send('toggle') // queued after it; must be discarded, never runs
 			}
 		})
 		hostB.observe('* -> *', () => {
@@ -415,7 +415,7 @@ describe('commit ordering across hosts', () => {
 			}
 		})
 
-		expect(() => hostA.send({ type: 'toggle' })).toThrow('boom')
+		expect(() => hostA.send('toggle')).toThrow('boom')
 		expect(log).toHaveBeenCalledTimes(2)
 		expect(log).toHaveBeenNthCalledWith(1, 'A1')
 		expect(log).toHaveBeenNthCalledWith(2, 'B')
@@ -424,8 +424,8 @@ describe('commit ordering across hosts', () => {
 		expect(hostB.current).toEqual({ name: 'on' })
 
 		// both hosts still work afterwards
-		hostA.send({ type: 'toggle' })
-		hostB.send({ type: 'toggle' })
+		hostA.send('toggle')
+		hostB.send('toggle')
 		expect(hostA.current).toEqual({ name: 'off' })
 		expect(hostB.current).toEqual({ name: 'off' })
 	})
@@ -438,16 +438,16 @@ describe('commit ordering across hosts', () => {
 		hostA.observe('* -> loop', () => {
 			if (!queued) {
 				queued = true
-				hostB.send({ type: 'toggle' }) // queued; must be discarded when the chain overflows
+				hostB.send('toggle') // queued; must be discarded when the chain overflows
 			}
 		})
 
-		expect(() => hostA.send({ type: 'go' })).toThrow(RangeError)
+		expect(() => hostA.send('go')).toThrow(RangeError)
 		expect(hostB.current).toEqual({ name: 'off' }) // never drained
 
 		// both hosts still work afterwards
-		hostA.send({ type: 'stop' })
-		hostB.send({ type: 'toggle' })
+		hostA.send('stop')
+		hostB.send('toggle')
 		expect(hostA.current).toEqual({ name: 'idle' })
 		expect(hostB.current).toEqual({ name: 'on' })
 	})
@@ -458,11 +458,11 @@ describe('commit ordering across hosts', () => {
 		const stateRightAfterSend = vi.fn()
 
 		hostA.observe('* -> *', () => {
-			hostB.send({ type: 'toggle' })
+			hostB.send('toggle')
 			stateRightAfterSend(hostB.current.name) // deferred: still the old state
 		})
 
-		hostA.send({ type: 'toggle' })
+		hostA.send('toggle')
 		expect(stateRightAfterSend).toHaveBeenCalledExactlyOnceWith('off')
 		// drained by the time the outermost send returns
 		expect(hostB.current).toEqual({ name: 'on' })
@@ -487,7 +487,7 @@ describe('commit ordering while `start` settles', () => {
 			transitions: {
 				'a -> b': () => {
 					log('hop a->b')
-					sink.send({ type: 'toggle' })
+					sink.send('toggle')
 					// deferred: the queue belongs to the drain `start` is holding
 					log(`sink right after send: ${sink.current.name}`)
 				},
@@ -519,7 +519,7 @@ describe('commit ordering while `start` settles', () => {
 			states: type<{ name: 'a' } | { name: 'b' }>(),
 			transitions: {
 				'a -> b': () => {
-					sink.send({ type: 'toggle' })
+					sink.send('toggle')
 					log(`sink right after send: ${sink.current.name}`)
 				},
 			},
@@ -531,7 +531,7 @@ describe('commit ordering while `start` settles', () => {
 			log('driver listener done')
 		})
 
-		driver.send({ type: 'toggle' })
+		driver.send('toggle')
 		expect(log).toHaveBeenCalledTimes(3)
 		expect(log).toHaveBeenNthCalledWith(1, 'sink right after send: off')
 		expect(log).toHaveBeenNthCalledWith(2, 'driver listener done')
@@ -545,7 +545,7 @@ describe('commit ordering while `start` settles', () => {
 			states: type<{ name: 'spin' }>(),
 			transitions: {
 				'spin -> spin': () => {
-					sink.send({ type: 'toggle' }) // queued; discarded when the chain overflows
+					sink.send('toggle') // queued; discarded when the chain overflows
 				},
 			},
 		})
@@ -556,7 +556,7 @@ describe('commit ordering while `start` settles', () => {
 		expect(sink.current).toEqual({ name: 'off' }) // never drained
 
 		// the drain was released: an ordinary send still works
-		sink.send({ type: 'toggle' })
+		sink.send('toggle')
 		expect(sink.current).toEqual({ name: 'on' })
 	})
 })
@@ -581,7 +581,7 @@ describe('actions fired by `start()`', () => {
 			actions: {
 				a: () => {
 					log('residency on a')
-					sink.send({ type: 'toggle' })
+					sink.send('toggle')
 					// deferred: the queue belongs to the drain `start` is holding
 					log(`sink right after send: ${sink.current.name}`)
 				},
@@ -611,7 +611,7 @@ describe('actions fired by `start()`', () => {
 			actions: {
 				a: () => {
 					log('residency on a')
-					sink.send({ type: 'toggle' })
+					sink.send('toggle')
 					log(`sink right after send: ${sink.current.name}`)
 				},
 				c: () => {
@@ -642,7 +642,7 @@ describe('actions fired by `start()`', () => {
 			transitions: {},
 			actions: {
 				a: () => {
-					sink.send({ type: 'toggle' })
+					sink.send('toggle')
 					log(`sink right after send: ${sink.current.name}`)
 				},
 			},
@@ -655,7 +655,7 @@ describe('actions fired by `start()`', () => {
 			log('driver listener done')
 		})
 
-		driver.send({ type: 'toggle' })
+		driver.send('toggle')
 		expect(log).toHaveBeenCalledTimes(3)
 		expect(log).toHaveBeenNthCalledWith(1, 'sink right after send: off')
 		expect(log).toHaveBeenNthCalledWith(2, 'driver listener done')
@@ -665,14 +665,14 @@ describe('actions fired by `start()`', () => {
 	test('a self-send from the initial residency drains before `start` returns, so the host it hands back already reflects it — with no listener able to have missed the hop, since none could yet exist', () => {
 		const selfSender = machine({
 			initial: 'a',
-			inputs: type<{ type: 'go' }>(),
+			inputs: type<{ go: undefined }>(),
 			states: type<{ name: 'a' } | { name: 'b' }>(),
 			transitions: {
 				'a -go> b': () => {},
 			},
 			actions: {
 				a: ({ send }) => {
-					send({ type: 'go' })
+					send('go')
 				},
 			},
 		})

@@ -12,10 +12,11 @@ import { machine, type } from '../../src/totorobot.ts'
  * `send`. That is also what makes a stale result free — a `succeed` arriving
  * after we have already left `authenticating` matches no row and does nothing.
  */
-type Inputs =
-	| { type: 'login'; username: string; password: string }
-	| { type: 'succeed'; token: string }
-	| { type: 'fail'; reason: string }
+type Inputs = {
+	login: { username: string; password: string }
+	succeed: { token: string }
+	fail: { reason: string }
+}
 
 type States =
 	| { name: 'idle'; error: string | null; attempts: number }
@@ -35,22 +36,22 @@ export const authMachine = machine({
 	transitions: {
 		// A blank username is not an attempt: the row declines, so nothing
 		// changes and no listener fires. Declining is an ordinary outcome.
-		'idle -login> authenticating': ({ state, input, skip }) =>
-			input.username.trim()
+		'idle -login> authenticating': ({ state, inputData, skip }) =>
+			inputData.username.trim()
 				? {
-						username: input.username,
-						password: input.password,
+						username: inputData.username,
+						password: inputData.password,
 						attempts: state.attempts + 1,
 					}
 				: skip(),
 
-		'authenticating -succeed> authenticated': ({ state, input }) => ({
+		'authenticating -succeed> authenticated': ({ state, inputData }) => ({
 			username: state.username,
-			token: input.token,
+			token: inputData.token,
 		}),
 
-		'authenticating -fail> idle': ({ state, input }) => ({
-			error: input.reason,
+		'authenticating -fail> idle': ({ state, inputData }) => ({
+			error: inputData.reason,
 			attempts: state.attempts,
 		}),
 	},
@@ -79,13 +80,12 @@ export async function signIn(
 	host: ReturnType<typeof authMachine.start>,
 	credentials: Credentials,
 ): Promise<void> {
-	host.send({ type: 'login', ...credentials })
+	host.send('login', { ...credentials })
 	if (host.current.name !== 'authenticating') return
 	try {
-		host.send({ type: 'succeed', ...(await fakeLogin(credentials)) })
+		host.send('succeed', { ...(await fakeLogin(credentials)) })
 	} catch (error) {
-		host.send({
-			type: 'fail',
+		host.send('fail', {
 			reason: error instanceof Error ? error.message : String(error),
 		})
 	}

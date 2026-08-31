@@ -22,10 +22,10 @@ describe('acceptance: two-state ceremony floor', () => {
 		const doc = toggle.start()
 		expect(doc.current).toEqual({ name: 'off' })
 
-		doc.send({ type: 'toggle' })
+		doc.send('toggle')
 		expect(doc.current).toEqual({ name: 'on' })
 
-		doc.send({ type: 'toggle' })
+		doc.send('toggle')
 		expect(doc.current).toEqual({ name: 'off' })
 	})
 
@@ -40,11 +40,11 @@ describe('acceptance: two-state ceremony floor', () => {
 			log(`${e.from.name} -> ${e.to.name}`)
 			if (!queued) {
 				queued = true
-				doc.send({ type: 'toggle' }) // an observer submits a second input while observing the first transition
+				doc.send('toggle') // an observer submits a second input while observing the first transition
 			}
 		})
 
-		doc.send({ type: 'toggle' })
+		doc.send('toggle')
 
 		// the outermost call returns only after the queue drains — no await,
 		// no microtask flush, both transitions have already happened

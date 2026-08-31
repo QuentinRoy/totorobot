@@ -8,7 +8,7 @@ describe('reading', () => {
 		const host = editor.start()
 		expect(host.current).toEqual({ name: 'idle' })
 
-		host.send({ type: 'open', text: 'hello' })
+		host.send('open', { text: 'hello' })
 		expect(host.current).toEqual({
 			name: 'draft',
 			text: 'hello',
@@ -18,13 +18,13 @@ describe('reading', () => {
 
 	test('a value read from current before a transition is unchanged after it', () => {
 		const host = editor.start()
-		host.send({ type: 'open', text: 'hello' })
+		host.send('open', { text: 'hello' })
 
 		const before = host.current
 		const beforeClone = cloneDeep(before)
 		const beforeRef = before
 
-		host.send({ type: 'revise', text: 'goodbye' })
+		host.send('revise', { text: 'goodbye' })
 
 		// Deep equality catches a value that changed; object identity catches an
 		// implementation that mutated the old state in place even where, by

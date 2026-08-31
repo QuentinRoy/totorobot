@@ -479,3 +479,12 @@ stops resolving. An expression-bodied predicate does not trigger it, which is wh
 a probe that only writes `restart: (from, to) => from.id !== to.id` would call
 this safe. The fix is the same shape as I14's: wrap both parameters in
 `NoInfer`. Pinned in `tests/actions.test-d.ts`.
+
+### <a id="i29"></a>I29: A tuple union keeps separate send arguments correlated
+
+`send` maps each input entry to one tuple, then accepts their union as its rest
+parameter. Required data uses `[name, data]`; data that admits `undefined` uses
+`[name, data?]`. This rejects a union-valued name beside an unrelated
+union-valued payload. Narrowing the name first selects one tuple and permits
+forwarding. A generic `(name: N, data: I[N])` accepts mismatched unions and is
+therefore too broad.

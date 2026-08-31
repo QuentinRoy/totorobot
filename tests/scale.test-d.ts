@@ -19,8 +19,7 @@ import { expectTypeOf, test } from 'vitest'
 
 import { machine, type, type Handled } from 'totorobot'
 
-type Inputs =
-	{ type: 'next'; delta: number } | { type: 'reset' } | { type: 'skip' }
+type Inputs = { next: { delta: number }; reset: undefined; skip: undefined }
 type States =
 	| { name: 's00'; visits: number; owner: 's00' }
 	| { name: 's01'; visits: number; owner: 's01' }
@@ -48,84 +47,84 @@ const stress = machine({
 	inputs: type<Inputs>(),
 	states: type<States>(),
 	transitions: {
-		's00 -next> s01': ({ state, input }) => ({
-			visits: state.visits + input.delta,
+		's00 -next> s01': ({ state, inputData }) => ({
+			visits: state.visits + inputData.delta,
 			owner: 's01',
 		}),
-		's01 -next> s02': ({ state, input }) => ({
-			visits: state.visits + input.delta,
+		's01 -next> s02': ({ state, inputData }) => ({
+			visits: state.visits + inputData.delta,
 			owner: 's02',
 		}),
-		's02 -next> s03': ({ state, input }) => ({
-			visits: state.visits + input.delta,
+		's02 -next> s03': ({ state, inputData }) => ({
+			visits: state.visits + inputData.delta,
 			owner: 's03',
 		}),
-		's03 -next> s04': ({ state, input }) => ({
-			visits: state.visits + input.delta,
+		's03 -next> s04': ({ state, inputData }) => ({
+			visits: state.visits + inputData.delta,
 			owner: 's04',
 		}),
-		's04 -next> s05': ({ state, input }) => ({
-			visits: state.visits + input.delta,
+		's04 -next> s05': ({ state, inputData }) => ({
+			visits: state.visits + inputData.delta,
 			owner: 's05',
 		}),
-		's05 -next> s06': ({ state, input }) => ({
-			visits: state.visits + input.delta,
+		's05 -next> s06': ({ state, inputData }) => ({
+			visits: state.visits + inputData.delta,
 			owner: 's06',
 		}),
-		's06 -next> s07': ({ state, input }) => ({
-			visits: state.visits + input.delta,
+		's06 -next> s07': ({ state, inputData }) => ({
+			visits: state.visits + inputData.delta,
 			owner: 's07',
 		}),
-		's07 -next> s08': ({ state, input }) => ({
-			visits: state.visits + input.delta,
+		's07 -next> s08': ({ state, inputData }) => ({
+			visits: state.visits + inputData.delta,
 			owner: 's08',
 		}),
-		's08 -next> s09': ({ state, input }) => ({
-			visits: state.visits + input.delta,
+		's08 -next> s09': ({ state, inputData }) => ({
+			visits: state.visits + inputData.delta,
 			owner: 's09',
 		}),
-		's09 -next> s10': ({ state, input }) => ({
-			visits: state.visits + input.delta,
+		's09 -next> s10': ({ state, inputData }) => ({
+			visits: state.visits + inputData.delta,
 			owner: 's10',
 		}),
-		's10 -next> s11': ({ state, input }) => ({
-			visits: state.visits + input.delta,
+		's10 -next> s11': ({ state, inputData }) => ({
+			visits: state.visits + inputData.delta,
 			owner: 's11',
 		}),
-		's11 -next> s12': ({ state, input }) => ({
-			visits: state.visits + input.delta,
+		's11 -next> s12': ({ state, inputData }) => ({
+			visits: state.visits + inputData.delta,
 			owner: 's12',
 		}),
-		's12 -next> s13': ({ state, input }) => ({
-			visits: state.visits + input.delta,
+		's12 -next> s13': ({ state, inputData }) => ({
+			visits: state.visits + inputData.delta,
 			owner: 's13',
 		}),
-		's13 -next> s14': ({ state, input }) => ({
-			visits: state.visits + input.delta,
+		's13 -next> s14': ({ state, inputData }) => ({
+			visits: state.visits + inputData.delta,
 			owner: 's14',
 		}),
-		's14 -next> s15': ({ state, input }) => ({
-			visits: state.visits + input.delta,
+		's14 -next> s15': ({ state, inputData }) => ({
+			visits: state.visits + inputData.delta,
 			owner: 's15',
 		}),
-		's15 -next> s16': ({ state, input }) => ({
-			visits: state.visits + input.delta,
+		's15 -next> s16': ({ state, inputData }) => ({
+			visits: state.visits + inputData.delta,
 			owner: 's16',
 		}),
-		's16 -next> s17': ({ state, input }) => ({
-			visits: state.visits + input.delta,
+		's16 -next> s17': ({ state, inputData }) => ({
+			visits: state.visits + inputData.delta,
 			owner: 's17',
 		}),
-		's17 -next> s18': ({ state, input }) => ({
-			visits: state.visits + input.delta,
+		's17 -next> s18': ({ state, inputData }) => ({
+			visits: state.visits + inputData.delta,
 			owner: 's18',
 		}),
-		's18 -next> s19': ({ state, input }) => ({
-			visits: state.visits + input.delta,
+		's18 -next> s19': ({ state, inputData }) => ({
+			visits: state.visits + inputData.delta,
 			owner: 's19',
 		}),
-		's19 -next> s00': ({ state, input }) => ({
-			visits: state.visits + input.delta,
+		's19 -next> s00': ({ state, inputData }) => ({
+			visits: state.visits + inputData.delta,
 			owner: 's00',
 		}),
 		's00 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
@@ -223,22 +222,22 @@ test('handler state and input are inferred with no annotations, at this scale', 
 		inputs: type<Inputs>(),
 		states: type<States>(),
 		transitions: {
-			's00 -next> s01': ({ state, input }) => {
+			's00 -next> s01': ({ state, inputData }) => {
 				expectTypeOf(state).toEqualTypeOf<{
 					name: 's00'
 					visits: number
 					owner: 's00'
 				}>()
-				expectTypeOf(input).toEqualTypeOf<{ type: 'next'; delta: number }>()
-				return { visits: state.visits + input.delta, owner: 's01' }
+				expectTypeOf(inputData).toEqualTypeOf<{ delta: number }>()
+				return { visits: state.visits + inputData.delta, owner: 's01' }
 			},
-			's19 -next> s00': ({ state, input }) => {
+			's19 -next> s00': ({ state, inputData }) => {
 				expectTypeOf(state).toEqualTypeOf<{
 					name: 's19'
 					visits: number
 					owner: 's19'
 				}>()
-				return { visits: state.visits + input.delta, owner: 's00' }
+				return { visits: state.visits + inputData.delta, owner: 's00' }
 			},
 			's00 -skip> s05': ({ state, skip }) =>
 				state.visits < 0 ? skip() : { visits: state.visits + 1, owner: 's05' },
@@ -252,8 +251,8 @@ test('a wrong owner literal is still rejected at this scale', () => {
 		inputs: type<Inputs>(),
 		states: type<States>(),
 		transitions: {
-			's00 -next> s01': ({ state, input }) => ({
-				visits: state.visits + input.delta,
+			's00 -next> s01': ({ state, inputData }) => ({
+				visits: state.visits + inputData.delta,
 				// @ts-expect-error - s01's owner literal is "s01", not "s00"
 				owner: 's00',
 			}),

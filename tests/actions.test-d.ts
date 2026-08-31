@@ -7,7 +7,7 @@ import { expectTypeOf, test } from 'vitest'
 
 import { machine, type } from 'totorobot'
 
-type Inputs = { type: 'toggle' } | { type: 'go' }
+type Inputs = { toggle: undefined; go: undefined }
 type States = { name: 'off' } | { name: 'on'; count: number } | { name: 'gone' }
 
 test("a residency trigger's arrival narrows `to` to that trigger's own state, tag included, whichever way the state was entered", () => {
@@ -75,8 +75,10 @@ test("an edge trigger's argument narrows the transition exactly the way a listen
 					name: 'on'
 					count: number
 				}>()
-				expectTypeOf(transition.input).toEqualTypeOf<{ type: 'toggle' }>()
-				expectTypeOf(transition.send).toEqualTypeOf<(input: Inputs) => void>()
+				expectTypeOf(transition.inputData).toEqualTypeOf<undefined>()
+				expectTypeOf(transition.send).toEqualTypeOf<
+					(...args: ['toggle', undefined?] | ['go', undefined?]) => void
+				>()
 			},
 		},
 	})
@@ -308,6 +310,6 @@ test('the block declares no vocabulary of its own: a definition with actions is 
 
 	expectTypeOf(withActions).toEqualTypeOf<typeof bare>()
 	expectTypeOf(withActions.start().send).toEqualTypeOf<
-		(input: Inputs) => void
+		(...args: ['toggle', undefined?] | ['go', undefined?]) => void
 	>()
 })

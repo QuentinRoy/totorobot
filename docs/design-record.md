@@ -714,6 +714,12 @@ way, and the context member is `input` rather than `event`.
 
 ### Revision: the shape of a named thing
 
+> **Superseded for inputs by #97.** Inputs are again a name-to-payload map. Sending
+> takes `send(name, payload?)`; handlers and transition records expose the name as
+> `input` and its unchanged value as `inputData`. Omission follows whether the
+> payload type admits `undefined`. States remain tagged by `name`. The historical
+> tagged-input argument below stays as the decision this revision replaced.
+
 > **A late revision, merged here from what was §17 of the chronological record.**
 > Decided alongside [§10's composition boundary](#revision-the-composition-boundary),
 > and it changes the shape argued above rather than the decision to declare at all.

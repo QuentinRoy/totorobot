@@ -14,7 +14,7 @@ describe('observing', () => {
 
 		expect(() => off()).not.toThrow()
 
-		doc.send({ type: 'toggle' })
+		doc.send('toggle')
 		expect(observer).not.toHaveBeenCalled()
 	})
 
@@ -26,7 +26,7 @@ describe('observing', () => {
 		doc.observe('* -> *', first)
 		doc.observe('* -> *', second)
 
-		doc.send({ type: 'toggle' })
+		doc.send('toggle')
 		expect(first).toHaveBeenCalledOnce()
 		expect(second).toHaveBeenCalledOnce()
 		expect(first).toHaveBeenCalledBefore(second)
@@ -40,14 +40,14 @@ describe('observing', () => {
 			observer(e.to, doc.current)
 		})
 
-		doc.send({ type: 'toggle' })
+		doc.send('toggle')
 		expect(observer).toHaveBeenCalledExactlyOnceWith(doc.current, doc.current)
 	})
 
 	test('* matches any state, an unlabelled arrow matches any input, and a labelled one matches only that input', () => {
 		const fork = machine({
 			initial: 'a',
-			inputs: type<{ type: 'x' } | { type: 'y' }>(),
+			inputs: type<{ x: undefined; y: undefined }>(),
 			states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
 			transitions: {
 				'a -x> b': () => {},
@@ -62,7 +62,7 @@ describe('observing', () => {
 		docX.observe('* -> c', () => logX('any-state:c'))
 		docX.observe('a -> *', () => logX('any-input'))
 		docX.observe('a -x> *', () => logX('labelled-x'))
-		docX.send({ type: 'x' })
+		docX.send('x')
 		expect(logX).toHaveBeenCalledTimes(3)
 		expect(logX).toHaveBeenNthCalledWith(1, 'any-state:b')
 		expect(logX).toHaveBeenNthCalledWith(2, 'any-input')
@@ -75,7 +75,7 @@ describe('observing', () => {
 		docY.observe('* -> c', () => logY('any-state:c'))
 		docY.observe('a -> *', () => logY('any-input'))
 		docY.observe('a -x> *', () => logY('labelled-x'))
-		docY.send({ type: 'y' })
+		docY.send('y')
 		expect(logY).toHaveBeenCalledTimes(2)
 		expect(logY).toHaveBeenNthCalledWith(1, 'any-state:c')
 		expect(logY).toHaveBeenNthCalledWith(2, 'any-input')
@@ -91,7 +91,7 @@ describe('observing', () => {
 			offSecond()
 		})
 		offSecond = docA.observe('* -> *', () => logA('second'))
-		docA.send({ type: 'toggle' })
+		docA.send('toggle')
 		expect(logA).toHaveBeenCalledTimes(2)
 		expect(logA).toHaveBeenNthCalledWith(1, 'first')
 		expect(logA).toHaveBeenNthCalledWith(2, 'second')
@@ -103,7 +103,7 @@ describe('observing', () => {
 			logB('only')
 			docB.observe('* -> *', () => logB('late'))
 		})
-		docB.send({ type: 'toggle' })
+		docB.send('toggle')
 		expect(logB).toHaveBeenCalledExactlyOnceWith('only')
 	})
 
@@ -113,25 +113,28 @@ describe('observing', () => {
 		host.observe('* -> *', observer)
 
 		// draft -submit> checking (input-driven), then checking -> allowed (immediate)
-		host.send({ type: 'submit', quota: 1 })
+		host.send('submit', { quota: 1 })
 		// allowed -reset> draft — a payload-free input, not an immediate
-		host.send({ type: 'reset' })
+		host.send('reset')
 
 		expect(observer).toHaveBeenCalledTimes(3)
 		expect(observer).toHaveBeenNthCalledWith(1, {
-			input: { type: 'submit', quota: 1 },
+			input: 'submit',
+			inputData: { quota: 1 },
 			from: { name: 'draft' },
 			to: { name: 'checking', quota: 1 },
 			send: expect.any(Function),
 		})
 		expect(observer).toHaveBeenNthCalledWith(2, {
 			input: undefined,
+			inputData: undefined,
 			from: { name: 'checking', quota: 1 },
 			to: { name: 'allowed', quota: 1 },
 			send: expect.any(Function),
 		})
 		expect(observer).toHaveBeenNthCalledWith(3, {
-			input: { type: 'reset' },
+			input: 'reset',
+			inputData: undefined,
 			from: { name: 'allowed', quota: 1 },
 			to: { name: 'draft' },
 			send: expect.any(Function),
@@ -152,7 +155,7 @@ describe('observing', () => {
 		// draft -submit> checking (matches only the broad pattern), then
 		// checking -> allowed, immediate (matches entry, exit and broad — never
 		// the labelled pattern, even though its state coordinates would).
-		host.send({ type: 'submit', quota: 1 })
+		host.send('submit', { quota: 1 })
 
 		expect(log).toHaveBeenCalledTimes(4)
 		expect(log).toHaveBeenNthCalledWith(1, 'broad')
@@ -171,7 +174,7 @@ describe('observing', () => {
 			})
 		})
 
-		host.send({ type: 'go' })
+		host.send('go')
 
 		expect(seen).toHaveBeenCalledTimes(3)
 		expect(seen).toHaveBeenNthCalledWith(1, {
@@ -199,7 +202,7 @@ describe('observing', () => {
 		// a -go> b, then b -> c and c -> d immediately: 'c' is occupied only
 		// mid-chain, and residency must still see both the arrival and the
 		// departure.
-		host.send({ type: 'go' })
+		host.send('go')
 
 		expect(log).toHaveBeenCalledTimes(2)
 		expect(log).toHaveBeenNthCalledWith(1, 'setup')
@@ -215,7 +218,7 @@ describe('observing', () => {
 			return () => log('teardown')
 		})
 
-		host.send({ type: 'go' })
+		host.send('go')
 		expect(log).toHaveBeenCalledTimes(2)
 		expect(log).toHaveBeenNthCalledWith(1, 'setup')
 		expect(log).toHaveBeenNthCalledWith(2, 'teardown')
@@ -229,11 +232,11 @@ describe('observing', () => {
 			recipeSetup()
 			return recipeTeardown
 		})
-		recipeHost.send({ type: 'go' })
+		recipeHost.send('go')
 
 		const declaredSetup = vi.fn()
 		const declaredTeardown = vi.fn()
-		activity(declaredSetup, declaredTeardown).start().send({ type: 'go' })
+		activity(declaredSetup, declaredTeardown).start().send('go')
 
 		expect(recipeSetup).toHaveBeenCalledOnce()
 		expect(recipeTeardown).toHaveBeenCalledOnce()
@@ -274,7 +277,7 @@ describe('observing', () => {
 
 	test('a residency attached to a noninitial current state runs immediately too: current, not initial, decides it', () => {
 		const host = toggle.start()
-		host.send({ type: 'toggle' }) // off -> on: 'on' is current now, and it is not the initial state
+		host.send('toggle') // off -> on: 'on' is current now, and it is not the initial state
 
 		const setup = vi.fn()
 		host.observe('on', setup)
@@ -290,6 +293,7 @@ describe('observing', () => {
 
 		expect(observer).toHaveBeenCalledExactlyOnceWith({
 			input: undefined,
+			inputData: undefined,
 			from: undefined,
 			to: { name: 'off' },
 			send: expect.any(Function),
@@ -316,7 +320,7 @@ describe('observing', () => {
 		const off = host.observe('on', setup)
 		off()
 
-		host.send({ type: 'toggle' }) // off -> on: would have entered, had it stayed subscribed
+		host.send('toggle') // off -> on: would have entered, had it stayed subscribed
 		expect(setup).not.toHaveBeenCalled()
 		expect(teardown).not.toHaveBeenCalled()
 	})
@@ -324,7 +328,7 @@ describe('observing', () => {
 	test('observe(state, fn) tears down and sets up again on a self-transition: restart falls out of matching both directions, same as a declared residency', () => {
 		const pinger = machine({
 			initial: 'idle',
-			inputs: type<{ type: 'ping' }>(),
+			inputs: type<{ ping: undefined }>(),
 			states: type<{ name: 'idle' }>(),
 			transitions: { 'idle -ping> idle': () => {} },
 		})
@@ -337,7 +341,7 @@ describe('observing', () => {
 		})
 
 		expect(log).toHaveBeenCalledExactlyOnceWith('setup')
-		host.send({ type: 'ping' })
+		host.send('ping')
 		expect(log).toHaveBeenCalledTimes(3)
 		expect(log).toHaveBeenNthCalledWith(1, 'setup')
 		expect(log).toHaveBeenNthCalledWith(2, 'teardown')
@@ -347,7 +351,7 @@ describe('observing', () => {
 	test('observe(state, { run, restart: false }) survives a self-transition: no teardown, no second setup', () => {
 		const pinger = machine({
 			initial: 'idle',
-			inputs: type<{ type: 'ping' }>(),
+			inputs: type<{ ping: undefined }>(),
 			states: type<{ name: 'idle' }>(),
 			transitions: { 'idle -ping> idle': () => {} },
 		})
@@ -360,8 +364,8 @@ describe('observing', () => {
 			restart: false,
 		})
 
-		host.send({ type: 'ping' })
-		host.send({ type: 'ping' })
+		host.send('ping')
+		host.send('ping')
 		expect(setup).toHaveBeenCalledOnce()
 		expect(teardown).not.toHaveBeenCalled()
 	})
@@ -369,10 +373,10 @@ describe('observing', () => {
 	test('observe(state, { run, restart }) decides a self-transition case by case, from the resident data either side', () => {
 		const setter = machine({
 			initial: 'idle',
-			inputs: type<{ type: 'set'; id: number }>(),
+			inputs: type<{ set: { id: number } }>(),
 			states: type<{ name: 'idle'; id: number }>(),
 			transitions: {
-				'idle -set> idle': ({ input }) => ({ id: input.id }),
+				'idle -set> idle': ({ inputData }) => ({ id: inputData.id }),
 			},
 		})
 		const host = setter.start({ id: 0 })
@@ -386,8 +390,8 @@ describe('observing', () => {
 			restart: (from, to) => from.id !== to.id,
 		})
 
-		host.send({ type: 'set', id: 0 }) // same id: no restart
-		host.send({ type: 'set', id: 1 }) // different id: restarts
+		host.send('set', { id: 0 }) // same id: no restart
+		host.send('set', { id: 1 }) // different id: restarts
 		expect(log).toHaveBeenCalledTimes(3)
 		expect(log).toHaveBeenNthCalledWith(1, 'setup:0')
 		expect(log).toHaveBeenNthCalledWith(2, 'teardown:0')
@@ -405,7 +409,7 @@ describe('observing', () => {
 		})
 
 		host.observe('on', both)
-		host.send({ type: 'toggle' })
+		host.send('toggle')
 
 		expect(callable).not.toHaveBeenCalled()
 		expect(run).toHaveBeenCalledOnce()
@@ -415,7 +419,7 @@ describe('observing', () => {
 		const log = vi.fn()
 		const doc = machine({
 			initial: 'off',
-			inputs: type<{ type: 'toggle' }>(),
+			inputs: type<{ toggle: undefined }>(),
 			states: type<{ name: 'off' } | { name: 'on' }>(),
 			transitions: {
 				'off -toggle> on': () => {},
@@ -434,8 +438,8 @@ describe('observing', () => {
 			return () => log('observe:teardown')
 		})
 
-		doc.send({ type: 'toggle' }) // off -> on: both enter
-		doc.send({ type: 'toggle' }) // on -> off: both leave
+		doc.send('toggle') // off -> on: both enter
+		doc.send('toggle') // on -> off: both leave
 
 		expect(log).toHaveBeenCalledTimes(4)
 		expect(log).toHaveBeenNthCalledWith(1, 'action:setup')
@@ -447,7 +451,7 @@ describe('observing', () => {
 	test('a self-transition matches both the exit pattern and the entry pattern', () => {
 		const pinger = machine({
 			initial: 'idle',
-			inputs: type<{ type: 'ping' }>(),
+			inputs: type<{ ping: undefined }>(),
 			states: type<{ name: 'idle' }>(),
 			transitions: {
 				'idle -ping> idle': () => {},
@@ -460,7 +464,7 @@ describe('observing', () => {
 		doc.observe('idle -> *', exit)
 		doc.observe('* -> idle', entry)
 
-		doc.send({ type: 'ping' })
+		doc.send('ping')
 		expect(exit).toHaveBeenCalledOnce()
 		expect(entry).toHaveBeenCalledOnce()
 		expect(exit).toHaveBeenCalledBefore(entry)
@@ -474,14 +478,14 @@ describe('observing', () => {
 			observer(e.send)
 		})
 
-		host.send({ type: 'toggle' })
+		host.send('toggle')
 		expect(observer).toHaveBeenCalledExactlyOnceWith(host.send)
 	})
 
 	test('a send from a listener is queued: the listener is not re-entered, and the machine settles afterwards', () => {
 		const relay = machine({
 			initial: 'a',
-			inputs: type<{ type: 'x' } | { type: 'y' }>(),
+			inputs: type<{ x: undefined; y: undefined }>(),
 			states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
 			transitions: {
 				'a -x> b': () => {},
@@ -494,12 +498,12 @@ describe('observing', () => {
 
 		host.observe('* -> b', (e) => {
 			log(`fired in ${host.current.name}`)
-			e.send({ type: 'y' })
+			e.send('y')
 			// Queued, not nested: the send has not moved the machine yet.
 			log(`after send, still ${host.current.name}`)
 		})
 
-		host.send({ type: 'x' })
+		host.send('x')
 
 		expect(log).toHaveBeenCalledTimes(2)
 		expect(log).toHaveBeenNthCalledWith(1, 'fired in b')
@@ -510,7 +514,7 @@ describe('observing', () => {
 	test('a send from a listener is read at drain time, so it may correctly find no row', () => {
 		const fork = machine({
 			initial: 'a',
-			inputs: type<{ type: 'x' } | { type: 'z' }>(),
+			inputs: type<{ x: undefined; z: undefined }>(),
 			states: type<{ name: 'a' } | { name: 'b' } | { name: 'd' }>(),
 			transitions: {
 				'a -x> b': () => {},
@@ -524,8 +528,8 @@ describe('observing', () => {
 
 		// `z` is a row on `a`, the state the listener is told about — but the
 		// machine is in `b` by the time the queue reads it, and `b` has no rows.
-		host.observe('a -x> b', (e) => e.send({ type: 'z' }))
-		host.send({ type: 'x' })
+		host.observe('a -x> b', (e) => e.send('z'))
+		host.send('x')
 
 		expect(observer).toHaveBeenCalledExactlyOnceWith('b')
 		expect(host.current).toEqual({ name: 'b' })
@@ -542,11 +546,11 @@ describe('observing', () => {
 			maxDepth = Math.max(maxDepth, ++depth)
 			// Runs after this listener returns, so the next notification is a fresh
 			// call rather than a nested one.
-			if (observer.mock.calls.length < 3) e.send({ type: 'toggle' })
+			if (observer.mock.calls.length < 3) e.send('toggle')
 			depth--
 		})
 
-		host.send({ type: 'toggle' })
+		host.send('toggle')
 
 		// off -> on -> off -> on: three transitions, each notified at depth 1.
 		expect(observer).toHaveBeenCalledTimes(3)

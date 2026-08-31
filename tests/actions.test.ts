@@ -9,7 +9,7 @@ describe('actions', () => {
 		const setup = vi.fn()
 		const doc = machine({
 			initial: 'off',
-			inputs: type<{ type: 'toggle' }>(),
+			inputs: type<{ toggle: undefined }>(),
 			states: type<{ name: 'off' } | { name: 'on' }>(),
 			transitions: {
 				'off -toggle> on': () => {},
@@ -21,7 +21,7 @@ describe('actions', () => {
 		}).start()
 
 		expect(setup).not.toHaveBeenCalled()
-		doc.send({ type: 'toggle' })
+		doc.send('toggle')
 		expect(setup).toHaveBeenCalledOnce()
 	})
 
@@ -30,7 +30,7 @@ describe('actions', () => {
 		const setup = vi.fn(() => teardown)
 		const doc = machine({
 			initial: 'off',
-			inputs: type<{ type: 'toggle' }>(),
+			inputs: type<{ toggle: undefined }>(),
 			states: type<{ name: 'off' } | { name: 'on' }>(),
 			transitions: {
 				'off -toggle> on': () => {},
@@ -41,10 +41,10 @@ describe('actions', () => {
 			},
 		}).start()
 
-		doc.send({ type: 'toggle' }) // off -> on: setup
+		doc.send('toggle') // off -> on: setup
 		expect(setup).toHaveBeenCalledOnce()
 		expect(teardown).not.toHaveBeenCalled()
-		doc.send({ type: 'toggle' }) // on -> off: teardown
+		doc.send('toggle') // on -> off: teardown
 		expect(teardown).toHaveBeenCalledOnce()
 	})
 
@@ -52,7 +52,7 @@ describe('actions', () => {
 		const setup = vi.fn()
 		const doc = machine({
 			initial: 'off',
-			inputs: type<{ type: 'toggle' }>(),
+			inputs: type<{ toggle: undefined }>(),
 			states: type<{ name: 'off' } | { name: 'on' }>(),
 			transitions: {
 				'off -toggle> on': () => {},
@@ -63,8 +63,8 @@ describe('actions', () => {
 			},
 		}).start()
 
-		doc.send({ type: 'toggle' })
-		expect(() => doc.send({ type: 'toggle' })).not.toThrow()
+		doc.send('toggle')
+		expect(() => doc.send('toggle')).not.toThrow()
 		expect(setup).toHaveBeenCalledOnce()
 	})
 
@@ -72,7 +72,7 @@ describe('actions', () => {
 		const log = vi.fn()
 		const pinger = machine({
 			initial: 'idle',
-			inputs: type<{ type: 'ping' }>(),
+			inputs: type<{ ping: undefined }>(),
 			states: type<{ name: 'idle' }>(),
 			transitions: {
 				'idle -ping> idle': () => {},
@@ -87,7 +87,7 @@ describe('actions', () => {
 
 		const doc = pinger.start()
 		expect(log).toHaveBeenCalledExactlyOnceWith('setup')
-		doc.send({ type: 'ping' })
+		doc.send('ping')
 		expect(log).toHaveBeenCalledTimes(3)
 		expect(log).toHaveBeenNthCalledWith(1, 'setup')
 		expect(log).toHaveBeenNthCalledWith(2, 'teardown')
@@ -98,7 +98,7 @@ describe('actions', () => {
 		const log = vi.fn()
 		const doc = machine({
 			initial: 'idle',
-			inputs: type<{ type: 'ping' }>(),
+			inputs: type<{ ping: undefined }>(),
 			states: type<{ name: 'idle' }>(),
 			transitions: { 'idle -ping> idle': () => {} },
 			actions: {
@@ -113,8 +113,8 @@ describe('actions', () => {
 		}).start()
 
 		expect(log).toHaveBeenCalledExactlyOnceWith('setup')
-		doc.send({ type: 'ping' })
-		doc.send({ type: 'ping' })
+		doc.send('ping')
+		doc.send('ping')
 		expect(log).toHaveBeenCalledExactlyOnceWith('setup')
 	})
 
@@ -122,7 +122,7 @@ describe('actions', () => {
 		const log = vi.fn()
 		const doc = machine({
 			initial: 'off',
-			inputs: type<{ type: 'ping' } | { type: 'toggle' }>(),
+			inputs: type<{ ping: undefined; toggle: undefined }>(),
 			states: type<{ name: 'off' } | { name: 'on' }>(),
 			transitions: {
 				'off -toggle> on': () => {},
@@ -140,10 +140,10 @@ describe('actions', () => {
 			},
 		}).start()
 
-		doc.send({ type: 'toggle' }) // off -> on: setup
-		doc.send({ type: 'ping' }) // on -> on: restart: false, survives
+		doc.send('toggle') // off -> on: setup
+		doc.send('ping') // on -> on: restart: false, survives
 		expect(log).toHaveBeenCalledExactlyOnceWith('setup')
-		doc.send({ type: 'toggle' }) // on -> off: always tears down
+		doc.send('toggle') // on -> off: always tears down
 		expect(log).toHaveBeenCalledTimes(2)
 		expect(log).toHaveBeenNthCalledWith(1, 'setup')
 		expect(log).toHaveBeenNthCalledWith(2, 'teardown')
@@ -153,9 +153,11 @@ describe('actions', () => {
 		const log = vi.fn()
 		const doc = machine({
 			initial: 'idle',
-			inputs: type<{ type: 'set'; id: number }>(),
+			inputs: type<{ set: { id: number } }>(),
 			states: type<{ name: 'idle'; id: number }>(),
-			transitions: { 'idle -set> idle': ({ input }) => ({ id: input.id }) },
+			transitions: {
+				'idle -set> idle': ({ inputData }) => ({ id: inputData.id }),
+			},
 			actions: {
 				idle: {
 					run: ({ to }) => {
@@ -168,9 +170,9 @@ describe('actions', () => {
 		}).start({ id: 0 })
 
 		expect(log).toHaveBeenCalledExactlyOnceWith('setup:0')
-		doc.send({ type: 'set', id: 0 }) // same id: survives
+		doc.send('set', { id: 0 }) // same id: survives
 		expect(log).toHaveBeenCalledExactlyOnceWith('setup:0')
-		doc.send({ type: 'set', id: 1 }) // different id: restarts
+		doc.send('set', { id: 1 }) // different id: restarts
 		expect(log).toHaveBeenCalledTimes(3)
 		expect(log).toHaveBeenNthCalledWith(1, 'setup:0')
 		expect(log).toHaveBeenNthCalledWith(2, 'teardown')
@@ -181,7 +183,7 @@ describe('actions', () => {
 		const restart = vi.fn(() => true)
 		const doc = machine({
 			initial: 'idle',
-			inputs: type<{ type: 'ping' }>(),
+			inputs: type<{ ping: undefined }>(),
 			states: type<{ name: 'idle' }>(),
 			transitions: { 'idle -ping> idle': () => {} },
 			actions: {
@@ -189,10 +191,10 @@ describe('actions', () => {
 			},
 		}).start()
 
-		doc.send({ type: 'ping' })
+		doc.send('ping')
 		expect(restart).toHaveBeenCalledTimes(1)
-		doc.send({ type: 'ping' })
-		doc.send({ type: 'ping' })
+		doc.send('ping')
+		doc.send('ping')
 		expect(restart).toHaveBeenCalledTimes(3)
 	})
 
@@ -201,7 +203,7 @@ describe('actions', () => {
 		const restartB = vi.fn(() => false)
 		const doc = machine({
 			initial: 'idle',
-			inputs: type<{ type: 'ping' }>(),
+			inputs: type<{ ping: undefined }>(),
 			states: type<{ name: 'idle' }>(),
 			transitions: { 'idle -ping> idle': () => {} },
 			actions: {
@@ -212,7 +214,7 @@ describe('actions', () => {
 			},
 		}).start()
 
-		doc.send({ type: 'ping' })
+		doc.send('ping')
 		expect(restartA).toHaveBeenCalledTimes(1)
 		expect(restartB).toHaveBeenCalledTimes(1)
 	})
@@ -221,7 +223,7 @@ describe('actions', () => {
 		const log = vi.fn()
 		const doc = machine({
 			initial: 'idle',
-			inputs: type<{ type: 'ping' }>(),
+			inputs: type<{ ping: undefined }>(),
 			states: type<{ name: 'idle' }>(),
 			transitions: { 'idle -ping> idle': () => {} },
 			actions: {
@@ -239,7 +241,7 @@ describe('actions', () => {
 
 		// Teardown runs in reverse declaration order, so the second action's
 		// teardown completes before the first action's predicate throws.
-		expect(() => doc.send({ type: 'ping' })).toThrow('boom')
+		expect(() => doc.send('ping')).toThrow('boom')
 		expect(log).toHaveBeenCalledExactlyOnceWith('teardown')
 		expect(doc.current).toEqual({ name: 'idle' })
 	})
@@ -248,7 +250,7 @@ describe('actions', () => {
 		const action = vi.fn()
 		const doc = machine({
 			initial: 'off',
-			inputs: type<{ type: 'toggle' }>(),
+			inputs: type<{ toggle: undefined }>(),
 			states: type<{ name: 'off' } | { name: 'on' }>(),
 			transitions: {
 				'off -toggle> on': () => {},
@@ -259,9 +261,9 @@ describe('actions', () => {
 			},
 		}).start()
 
-		doc.send({ type: 'toggle' }) // off -> on: matches
-		doc.send({ type: 'toggle' }) // on -> off: does not match
-		doc.send({ type: 'toggle' }) // off -> on: matches again
+		doc.send('toggle') // off -> on: matches
+		doc.send('toggle') // on -> off: does not match
+		doc.send('toggle') // off -> on: matches again
 		expect(action).toHaveBeenCalledTimes(2)
 	})
 
@@ -269,7 +271,7 @@ describe('actions', () => {
 		const action = vi.fn()
 		const doc = machine({
 			initial: 'a',
-			inputs: type<{ type: 'x' } | { type: 'y' }>(),
+			inputs: type<{ x: undefined; y: undefined }>(),
 			states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
 			transitions: {
 				'a -x> b': () => {},
@@ -280,7 +282,7 @@ describe('actions', () => {
 			},
 		}).start()
 
-		doc.send({ type: 'x' })
+		doc.send('x')
 		expect(action).toHaveBeenCalledOnce()
 	})
 
@@ -289,7 +291,7 @@ describe('actions', () => {
 		const exact = vi.fn()
 		const doc = machine({
 			initial: 'off',
-			inputs: type<{ type: 'toggle' }>(),
+			inputs: type<{ toggle: undefined }>(),
 			states: type<{ name: 'off' } | { name: 'on' }>(),
 			transitions: {
 				'off -toggle> on': () => {},
@@ -301,7 +303,7 @@ describe('actions', () => {
 			},
 		}).start()
 
-		doc.send({ type: 'toggle' })
+		doc.send('toggle')
 		expect(wildcard).toHaveBeenCalledOnce()
 		expect(exact).toHaveBeenCalledOnce()
 		expect(wildcard).toHaveBeenCalledBefore(exact)
@@ -314,7 +316,7 @@ describe('actions', () => {
 		const pinned = vi.fn()
 		machine({
 			initial: 'a',
-			inputs: type<{ type: 'x' }>(),
+			inputs: type<{ x: undefined }>(),
 			states: type<{ name: 'a' } | { name: 'b' }>(),
 			transitions: { 'a -x> b': () => {} },
 			actions: {
@@ -335,7 +337,7 @@ describe('actions', () => {
 		const action = vi.fn()
 		const doc = machine({
 			initial: 'off',
-			inputs: type<{ type: 'toggle' }>(),
+			inputs: type<{ toggle: undefined }>(),
 			states: type<{ name: 'off' } | { name: 'on' }>(),
 			transitions: {
 				'off -toggle> on': () => {},
@@ -345,9 +347,10 @@ describe('actions', () => {
 			},
 		}).start()
 
-		doc.send({ type: 'toggle' })
+		doc.send('toggle')
 		expect(action).toHaveBeenCalledExactlyOnceWith({
-			input: { type: 'toggle' },
+			input: 'toggle',
+			inputData: undefined,
 			from: { name: 'off' },
 			to: { name: 'on' },
 			send: expect.any(Function),
@@ -359,7 +362,7 @@ describe('actions', () => {
 		const action = vi.fn()
 		const doc = machine({
 			initial: 'off',
-			inputs: type<{ type: 'toggle' }>(),
+			inputs: type<{ toggle: undefined }>(),
 			states: type<{ name: 'off' } | { name: 'on' }>(),
 			transitions: {
 				'off -toggle> on': () => {},
@@ -371,6 +374,7 @@ describe('actions', () => {
 
 		expect(action).toHaveBeenCalledExactlyOnceWith({
 			input: undefined,
+			inputData: undefined,
 			from: undefined,
 			to: { name: 'off' },
 			send: expect.any(Function),
@@ -382,7 +386,7 @@ describe('actions', () => {
 		const action = vi.fn()
 		const doc = machine({
 			initial: 'off',
-			inputs: type<{ type: 'toggle' }>(),
+			inputs: type<{ toggle: undefined }>(),
 			states: type<{ name: 'off' } | { name: 'on' }>(),
 			transitions: {
 				'off -toggle> on': () => {},
@@ -392,9 +396,10 @@ describe('actions', () => {
 			},
 		}).start()
 
-		doc.send({ type: 'toggle' })
+		doc.send('toggle')
 		expect(action).toHaveBeenCalledExactlyOnceWith({
-			input: { type: 'toggle' },
+			input: 'toggle',
+			inputData: undefined,
 			from: { name: 'off' },
 			to: { name: 'on' },
 			send: expect.any(Function),
@@ -433,7 +438,7 @@ describe('actions', () => {
 		const teardown = vi.fn()
 		const doc = activity(setup, teardown).start()
 
-		doc.send({ type: 'go' }) // a -go> b (setup), b -> c (teardown), c -> d
+		doc.send('go') // a -go> b (setup), b -> c (teardown), c -> d
 		expect(setup).toHaveBeenCalledOnce()
 		expect(teardown).toHaveBeenCalledOnce()
 		expect(setup).toHaveBeenCalledBefore(teardown)
@@ -448,11 +453,11 @@ describe('actions', () => {
 			recipeSetup()
 			return recipeTeardown
 		})
-		recipeHost.send({ type: 'go' })
+		recipeHost.send('go')
 
 		const declaredSetup = vi.fn()
 		const declaredTeardown = vi.fn()
-		activity(declaredSetup, declaredTeardown).start().send({ type: 'go' })
+		activity(declaredSetup, declaredTeardown).start().send('go')
 
 		expect(recipeSetup).toHaveBeenCalledOnce()
 		expect(recipeTeardown).toHaveBeenCalledOnce()
@@ -469,7 +474,7 @@ describe('actions', () => {
 		const listener = vi.fn()
 		const doc = machine({
 			initial: 'off',
-			inputs: type<{ type: 'toggle' }>(),
+			inputs: type<{ toggle: undefined }>(),
 			states: type<{ name: 'off' } | { name: 'on' }>(),
 			transitions: {
 				'off -toggle> on': () => {},
@@ -483,7 +488,7 @@ describe('actions', () => {
 		}).start()
 
 		doc.observe('* -> *', listener)
-		doc.send({ type: 'toggle' })
+		doc.send('toggle')
 
 		expect(teardown).toHaveBeenCalledOnce()
 		expect(edgeAction).toHaveBeenCalledOnce()
@@ -499,7 +504,7 @@ describe('actions', () => {
 		const listener = vi.fn()
 		const doc = machine({
 			initial: 'off',
-			inputs: type<{ type: 'toggle' }>(),
+			inputs: type<{ toggle: undefined }>(),
 			states: type<{ name: 'off' } | { name: 'on' }>(),
 			transitions: {
 				'off -toggle> on': () => {},
@@ -515,13 +520,13 @@ describe('actions', () => {
 
 		doc.observe('* -> *', listener) // must never run either
 
-		expect(() => doc.send({ type: 'toggle' })).toThrow('boom')
+		expect(() => doc.send('toggle')).toThrow('boom')
 		expect(doc.current).toEqual({ name: 'on' }) // the transition itself stays committed
 		expect(setup).not.toHaveBeenCalled()
 		expect(listener).not.toHaveBeenCalled()
 
 		// the host is usable afterwards
-		doc.send({ type: 'toggle' })
+		doc.send('toggle')
 		expect(doc.current).toEqual({ name: 'off' })
 	})
 
@@ -529,7 +534,7 @@ describe('actions', () => {
 		const log = vi.fn()
 		const doc = machine({
 			initial: 'off',
-			inputs: type<{ type: 'toggle' }>(),
+			inputs: type<{ toggle: undefined }>(),
 			states: type<{ name: 'off' } | { name: 'on' }>(),
 			transitions: {
 				'off -toggle> on': () => {},
@@ -549,11 +554,11 @@ describe('actions', () => {
 			},
 		}).start()
 
-		doc.send({ type: 'toggle' }) // off -> on
+		doc.send('toggle') // off -> on
 		expect(log).toHaveBeenCalledTimes(2)
 		expect(log).toHaveBeenNthCalledWith(1, 'setup 1')
 		expect(log).toHaveBeenNthCalledWith(2, 'setup 2')
-		doc.send({ type: 'toggle' }) // on -> off
+		doc.send('toggle') // on -> off
 		expect(log).toHaveBeenCalledTimes(4)
 		expect(log).toHaveBeenNthCalledWith(1, 'setup 1')
 		expect(log).toHaveBeenNthCalledWith(2, 'setup 2')
@@ -565,7 +570,7 @@ describe('actions', () => {
 		const log = vi.fn()
 		const doc = machine({
 			initial: 'off',
-			inputs: type<{ type: 'toggle' }>(),
+			inputs: type<{ toggle: undefined }>(),
 			states: type<{ name: 'off' } | { name: 'on' }>(),
 			transitions: { 'off -toggle> on': () => {} },
 			actions: {
@@ -576,7 +581,7 @@ describe('actions', () => {
 			},
 		}).start()
 
-		doc.send({ type: 'toggle' })
+		doc.send('toggle')
 		expect(log).toHaveBeenCalledTimes(2)
 		expect(log).toHaveBeenNthCalledWith(1, 'fired 1')
 		expect(log).toHaveBeenNthCalledWith(2, 'fired 2')
@@ -586,7 +591,7 @@ describe('actions', () => {
 		const log = vi.fn()
 		const doc = machine({
 			initial: 'on',
-			inputs: type<{ type: 'ping' }>(),
+			inputs: type<{ ping: undefined }>(),
 			states: type<{ name: 'on' }>(),
 			transitions: { 'on -ping> on': () => {} },
 			actions: {
@@ -609,7 +614,7 @@ describe('actions', () => {
 		expect(log).toHaveBeenCalledTimes(2)
 		expect(log).toHaveBeenNthCalledWith(1, 'persistent:setup')
 		expect(log).toHaveBeenNthCalledWith(2, 'restarting:setup')
-		doc.send({ type: 'ping' })
+		doc.send('ping')
 		expect(log).toHaveBeenCalledTimes(4)
 		expect(log).toHaveBeenNthCalledWith(1, 'persistent:setup')
 		expect(log).toHaveBeenNthCalledWith(2, 'restarting:setup')
@@ -621,7 +626,7 @@ describe('actions', () => {
 		const log = vi.fn()
 		const doc = machine({
 			initial: 'off',
-			inputs: type<{ type: 'toggle' }>(),
+			inputs: type<{ toggle: undefined }>(),
 			states: type<{ name: 'off' } | { name: 'on' }>(),
 			transitions: {
 				'off -toggle> on': () => {},
@@ -637,9 +642,9 @@ describe('actions', () => {
 			},
 		}).start()
 
-		doc.send({ type: 'toggle' }) // off -> on
+		doc.send('toggle') // off -> on
 
-		expect(() => doc.send({ type: 'toggle' })).toThrow('boom')
+		expect(() => doc.send('toggle')).toThrow('boom')
 		expect(log).not.toHaveBeenCalled() // teardown 2 threw before teardown 1 (reverse order) ran
 	})
 
@@ -647,7 +652,7 @@ describe('actions', () => {
 		const log = vi.fn()
 		const doc = machine({
 			initial: 'off',
-			inputs: type<{ type: 'toggle' }>(),
+			inputs: type<{ toggle: undefined }>(),
 			states: type<{ name: 'off' } | { name: 'on' }>(),
 			transitions: {
 				'off -toggle> on': () => {},
@@ -659,7 +664,7 @@ describe('actions', () => {
 			},
 		}).start()
 
-		doc.send({ type: 'toggle' })
+		doc.send('toggle')
 		expect(log).toHaveBeenCalledTimes(2)
 		expect(log).toHaveBeenNthCalledWith(1, 'setup')
 		expect(log).toHaveBeenNthCalledWith(2, 'edge')
@@ -674,7 +679,7 @@ describe('actions', () => {
 
 		const doc = machine({
 			initial: 'off',
-			inputs: type<{ type: 'toggle' }>(),
+			inputs: type<{ toggle: undefined }>(),
 			states: type<{ name: 'off' } | { name: 'on' }>(),
 			transitions: {
 				'off -toggle> on': () => {},
@@ -683,7 +688,7 @@ describe('actions', () => {
 			actions: { on: both, 'off -toggle> on': both },
 		}).start()
 
-		doc.send({ type: 'toggle' })
+		doc.send('toggle')
 		expect(callable).not.toHaveBeenCalled()
 		expect(run).toHaveBeenCalledTimes(2)
 	})
@@ -703,7 +708,7 @@ describe('actions', () => {
 		const log = vi.fn()
 		const doc = machine({
 			initial: 'a',
-			inputs: type<{ type: 'go' } | { type: 'next' }>(),
+			inputs: type<{ go: undefined; next: undefined }>(),
 			states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
 			transitions: {
 				'a -go> b': () => {},
@@ -712,7 +717,7 @@ describe('actions', () => {
 			actions: {
 				b: ({ send }) => {
 					log('b setup')
-					send({ type: 'next' })
+					send('next')
 					log('b setup returns')
 					return () => log('b teardown')
 				},
@@ -723,7 +728,7 @@ describe('actions', () => {
 		}).start()
 		doc.observe('* -> *', (e) => log(`listener: -> ${e.to.name}`))
 
-		doc.send({ type: 'go' })
+		doc.send('go')
 
 		expect(log).toHaveBeenCalledTimes(6)
 		expect(log).toHaveBeenNthCalledWith(1, 'b setup')

@@ -4,6 +4,56 @@ import { machine, type } from 'totorobot'
 import { chain, editor, gate, pending } from './fixtures.ts'
 
 describe('sending', () => {
+	test('actions and observers receive the input name and unchanged reference data', () => {
+		const action = vi.fn()
+		const observer = vi.fn()
+		const payload = new Map([['answer', 42]])
+		const host = machine({
+			initial: 'idle',
+			transitions: { 'idle -set> ready': () => {} },
+			actions: { 'idle -set> ready': action },
+		}).start()
+		host.observe('idle -set> ready', observer)
+
+		host.send('set', payload)
+
+		for (const callback of [action, observer]) {
+			expect(callback).toHaveBeenCalledExactlyOnceWith({
+				input: 'set',
+				inputData: payload,
+				from: { name: 'idle' },
+				to: { name: 'ready' },
+				send: host.send,
+			})
+			expect(callback.mock.calls[0]![0].inputData).toBe(payload)
+		}
+	})
+
+	test('sending a name passes arbitrary data separately to the handler', () => {
+		for (const value of [
+			42,
+			() => 42,
+			Symbol('value'),
+			{ name: 'domain name', type: 'domain type' },
+		]) {
+			const handler = vi.fn(() => {})
+			const host = machine({
+				initial: 'idle',
+				transitions: { 'idle -set> ready': handler },
+			}).start()
+
+			host.send('set', value)
+
+			expect(host.current).toEqual({ name: 'ready' })
+			expect(handler).toHaveBeenCalledExactlyOnceWith({
+				state: { name: 'idle' },
+				input: 'set',
+				inputData: value,
+				skip: expect.any(Function),
+			})
+		}
+	})
+
 	test('a handled input commits, and every listener whose pattern matches fires', () => {
 		const host = editor.start()
 		const broad = vi.fn()
@@ -11,7 +61,7 @@ describe('sending', () => {
 		host.observe('* -> *', broad)
 		host.observe('idle -open> draft', narrow)
 
-		host.send({ type: 'open', text: 'hello' })
+		host.send('open', { text: 'hello' })
 
 		expect(host.current).toEqual({
 			name: 'draft',
@@ -29,7 +79,7 @@ describe('sending', () => {
 		host.observe('* -> *', observer)
 
 		// 'idle' has no row for 'lock'.
-		host.send({ type: 'lock' })
+		host.send('lock')
 
 		expect(host.current).toEqual(before)
 		expect(observer).not.toHaveBeenCalled()
@@ -39,13 +89,13 @@ describe('sending', () => {
 	// externally indistinguishable from it.
 	test('an input whose every candidate row declines changes nothing and fires no listener', () => {
 		const host = editor.start()
-		host.send({ type: 'open', text: 'hello' })
+		host.send('open', { text: 'hello' })
 		const before = host.current
 		const observer = vi.fn()
 		host.observe('* -> *', observer)
 
 		// 'draft -poke> draft' is the only row for 'poke', and it always declines.
-		host.send({ type: 'poke' })
+		host.send('poke')
 
 		expect(host.current).toEqual(before)
 		expect(observer).not.toHaveBeenCalled()
@@ -54,7 +104,7 @@ describe('sending', () => {
 	test('with several rows for one source/input pair, the first that does not decline wins', () => {
 		const priority = machine({
 			initial: 'start',
-			inputs: type<{ type: 'go' }>(),
+			inputs: type<{ go: undefined }>(),
 			states: type<
 				{ name: 'start' } | { name: 'first' } | { name: 'second' }
 			>(),
@@ -67,18 +117,18 @@ describe('sending', () => {
 		})
 
 		const host = priority.start()
-		host.send({ type: 'go' })
+		host.send('go')
 
 		expect(host.current).toEqual({ name: 'first' })
 	})
 
 	test('a guarded row that declines falls through to the next row for the same input', () => {
 		const host = editor.start()
-		host.send({ type: 'open', text: 'hello' })
+		host.send('open', { text: 'hello' })
 
 		// 'draft -submit> review' is declared first and declines because the
 		// route is not 'review', so 'draft -submit> published' commits instead.
-		host.send({ type: 'submit', route: 'publish' })
+		host.send('submit', { route: 'publish' })
 
 		expect(host.current).toEqual({
 			name: 'published',
@@ -89,15 +139,16 @@ describe('sending', () => {
 
 	test('a self-transition commits and notifies with the same state on both ends', () => {
 		const host = editor.start()
-		host.send({ type: 'open', text: 'hello' })
+		host.send('open', { text: 'hello' })
 
 		const observer = vi.fn()
 		host.observe('draft -revise> draft', observer)
 
-		host.send({ type: 'revise', text: 'goodbye' })
+		host.send('revise', { text: 'goodbye' })
 
 		expect(observer).toHaveBeenCalledExactlyOnceWith({
-			input: { type: 'revise', text: 'goodbye' },
+			input: 'revise',
+			inputData: { text: 'goodbye' },
 			from: { name: 'draft', text: 'hello', revision: 0 },
 			to: { name: 'draft', text: 'goodbye', revision: 1 },
 			send: expect.any(Function),
@@ -109,44 +160,46 @@ describe('sending', () => {
 		})
 	})
 
-	test('a handler receives the source state and the input; a payload-free input carries only its tag', () => {
+	test('a handler receives the source state, input name and data', () => {
 		const act = vi.fn()
 		const ping = vi.fn()
 		const probe = machine({
 			initial: 'ready',
-			inputs: type<{ type: 'act'; n: number } | { type: 'ping' }>(),
+			inputs: type<{ act: { n: number }; ping: undefined }>(),
 			states: type<{ name: 'ready'; count: number }>(),
 			transitions: {
-				'ready -act> ready': ({ state, input }) => {
-					act(state, input)
-					return { count: state.count + input.n }
+				'ready -act> ready': ({ state, input, inputData }) => {
+					act(state, input, inputData)
+					return { count: state.count + inputData.n }
 				},
-				'ready -ping> ready': ({ state, input }) => {
-					ping(state, input)
+				'ready -ping> ready': ({ state, input, inputData }) => {
+					ping(state, input, inputData)
 					return { ...state }
 				},
 			},
 		})
 
 		const host = probe.start({ count: 1 })
-		host.send({ type: 'act', n: 2 })
-		host.send({ type: 'ping' })
+		host.send('act', { n: 2 })
+		host.send('ping')
 
 		expect(act).toHaveBeenCalledExactlyOnceWith(
 			{ name: 'ready', count: 1 },
-			{ type: 'act', n: 2 },
+			'act',
+			{ n: 2 },
 		)
 		expect(ping).toHaveBeenCalledExactlyOnceWith(
 			{ name: 'ready', count: 3 },
-			{ type: 'ping' },
+			'ping',
+			undefined,
 		)
 	})
 
 	test('a handler whose target carries no payload returns nothing', () => {
 		const host = editor.start()
-		host.send({ type: 'open', text: 'hello' })
+		host.send('open', { text: 'hello' })
 
-		host.send({ type: 'lock' })
+		host.send('lock')
 
 		expect(host.current).toEqual({ name: 'locked' })
 	})
@@ -154,7 +207,7 @@ describe('sending', () => {
 	test('a handler whose target carries no payload may also return {}', () => {
 		const relay = machine({
 			initial: 'a',
-			inputs: type<{ type: 'go' }>(),
+			inputs: type<{ go: undefined }>(),
 			states: type<{ name: 'a' } | { name: 'b' }>(),
 			transitions: {
 				'a -go> b': () => ({}),
@@ -162,7 +215,7 @@ describe('sending', () => {
 		})
 
 		const host = relay.start()
-		host.send({ type: 'go' })
+		host.send('go')
 
 		expect(host.current).toEqual({ name: 'b' })
 	})
@@ -170,17 +223,17 @@ describe('sending', () => {
 	test('send returns undefined, always', () => {
 		const host = editor.start()
 
-		expect(host.send({ type: 'open', text: 'hello' })).toBeUndefined() // handled
-		expect(host.send({ type: 'poke' })).toBeUndefined() // every candidate row declines
-		expect(host.send({ type: 'lock' })).toBeUndefined() // handled
-		expect(host.send({ type: 'open', text: 'again' })).toBeUndefined() // no row matches
+		expect(host.send('open', { text: 'hello' })).toBeUndefined() // handled
+		expect(host.send('poke')).toBeUndefined() // every candidate row declines
+		expect(host.send('lock')).toBeUndefined() // handled
+		expect(host.send('open', { text: 'again' })).toBeUndefined() // no row matches
 	})
 
 	describe('immediate transitions', () => {
 		test('entering a state by an input runs its immediate row and lands in its target', () => {
 			const relay = machine({
 				initial: 'draft',
-				inputs: type<{ type: 'submit' }>(),
+				inputs: type<{ submit: undefined }>(),
 				states: type<
 					| { name: 'draft' }
 					| { name: 'checking' }
@@ -193,7 +246,7 @@ describe('sending', () => {
 			})
 
 			const host = relay.start()
-			host.send({ type: 'submit' })
+			host.send('submit')
 
 			expect(host.current).toEqual({
 				name: 'settled',
@@ -203,14 +256,14 @@ describe('sending', () => {
 
 		test('several immediate rows for one state are tried in declaration order, and skip() falls through', () => {
 			const allowed = gate.start()
-			allowed.send({ type: 'submit', quota: 3 })
+			allowed.send('submit', { quota: 3 })
 			expect(allowed.current).toEqual({
 				name: 'allowed',
 				quota: 3,
 			})
 
 			const denied = gate.start()
-			denied.send({ type: 'submit', quota: 0 })
+			denied.send('submit', { quota: 0 })
 			expect(denied.current).toEqual({ name: 'denied', quota: 0 })
 		})
 
@@ -218,37 +271,37 @@ describe('sending', () => {
 			const immediate = vi.fn()
 			const relay = machine({
 				initial: 'draft',
-				inputs: type<{ type: 'submit' }>(),
+				inputs: type<{ submit: undefined }>(),
 				states: type<
 					{ name: 'draft' } | { name: 'checking' } | { name: 'settled' }
 				>(),
 				transitions: {
 					'draft -submit> checking': () => {},
-					'checking -> settled': ({ input }) => immediate(input),
+					'checking -> settled': ({ inputData }) => immediate(inputData),
 				},
 			})
 
 			const host = relay.start()
-			host.send({ type: 'submit' })
+			host.send('submit')
 
 			expect(immediate).toHaveBeenCalledExactlyOnceWith(undefined)
 		})
 
 		test('a state whose immediate rows all skip stays put, its input rows still live', () => {
 			const host = pending.start()
-			host.send({ type: 'submit', quota: 0 })
+			host.send('submit', { quota: 0 })
 
 			expect(host.current).toEqual({ name: 'checking', quota: 0 })
 
 			// the immediate row skipping does not disable 'checking's ordinary
 			// input rows — 'cancel' still fires from here.
-			host.send({ type: 'cancel' })
+			host.send('cancel')
 			expect(host.current).toEqual({ name: 'draft' })
 		})
 
 		test('a chain of several immediate hops settles fully before send returns', () => {
 			const host = chain.start()
-			host.send({ type: 'go' })
+			host.send('go')
 
 			expect(host.current).toEqual({ name: 'd' })
 		})
@@ -261,7 +314,7 @@ describe('sending', () => {
 		const good = vi.fn()
 		const collide = machine({
 			initial: 'a',
-			inputs: type<{ type: 'b' }>(),
+			inputs: type<{ b: undefined }>(),
 			states: type<
 				{ name: 'a' } | { name: 'a\0b' } | { name: 'bad' } | { name: 'good' }
 			>(),
@@ -272,7 +325,7 @@ describe('sending', () => {
 		})
 
 		const host = collide.start()
-		host.send({ type: 'b' })
+		host.send('b')
 
 		expect(bad).not.toHaveBeenCalled()
 		expect(good).toHaveBeenCalledOnce()
@@ -283,7 +336,7 @@ describe('sending', () => {
 	test('two labelled rows whose from/input pairs join alike stay apart', () => {
 		const collide = machine({
 			initial: 'a',
-			inputs: type<{ type: 'c' } | { type: 'b\0c' }>(),
+			inputs: type<{ c: undefined; 'b\0c': undefined }>(),
 			states: type<
 				{ name: 'a' } | { name: 'a\0b' } | { name: 'bad' } | { name: 'good' }
 			>(),
@@ -294,7 +347,7 @@ describe('sending', () => {
 		})
 
 		const host = collide.start()
-		host.send({ type: 'b\0c' })
+		host.send('b\0c')
 
 		expect(host.current).toEqual({ name: 'good' })
 	})
@@ -306,10 +359,10 @@ describe('sending', () => {
 		const off = host.observe('idle -> draft', () => {
 			// A send from inside a listener is queued rather than run nested;
 			// it still returns nothing to its caller.
-			queued(host.send({ type: 'touch' }))
+			queued(host.send('touch'))
 		})
 
-		host.send({ type: 'open', text: 'hello' })
+		host.send('open', { text: 'hello' })
 		off()
 
 		expect(queued).toHaveBeenCalledExactlyOnceWith(undefined)

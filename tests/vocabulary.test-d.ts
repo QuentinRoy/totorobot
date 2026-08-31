@@ -14,10 +14,11 @@ import {
 	type StatesOf,
 } from 'totorobot'
 
-type Inputs =
-	| { type: 'open'; text: string }
-	| { type: 'revise'; text: string }
-	| { type: 'cancel' }
+type Inputs = {
+	open: { text: string }
+	revise: { text: string }
+	cancel: undefined
+}
 type States =
 	{ name: 'empty' } | { name: 'draft'; text: string; revision: number }
 
@@ -26,11 +27,14 @@ const doc = machine({
 	inputs: type<Inputs>(),
 	states: type<States>(),
 	transitions: {
-		'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
-		'draft -revise> draft': ({ state, input, skip }) =>
-			input.text === state.text
+		'empty -open> draft': ({ inputData }) => ({
+			text: inputData.text,
+			revision: 0,
+		}),
+		'draft -revise> draft': ({ state, inputData, skip }) =>
+			inputData.text === state.text
 				? skip()
-				: { text: input.text, revision: state.revision + 1 },
+				: { text: inputData.text, revision: state.revision + 1 },
 		'draft -cancel> empty': () => {},
 	},
 })
@@ -40,10 +44,10 @@ const withData = machine({
 	inputs: type<Inputs>(),
 	states: type<States>(),
 	transitions: {
-		'draft -revise> draft': ({ state, input, skip }) =>
-			input.text === state.text
+		'draft -revise> draft': ({ state, inputData, skip }) =>
+			inputData.text === state.text
 				? skip()
-				: { text: input.text, revision: state.revision + 1 },
+				: { text: inputData.text, revision: state.revision + 1 },
 		'draft -cancel> draft': ({ state }) => ({ ...state }),
 	},
 })
@@ -89,27 +93,27 @@ test("a handler's state is the full source state, tag included, and its input is
 		inputs: type<Inputs>(),
 		states: type<States>(),
 		transitions: {
-			'empty -open> draft': ({ state, input }) => {
+			'empty -open> draft': ({ state, inputData }) => {
 				expectTypeOf(state).toEqualTypeOf<{ name: 'empty' }>()
-				expectTypeOf(input).toEqualTypeOf<{ type: 'open'; text: string }>()
-				return { text: input.text, revision: 0 }
+				expectTypeOf(inputData).toEqualTypeOf<{ text: string }>()
+				return { text: inputData.text, revision: 0 }
 			},
-			'draft -revise> draft': ({ state, input }) => {
+			'draft -revise> draft': ({ state, inputData }) => {
 				expectTypeOf(state).toEqualTypeOf<{
 					name: 'draft'
 					text: string
 					revision: number
 				}>()
-				expectTypeOf(input).toEqualTypeOf<{ type: 'revise'; text: string }>()
-				return { text: input.text, revision: state.revision + 1 }
+				expectTypeOf(inputData).toEqualTypeOf<{ text: string }>()
+				return { text: inputData.text, revision: state.revision + 1 }
 			},
-			'draft -cancel> empty': ({ state, input }) => {
+			'draft -cancel> empty': ({ state, inputData }) => {
 				expectTypeOf(state).toEqualTypeOf<{
 					name: 'draft'
 					text: string
 					revision: number
 				}>()
-				expectTypeOf(input).toEqualTypeOf<{ type: 'cancel' }>()
+				expectTypeOf(inputData).toEqualTypeOf<undefined>()
 			},
 		},
 	})
@@ -135,13 +139,13 @@ test('start() takes no argument when the initial state carries no payload, and r
 test('send needs no extra fields for a payload-free input, and requires them otherwise', () => {
 	const host = doc.start()
 
-	host.send({ type: 'cancel' })
+	host.send('cancel')
 	// @ts-expect-error - cancel carries no extra payload
-	host.send({ type: 'cancel', text: 'x' })
+	host.send('cancel', { text: 'x' })
 
-	host.send({ type: 'open', text: 'x' })
+	host.send('open', { text: 'x' })
 	// @ts-expect-error - open's input requires a payload
-	host.send({ type: 'open' })
+	host.send('open')
 })
 
 test('an input name outside the declared vocabulary is rejected at send', () => {
@@ -151,7 +155,7 @@ test('an input name outside the declared vocabulary is rejected at send', () => 
 	// than throwing — is asserted from plain JavaScript in `untyped.test.js`,
 	// where no cast is needed to reach it.
 	// @ts-expect-error - 'bogus' is not a declared input name
-	host.send({ type: 'bogus' })
+	host.send('bogus')
 })
 
 test('InputsOf, StatesOf, Handled and Sources resolve correctly over a machine type', () => {
