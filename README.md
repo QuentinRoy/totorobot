@@ -382,7 +382,8 @@ immediate chain — including a state entered and left within one drain.
 `(from, to) => boolean`, decides case by case from the resident data either
 side. `restart` is consulted only on a self-transition — a genuine departure
 always tears down — and is a compile error on an edge, since an edge has
-nothing to restart.
+nothing to restart. Each residency's predicate runs once per self-transition;
+the same decision governs both the teardown and the setup that follows it.
 
 **Per commit:** the teardown of the residency being left, the commit, every
 matching action in declaration order, then the listeners
