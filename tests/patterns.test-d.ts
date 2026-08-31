@@ -2,7 +2,7 @@
  * `.observe()` pattern validity, and the transition record's discrimination.
  */
 
-import { expect, expectTypeOf, test } from 'vitest'
+import { expectTypeOf, test } from 'vitest'
 
 import { machine, type } from 'totorobot'
 
@@ -52,15 +52,43 @@ test('there is no -*> form; the wildcard appears only in state positions', () =>
 	host.observe('draft -*> *', () => {})
 })
 
-test('a bare key names a state and is not a legal pattern', () => {
+test('a bare key means residency, typed as the same record `actions` takes (#76)', () => {
 	const host = doc.start()
 
-	// A bare pattern throws at runtime too (#16), so the call is asserted to
-	// throw rather than left to run to completion.
-	expect(() =>
-		// @ts-expect-error - a bare key names a state; states mean residency
-		host.observe('draft', () => {}),
-	).toThrow(SyntaxError)
+	host.observe('draft', (arrival) => {
+		expectTypeOf(arrival.to).toEqualTypeOf<{ name: 'draft'; text: string }>()
+	})
+	host.observe('draft', { run: () => {} })
+	host.observe('draft', {
+		run: () => {},
+		restart: (from, to) => from.text !== to.text,
+	})
+
+	// @ts-expect-error - "nope" is not a declared state
+	host.observe('nope', () => {})
+})
+
+test('the record form is only for a bare state key: an edge pattern still takes a plain listener', () => {
+	const host = doc.start()
+
+	// @ts-expect-error - `{ run, restart }` is the residency form, not an edge listener
+	host.observe('draft -submit> review', { run: () => {}, restart: false })
+})
+
+test('no array form, no third argument, and no options object with an `AbortSignal` (#76)', () => {
+	const host = doc.start()
+
+	// @ts-expect-error - an array is an `actions`-only shape; call `observe` again for a second one
+	host.observe('draft', [() => {}])
+
+	// @ts-expect-error - `observe` takes exactly two arguments
+	host.observe('draft', () => {}, {})
+
+	host.observe('draft', {
+		run: () => {},
+		// @ts-expect-error - no third-argument options form; no subscription `AbortSignal`
+		signal: new AbortController().signal,
+	})
 })
 
 test('the transition record carries input, from, to and is discriminated by input.type, with no separate on field', () => {

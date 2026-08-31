@@ -473,30 +473,38 @@ is either a name or absent. The unlabelled form is the broad one: it matches
 input-driven edges **and**
 [immediate transitions](#immediate-transitions-an-edge-with-no-input), which
 have no input at all. A labelled pattern never matches an immediate. A bare key
-is not legal here either, for the reason the [key language](#the-key-language)
-gives.
+is legal too, but means something else entirely: [residency](#residency), next.
 
 ### Residency
 
-Scoping something to "while we are in `draft`", teardown included, is derivable
-today from two patterns and needs nothing the host does not already provide.
-Observe `'draft -> *'` to tear down and `'* -> draft'` to set up. Register the
-exit listener **first**, so a self-transition tears down before it sets up again,
-and run the setup once at registration if the host is already in the state, since
-nothing will announce a state you are already in.
+A bare state key passed to `observe` scopes work to "while we are in `draft`",
+teardown included, with the same record [`actions`](#actions-lifetime-scoped-work)
+takes:
 
-A self-transition matches both patterns, so restart-on-re-entry falls out for
-free, and the policy variants come along too: `persistent` is
-`if (e.to.name !== e.from.name)` in the exit handler, and `keyed` compares a key
-computed from each end.
+```ts
+const off = doc.observe('draft', {
+	run: ({ to }) => track(to.text),
+	restart: false,
+})
+```
 
-Declaring it in the definition instead of assembling it by hand is a bare-key
-trigger in [`actions`](#actions-lifetime-scoped-work), for a machine's own
-states; this recipe stays the way to scope work to a state you did not declare
-the machine with. The two agree by construction — a declared residency is
-asserted to produce the same log as this recipe, for the same machine, as a
-test oracle. The full recipe, with the argument for leaving observer-side
-residency to the caller, is in
+Already resident when observed, it runs immediately — registration order
+cannot decide whether it fires. Unsubscribing tears down one currently in
+flight, and more than once stays harmless, as everywhere else. Declaring it in
+the definition instead is the same bare-key trigger in `actions`, for a
+machine's own states; `observe` stays the way to scope work to a state you did
+not declare the machine with. The two agree by construction — a declared
+residency is asserted to produce the same log as `observe`'s, for the same
+machine, as a test oracle.
+
+Nothing here is a host feature: `observe(state, { run, restart })` is exactly
+the two-pattern recipe below, offered directly instead of assembled by hand.
+Observe `'draft -> *'` to tear down and `'* -> draft'` to set up, exit listener
+registered **first** so a self-transition tears down before it sets up again,
+and run the setup once at registration if the host is already in the state.
+`persistent` is `if (e.to.name !== e.from.name)` in the exit handler; `keyed`
+compares a key computed from each end. The full recipe, with the argument for
+leaving residency to the caller rather than the host, is in
 [rationale §11](docs/design-record.md#residency-is-derivable-not-a-host-feature),
 and `tests/helpers.ts` carries it as working code.
 

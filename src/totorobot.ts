@@ -304,6 +304,19 @@ type Actions<I extends InputVocab, S extends StateVocab, A extends string> = {
 			: `not a trigger: '${P}'`
 }
 
+/**
+ * What `observe` takes for a bare state key: a residency action alone or in a
+ * `{ run, restart }` record, the same two shapes `Actions` allows for one —
+ * everything but the array, which a caller gets by calling `observe` twice (§11).
+ */
+type ObserveAction<
+	I extends InputVocab,
+	S extends StateVocab,
+	N extends string,
+> =
+	| ResidencyAction<I, S, N>
+	| ({ readonly run: ResidencyAction<I, S, N> } & Restart<StateNamed<S, N>>)
+
 /** Arity follows the initial state's payload, by `Table`'s three-way rule. */
 type Start<S extends StateVocab, Init extends string> = keyof Omit<
 	Extract<S, { name: Init }>,
@@ -321,11 +334,20 @@ interface Host<
 > {
 	readonly current: S
 	readonly send: Send<I>
-	// Generic in the pattern, so a listener's record is narrowed by it.
-	readonly observe: <P extends Pattern<I, S>>(
-		pattern: P,
-		listener: Listener<I, S, P>,
-	) => () => void
+	// Generic in the pattern, so a listener's record is narrowed by it. A bare
+	// state key is the second, overloaded form: the same record `actions` takes
+	// for a residency, minus the array — call `observe` again for a second one
+	// — and minus the third-argument options form, deliberately not added (§11).
+	readonly observe: {
+		<P extends Pattern<I, S>>(
+			pattern: P,
+			listener: Listener<I, S, P>,
+		): () => void
+		<N extends StateName<S>>(
+			pattern: N,
+			action: ObserveAction<I, S, N>,
+		): () => void
+	}
 }
 
 /** Nothing at runtime; a function position keeps the three inferable together. */
@@ -391,7 +413,10 @@ type Row = readonly [to: string, handler: UncheckedHandler]
 interface UncheckedHost {
 	readonly current: StateVocab
 	readonly send: (input: InputVocab) => void
-	readonly observe: (pattern: string, listener: Listener) => () => void
+	readonly observe: (
+		pattern: string,
+		action: Listener | ActionItem,
+	) => () => void
 }
 
 /**
@@ -436,6 +461,22 @@ let dispatch = (work?: () => void): void => {
 		draining = false
 		queue.length = 0
 	}
+}
+
+/**
+ * One row from a key and an item, bare or arrow alike: shared by the `actions`
+ * block and a bare-key `observe`, so a caller-side residency and a declared one
+ * parse identically (§11).
+ */
+let toRow = (key: string, item: ActionItem): Registration => {
+	let bare = key.split(/ -|> /).length === 1
+	let head: [string, string, string] = bare ? ['*', '', key] : parse(key)
+	return [
+		...head,
+		typeof item === 'function' ? item : item.run,
+		bare ? key : '',
+		bare && typeof item !== 'function' ? item.restart : undefined,
+	] as Registration
 }
 
 /**
@@ -507,15 +548,8 @@ export function machine(definition: unknown): unknown {
 	// so the array arm costs nothing beyond this loop (§9).
 	let actionRows: Registration[] = []
 	for (let key in actions) {
-		let bare = key.split(/ -|> /).length === 1
-		let head: [string, string, string] = bare ? ['*', '', key] : parse(key)
 		for (let item of ([] as ActionItem[]).concat(actions[key]!)) {
-			actionRows.push([
-				...head,
-				typeof item === 'function' ? item : item.run,
-				bare ? key : '',
-				bare && typeof item !== 'function' ? item.restart : undefined,
-			] as Registration)
+			actionRows.push(toRow(key, item))
 		}
 	}
 
@@ -529,10 +563,11 @@ export function machine(definition: unknown): unknown {
 			// the path that runs least, and it measures smaller (I16).
 			let listeners: Registration[] = []
 
-			// Indexed like `actionRows` itself, so several residency actions on one
-			// state each keep their own slot (§9). Per host, never on the rows, which
-			// the definition shares across hosts.
-			let teardowns: (Teardown | undefined)[] = []
+			// A fresh row per host: a residency's teardown lives on its own row
+			// (below), and `actionRows` is the definition's, shared by every host of
+			// it (§9). `listeners` needs no such copy — every row on it is already
+			// host-local, built fresh by `observe` below.
+			let acts = actionRows.map((row) => row.slice() as Registration)
 
 			// `false` survives; a predicate decides from the two full states either
 			// side of the self-transition; anything else, including an omitted
@@ -543,16 +578,17 @@ export function machine(definition: unknown): unknown {
 				to: StateVocab,
 			): boolean => (typeof r === 'function' ? r(from, to) : r !== false)
 
-			// The wildcard rules, once, for actions and listeners alike: `*` and `''`
-			// stand for any. A residency row carries a teardown key and stores what it
-			// returns; an edge row and a listener carry `''` and do not. `from` is
-			// optional only for the initial arrival, which no transition caused, and
-			// which this same loop therefore fires without a case of its own (§9).
-			// A residency row on a self-transition also consults `restart` here, not
-			// only in the departing teardown below, so `restart: false` neither tears
-			// down nor sets up again.
-			let fire = (rows: Registration[], e: Arrival): void => {
-				for (let [i, [f, l, t, run, key, restart]] of rows.entries()) {
+			// The wildcard rules, once, for actions, `observe`'s residencies and
+			// listeners alike: `*` and `''` stand for any. A residency row carries a
+			// teardown key and stores what it returns, on the row itself; an edge row
+			// and a listener carry `''` and do not. `from` is optional only for the
+			// initial arrival, which no transition caused, and which this same loop
+			// therefore fires without a case of its own (§9). A residency row on a
+			// self-transition also consults `restart` here, not only in the departing
+			// teardown below, so `restart: false` neither tears down nor sets up again.
+			let fire = (list: Registration[], e: Arrival): void => {
+				for (let row of list) {
+					let [f, l, t, run, key, restart] = row
 					if (
 						(f === '*' || f === e.from?.name) &&
 						(l === '' || l === e.input?.type) &&
@@ -562,7 +598,7 @@ export function machine(definition: unknown): unknown {
 							restarts(restart, e.from, e.to))
 					) {
 						let teardown = run(e)
-						if (key) teardowns[i] = teardown as Teardown | undefined
+						if (key) row[6] = teardown as Teardown | undefined
 					}
 				}
 			}
@@ -581,15 +617,23 @@ export function machine(definition: unknown): unknown {
 					let next: StateVocab = { ...payload, name: to }
 					let self = to === from.name
 
-					// The residency being left tears down before the commit, in reverse
-					// declaration order, so several actions on one trigger unwind like a
-					// stack; a throw here abandons the hop — later teardowns unrun —
-					// with nothing of it committed yet (§9). A self-transition consults
-					// each action's own `restart` instead of always tearing down.
-					for (let i = actionRows.length; i--;) {
-						let [, , , , key, restart] = actionRows[i]!
-						if (key === from.name && (!self || restarts(restart, from, next))) {
-							teardowns[i]?.()
+					// The residency being left tears down before the commit, actions
+					// before listeners and each in reverse declaration order, so several
+					// on one trigger unwind like a stack; a throw here abandons the hop —
+					// later teardowns unrun — with nothing of it committed yet (§9). A
+					// self-transition consults each row's own `restart` instead of always
+					// tearing down.
+					for (let list of [acts, listeners]) {
+						for (let i = list.length; i--;) {
+							let row = list[i]!
+							let [, , , , key, restart] = row
+							if (
+								key === from.name &&
+								(!self || restarts(restart, from, next))
+							) {
+								row[6]?.()
+								row[6] = undefined
+							}
 						}
 					}
 
@@ -603,7 +647,7 @@ export function machine(definition: unknown): unknown {
 
 					// Actions in block declaration order, then listeners, both given this
 					// same record (§9).
-					fire(actionRows, record)
+					fire(acts, record)
 					fire(listeners, record)
 					// One input yields at most one transition.
 					return true
@@ -643,7 +687,7 @@ export function machine(definition: unknown): unknown {
 			// transition, so the arrival carries no `from`, which is also what stops
 			// an edge row from matching it (§9).
 			dispatch(() => {
-				fire(actionRows, {
+				fire(acts, {
 					input: undefined,
 					from: undefined,
 					to: current,
@@ -657,20 +701,34 @@ export function machine(definition: unknown): unknown {
 					return current
 				},
 
-				observe: (pattern: string, listener: Listener): (() => void) => {
-					// Parsed once, rather than matched by generating the eight patterns a
-					// transition could answer to — larger, and a `Set` per dispatch (I16).
-					// Cast because a listener is declared over `Transition`, which has a
-					// `from`, while `fire` accepts the wider `Arrival`. Sound: only
-					// `step` fires listeners, and it always has a real transition.
-					let registration: Registration = [
-						...parse(pattern),
-						listener as Registration[3],
-					]
+				observe: (
+					pattern: string,
+					action: Listener | ActionItem,
+				): (() => void) => {
+					// `toRow` reads a bare `pattern` as residency on that state, the same
+					// as a bare key in `actions`, so the two share one parser (§11). Cast
+					// because a listener is declared over `Transition`, which has a
+					// `from`, while a row's `run` accepts the wider `Arrival`. Sound: only
+					// `step` fires a non-residency row, and it always has a real transition.
+					let registration = toRow(pattern, action as ActionItem)
 					listeners = [...listeners, registration]
-					// Idempotent because removing what is already gone is a no-op.
+					// Already resident when observed: no arrival will announce it, so it
+					// runs once here instead — registration order cannot decide whether a
+					// residency fires (§11).
+					if (registration[4] === current.name) {
+						registration[6] = registration[3]({
+							input: undefined,
+							from: undefined,
+							to: current,
+							send,
+						}) as Teardown | undefined
+					}
+					// Idempotent, and a residency in flight tears down on the way out,
+					// matching the disposer the caller-side recipe returns (§11).
 					return () => {
 						listeners = listeners.filter((other) => other !== registration)
+						registration[6]?.()
+						registration[6] = undefined
 					}
 				},
 
@@ -694,19 +752,22 @@ type Arrival = {
 
 /**
  * One row shape for a listener, an edge action and a residency action alike:
- * a parsed pattern and what to run. `key` is the state a residency stores its
- * teardown under, and `''` for the two kinds that have none — the only thing
- * telling them apart, which is what lets `fire` serve all three (I16). The
- * return is `unknown` because only a residency's is read, and the type layer
- * has already checked it is a teardown (I23).
+ * a parsed pattern and what to run. `key` is the state a residency is on, and
+ * `''` for the two kinds that are not one — the only thing telling them apart,
+ * which is what lets `fire` serve all three (I16). `teardown` is a residency's
+ * own return, read back on departure or on unsubscribing; every row gets a
+ * slot, but only a residency ever writes to it (I23). Not `readonly`: `teardown`
+ * is written in place, on the row's own identity, which is why a host copies
+ * `actionRows` first rather than writing to the definition's shared rows (§9).
  */
-type Registration = readonly [
+type Registration = [
 	from: string,
 	input: string,
 	to: string,
 	run: (arrival: Arrival) => unknown,
 	key?: string,
 	restart?: boolean | ((from: StateVocab, to: StateVocab) => boolean),
+	teardown?: Teardown | undefined,
 ]
 
 /** One action, unchecked: a run function alone or in a record (I23). */

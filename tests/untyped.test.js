@@ -166,8 +166,17 @@ describe('the untyped path', () => {
 			}
 		})
 
+		// `.observe()` reads a bare key as residency on that state (#76): 'a' and
+		// 'a-x>b' have no recognisable arrow either, so both are legal here even
+		// though neither is a legal `transitions` key.
+		const observeShapes = shapes.map(([pattern, legal]) =>
+			pattern === 'a' || pattern === 'a-x>b'
+				? [pattern, true]
+				: [pattern, legal],
+		)
+
 		test.each([
-			...shapes,
+			...observeShapes,
 			// `*` stays legal in a pattern's state positions, unlike in a key.
 			['* -> *', true],
 			['* -go> b', true],
