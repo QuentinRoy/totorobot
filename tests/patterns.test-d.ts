@@ -68,6 +68,19 @@ test('a bare key means residency, typed as the same record `actions` takes (#76)
 	host.observe('nope', () => {})
 })
 
+test("a residency observer's arrival has a defined `from`, unlike a declared action's — only start() can produce the initial arrival no transition caused — and an immediate hop can still have no input (#95)", () => {
+	const host = doc.start()
+
+	host.observe('draft', (arrival) => {
+		expectTypeOf(arrival.from).toEqualTypeOf<States>()
+	})
+
+	host.observe('* -> *', (e) => {
+		expectTypeOf(e.from).toEqualTypeOf<States>()
+		if (!e.input) expectTypeOf(e.input).toEqualTypeOf<undefined>()
+	})
+})
+
 test('a block-bodied restart predicate on observe does not reopen the host as an inference site (I28)', () => {
 	const host = doc.start()
 

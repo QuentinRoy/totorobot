@@ -312,6 +312,20 @@ type Actions<I extends InputVocab, S extends StateVocab, A extends string> = {
 }
 
 /**
+ * `observe`'s own residency form: the same shape `ResidencyAction` returns,
+ * minus `Initial` — only a declared action on the machine's own initial state
+ * can receive the arrival no transition caused; a caller attaching after
+ * `start()` never can, now that registering is silent (§9 Actions, issue #95).
+ */
+type ObserveResidency<
+	I extends InputVocab,
+	S extends StateVocab,
+	N extends string,
+> = (
+	arrival: NoInfer<Transition<I, S, `* -> ${N}`>>,
+) => undefined | Teardown | void
+
+/**
  * What `observe` takes for a bare state key: a residency action alone or in a
  * `{ run, restart }` record, the same two shapes `Actions` allows for one —
  * everything but the array, which a caller gets by calling `observe` twice (§11
@@ -322,8 +336,8 @@ type ObserveAction<
 	S extends StateVocab,
 	N extends string,
 > =
-	| ResidencyAction<I, S, N>
-	| ({ readonly run: ResidencyAction<I, S, N> } & Restart<StateNamed<S, N>>)
+	| ObserveResidency<I, S, N>
+	| ({ readonly run: ObserveResidency<I, S, N> } & Restart<StateNamed<S, N>>)
 
 /** Arity follows the initial state's payload, by `Table`'s three-way rule. */
 type Start<S extends StateVocab, Init extends string> = keyof Omit<
@@ -592,8 +606,9 @@ export let machine: <
 				// `*` and `''` stand for any, and a missing `from` — the initial arrival,
 				// which no transition caused — matches no edge row, so that case needs no
 				// branch of its own (§9 Actions). Only a residency has a teardown key,
-				// stores what it returns, and consults `restart` on a self-transition,
-				// which is what makes `restart: false` neither tear down nor set up again.
+				// stores what it returns, and consults `restart` on a self-transition —
+				// unless it is not yet active, which is what lets a late observer's first
+				// match start it even when `restart` is false or a predicate (issue #95).
 				let fire = (list: Registration[], e: Arrival): void => {
 					for (let row of list) {
 						let [f, l, t, run, key, restart] = row
@@ -603,10 +618,12 @@ export let machine: <
 							(t === '*' || t === e.to.name) &&
 							(!key ||
 								e.to.name !== e.from?.name ||
+								!row[7] ||
 								restarts(restart, e.from!, e.to))
 						) {
 							let teardown = run(e)
-							if (key) row[6] = teardown as Teardown | undefined
+							if (key)
+								((row[6] = teardown as Teardown | undefined), (row[7] = 1))
 						}
 					}
 				}
@@ -715,11 +732,9 @@ export let machine: <
 						// host).
 						let registration = toRow(pattern, action as UncheckedItem)
 						listeners = [...listeners, registration]
-						// Already resident when observed: no arrival will announce it, so it runs
-						// once here instead, registration order never deciding whether a
-						// residency fires (§11 The host). The teardown key is the residency
-						// guard; `fire` tests `to` against the current state itself.
-						if (registration[4]) enter([registration])
+						// Silent: no arrival is synthesised for an already-resident residency
+						// (issue #95). Its first matching future transition starts it instead —
+						// `fire` bypasses `restart` for that one, even on a self-transition.
 						// Idempotent (§11 The host), and a residency in flight tears down on
 						// the way out.
 						return () => {
@@ -752,9 +767,11 @@ type Arrival = {
  * parsed pattern and what to run. `key` is the state a residency is on, absent
  * on the other two, and the only thing telling them apart, which is what lets
  * `fire` serve all three (I16). `teardown` is a residency's own return, read
- * back on departure or on unsubscribing. Not `readonly`: it is written in
- * place, on the row's identity, which is why a host copies `actionRows` first
- * (§9 Actions).
+ * back on departure or on unsubscribing; `active` tracks whether setup has run
+ * at all, independently of whether it returned one, which is what tells a
+ * residency's first match from a later self-transition (issue #95). Not
+ * `readonly`: both are written in place, on the row's identity, which is why a
+ * host copies `actionRows` first (§9 Actions).
  */
 type Registration = [
 	from: string,
@@ -764,6 +781,7 @@ type Registration = [
 	key?: string,
 	restart?: boolean | ((from: StateVocab, to: StateVocab) => boolean),
 	teardown?: Teardown | undefined,
+	active?: 1,
 ]
 
 /** One action, unchecked: a run function alone or in a record (I23). */

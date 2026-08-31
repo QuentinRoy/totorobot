@@ -2380,7 +2380,6 @@ function residency(doc, state, setup) {
 	const off2 = doc.observe(`* -> ${state}`, (e) => {
 		teardown = setup(e.to)
 	})
-	if (doc.current.name === state) teardown = setup(doc.current)
 	return () => {
 		off1()
 		off2()
@@ -2391,11 +2390,16 @@ function residency(doc, state, setup) {
 
 A self-transition matches **both** patterns, so restart-on-re-entry falls out rather
 than being implemented. `persistent` is `if (e.to.name !== e.from.name)` in the
-exit handler; `keyed` compares `k(e.from)` against `k(e.to)`. It needs two
-things from the host, both worth committing to anyway: **listeners fire in
-registration order** (which is what makes exit-before-entry reliable), and
-`doc.current` is readable at registration (for the already-resident case that no
-transition will announce).
+exit handler; `keyed` compares `k(e.from)` against `k(e.to)`. It needs one thing
+from the host, worth committing to anyway: **listeners fire in registration
+order**, which is what makes exit-before-entry reliable.
+
+> **Revision: the already-resident branch is gone (issue #95).** This recipe, and
+> `.observe()` itself, used to run `setup` immediately when `doc.current.name`
+> already matched — a synthetic arrival no transition caused, the one case §9's
+> revision left standing after ruling it out for actions. Registering is silent
+> now: the first matching transition, entry or a self-transition if already
+> resident, starts it, `restart` not consulted for that one.
 
 **So the dividing line is ownership, not the feature.** Caller-owned residency is a
 helper over public listeners. Definition-owned residency, `actions`, must be host

@@ -210,34 +210,62 @@ describe('observing', () => {
 		expect(activityLog).toEqual(recipeLog)
 	})
 
-	test('a residency attached while the host already occupies its state runs immediately: registration order does not decide it', () => {
+	test('registering an edge or residency observer invokes no callback, whether or not the host currently occupies the target state', () => {
 		const host = toggle.start()
 		const log: string[] = []
 
-		// The equivalent entry pattern never fires: the arrival already happened.
-		host.observe('* -> off', () => log.push('never'))
+		host.observe('* -> off', () => log.push('edge'))
 		host.observe('off', () => {
-			log.push('setup')
+			log.push('residency')
 		})
 
-		expect(log).toEqual(['setup'])
+		expect(log).toEqual([])
 	})
 
-	test('unsubscribing a residency tears down the one currently in flight, and more than once stays harmless', () => {
+	test('unsubscribing a residency observer before its first setup invokes no cleanup, and after setup invokes its teardown once', () => {
 		const host = toggle.start()
 		const log: string[] = []
 
-		const off = host.observe('off', () => {
+		const offBeforeSetup = host.observe('off', () => {
+			log.push('never')
+		})
+		offBeforeSetup()
+		expect(log).toEqual([])
+
+		const off = host.observe('on', () => {
 			log.push('setup')
 			return () => log.push('teardown')
 		})
+		host.send({ type: 'toggle' }) // off -> on: the first matching transition starts it
 		off()
 
 		expect(() => off()).not.toThrow()
 		expect(log).toEqual(['setup', 'teardown'])
 	})
 
-	test('observe(state, fn) tears down and sets up again on a self-transition: restart falls out of matching both directions, same as a declared residency', () => {
+	test('a residency observer registered while already resident starts on the first matching self-transition, restart not consulted', () => {
+		const pinger = machine({
+			initial: 'idle',
+			inputs: type<{ type: 'ping' }>(),
+			states: type<{ name: 'idle' }>(),
+			transitions: { 'idle -ping> idle': () => {} },
+		})
+		const host = pinger.start()
+		const log: string[] = []
+
+		host.observe('idle', {
+			run: () => {
+				log.push('setup')
+			},
+			restart: false,
+		})
+		expect(log).toEqual([])
+
+		host.send({ type: 'ping' })
+		expect(log).toEqual(['setup'])
+	})
+
+	test('observe(state, fn) starts silently, then tears down and sets up again on the next self-transition: restart falls out of matching both directions, same as a declared residency', () => {
 		const pinger = machine({
 			initial: 'idle',
 			inputs: type<{ type: 'ping' }>(),
@@ -251,9 +279,11 @@ describe('observing', () => {
 			log.push('setup')
 			return () => log.push('teardown')
 		})
+		expect(log).toEqual([])
 
+		host.send({ type: 'ping' }) // first match: starts it, nothing to tear down yet
 		expect(log).toEqual(['setup'])
-		host.send({ type: 'ping' })
+		host.send({ type: 'ping' }) // already active: restart's default tears down and sets up again
 		expect(log).toEqual(['setup', 'teardown', 'setup'])
 	})
 

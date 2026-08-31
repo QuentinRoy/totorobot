@@ -504,20 +504,22 @@ const off = doc.observe('draft', {
 })
 ```
 
-Already resident when observed, it runs immediately — registration order
-cannot decide whether it fires. Unsubscribing tears down one currently in
-flight, and more than once stays harmless, as everywhere else. Declaring it in
-the definition instead is the same bare-key trigger in `actions`, for a
-machine's own states; `observe` stays the way to scope work to a state you did
-not declare the machine with. The two agree by construction — a declared
+Registering is silent: no callback runs at registration, whether or not the
+host already occupies `draft`. The first matching transition after that
+starts it — entry, or a self-transition if already resident — and `restart`
+is consulted only once it is already active. Unsubscribing tears down one
+currently in flight, and
+more than once stays harmless, as everywhere else. Declaring it in the
+definition instead is the same bare-key trigger in `actions`, for a machine's
+own states; `observe` stays the way to scope work to a state you did not
+declare the machine with. The two agree by construction — a declared
 residency is asserted to produce the same log as `observe`'s, for the same
 machine, as a test oracle.
 
 Nothing here is a host feature: `observe(state, { run, restart })` is exactly
 the two-pattern recipe below, offered directly instead of assembled by hand.
 Observe `'draft -> *'` to tear down and `'* -> draft'` to set up, exit listener
-registered **first** so a self-transition tears down before it sets up again,
-and run the setup once at registration if the host is already in the state.
+registered **first** so a self-transition tears down before it sets up again.
 `persistent` is `if (e.to.name !== e.from.name)` in the exit handler; `keyed`
 compares a key computed from each end. The full recipe, with the argument for
 leaving residency to the caller rather than the host, is in
