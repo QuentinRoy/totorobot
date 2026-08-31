@@ -69,7 +69,7 @@ describe('actions', () => {
 	})
 
 	test('a self-transition tears down and sets up again: restart falls out of matching both directions', () => {
-		const log: string[] = []
+		const log = vi.fn()
 		const pinger = machine({
 			initial: 'idle',
 			inputs: type<{ type: 'ping' }>(),
@@ -79,20 +79,23 @@ describe('actions', () => {
 			},
 			actions: {
 				idle: () => {
-					log.push('setup')
-					return () => log.push('teardown')
+					log('setup')
+					return () => log('teardown')
 				},
 			},
 		})
 
 		const doc = pinger.start()
-		expect(log).toEqual(['setup'])
+		expect(log).toHaveBeenCalledExactlyOnceWith('setup')
 		doc.send({ type: 'ping' })
-		expect(log).toEqual(['setup', 'teardown', 'setup'])
+		expect(log).toHaveBeenCalledTimes(3)
+		expect(log).toHaveBeenNthCalledWith(1, 'setup')
+		expect(log).toHaveBeenNthCalledWith(2, 'teardown')
+		expect(log).toHaveBeenNthCalledWith(3, 'setup')
 	})
 
 	test('`restart: false` survives a self-transition: no teardown, no second setup', () => {
-		const log: string[] = []
+		const log = vi.fn()
 		const doc = machine({
 			initial: 'idle',
 			inputs: type<{ type: 'ping' }>(),
@@ -101,22 +104,22 @@ describe('actions', () => {
 			actions: {
 				idle: {
 					run: () => {
-						log.push('setup')
-						return () => log.push('teardown')
+						log('setup')
+						return () => log('teardown')
 					},
 					restart: false,
 				},
 			},
 		}).start()
 
-		expect(log).toEqual(['setup'])
+		expect(log).toHaveBeenCalledExactlyOnceWith('setup')
 		doc.send({ type: 'ping' })
 		doc.send({ type: 'ping' })
-		expect(log).toEqual(['setup'])
+		expect(log).toHaveBeenCalledExactlyOnceWith('setup')
 	})
 
 	test('`restart: false` still tears down on a genuine departure to a different state: the policy only governs self-transitions', () => {
-		const log: string[] = []
+		const log = vi.fn()
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ type: 'ping' } | { type: 'toggle' }>(),
@@ -129,8 +132,8 @@ describe('actions', () => {
 			actions: {
 				on: {
 					run: () => {
-						log.push('setup')
-						return () => log.push('teardown')
+						log('setup')
+						return () => log('teardown')
 					},
 					restart: false,
 				},
@@ -139,13 +142,15 @@ describe('actions', () => {
 
 		doc.send({ type: 'toggle' }) // off -> on: setup
 		doc.send({ type: 'ping' }) // on -> on: restart: false, survives
-		expect(log).toEqual(['setup'])
+		expect(log).toHaveBeenCalledExactlyOnceWith('setup')
 		doc.send({ type: 'toggle' }) // on -> off: always tears down
-		expect(log).toEqual(['setup', 'teardown'])
+		expect(log).toHaveBeenCalledTimes(2)
+		expect(log).toHaveBeenNthCalledWith(1, 'setup')
+		expect(log).toHaveBeenNthCalledWith(2, 'teardown')
 	})
 
 	test('a `restart` predicate decides case by case from the resident data either side of the self-transition', () => {
-		const log: string[] = []
+		const log = vi.fn()
 		const doc = machine({
 			initial: 'idle',
 			inputs: type<{ type: 'set'; id: number }>(),
@@ -154,19 +159,22 @@ describe('actions', () => {
 			actions: {
 				idle: {
 					run: ({ to }) => {
-						log.push(`setup:${to.id}`)
-						return () => log.push('teardown')
+						log(`setup:${to.id}`)
+						return () => log('teardown')
 					},
 					restart: (from, to) => from.id !== to.id,
 				},
 			},
 		}).start({ id: 0 })
 
-		expect(log).toEqual(['setup:0'])
+		expect(log).toHaveBeenCalledExactlyOnceWith('setup:0')
 		doc.send({ type: 'set', id: 0 }) // same id: survives
-		expect(log).toEqual(['setup:0'])
+		expect(log).toHaveBeenCalledExactlyOnceWith('setup:0')
 		doc.send({ type: 'set', id: 1 }) // different id: restarts
-		expect(log).toEqual(['setup:0', 'teardown', 'setup:1'])
+		expect(log).toHaveBeenCalledTimes(3)
+		expect(log).toHaveBeenNthCalledWith(1, 'setup:0')
+		expect(log).toHaveBeenNthCalledWith(2, 'teardown')
+		expect(log).toHaveBeenNthCalledWith(3, 'setup:1')
 	})
 
 	test('a key containing -> is an edge: it fires once per matching transition', () => {
@@ -328,25 +336,28 @@ describe('actions', () => {
 	})
 
 	test('an initial immediate chain still emits each real transition separately, with a defined source, after the initial residency has run', () => {
-		const log: string[] = []
+		const log = vi.fn()
 		const doc = machine({
 			initial: 'a',
 			states: type<{ name: 'a' } | { name: 'b' }>(),
 			transitions: { 'a -> b': () => {} },
 			actions: {
 				a: () => {
-					log.push('residency a')
+					log('residency a')
 				},
 				'a -> b': ({ from }) => {
-					log.push(`edge a -> b, from ${from.name}`)
+					log(`edge a -> b, from ${from.name}`)
 				},
 				b: () => {
-					log.push('residency b')
+					log('residency b')
 				},
 			},
 		}).start()
 
-		expect(log).toEqual(['residency a', 'edge a -> b, from a', 'residency b'])
+		expect(log).toHaveBeenCalledTimes(3)
+		expect(log).toHaveBeenNthCalledWith(1, 'residency a')
+		expect(log).toHaveBeenNthCalledWith(2, 'edge a -> b, from a')
+		expect(log).toHaveBeenNthCalledWith(3, 'residency b')
 		expect(doc.current).toEqual({ name: 'b' })
 	})
 
@@ -448,7 +459,7 @@ describe('actions', () => {
 	})
 
 	test('an array of actions on one trigger sets up in declaration order and tears down in reverse', () => {
-		const log: string[] = []
+		const log = vi.fn()
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ type: 'toggle' }>(),
@@ -460,25 +471,31 @@ describe('actions', () => {
 			actions: {
 				on: [
 					() => {
-						log.push('setup 1')
-						return () => log.push('teardown 1')
+						log('setup 1')
+						return () => log('teardown 1')
 					},
 					() => {
-						log.push('setup 2')
-						return () => log.push('teardown 2')
+						log('setup 2')
+						return () => log('teardown 2')
 					},
 				],
 			},
 		}).start()
 
 		doc.send({ type: 'toggle' }) // off -> on
-		expect(log).toEqual(['setup 1', 'setup 2'])
+		expect(log).toHaveBeenCalledTimes(2)
+		expect(log).toHaveBeenNthCalledWith(1, 'setup 1')
+		expect(log).toHaveBeenNthCalledWith(2, 'setup 2')
 		doc.send({ type: 'toggle' }) // on -> off
-		expect(log).toEqual(['setup 1', 'setup 2', 'teardown 2', 'teardown 1'])
+		expect(log).toHaveBeenCalledTimes(4)
+		expect(log).toHaveBeenNthCalledWith(1, 'setup 1')
+		expect(log).toHaveBeenNthCalledWith(2, 'setup 2')
+		expect(log).toHaveBeenNthCalledWith(3, 'teardown 2')
+		expect(log).toHaveBeenNthCalledWith(4, 'teardown 1')
 	})
 
 	test('an array of actions on an edge trigger all fire, in declaration order', () => {
-		const log: string[] = []
+		const log = vi.fn()
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ type: 'toggle' }>(),
@@ -486,18 +503,20 @@ describe('actions', () => {
 			transitions: { 'off -toggle> on': () => {} },
 			actions: {
 				'off -toggle> on': [
-					() => void log.push('fired 1'),
-					{ run: () => void log.push('fired 2') },
+					() => log('fired 1'),
+					{ run: () => log('fired 2') },
 				],
 			},
 		}).start()
 
 		doc.send({ type: 'toggle' })
-		expect(log).toEqual(['fired 1', 'fired 2'])
+		expect(log).toHaveBeenCalledTimes(2)
+		expect(log).toHaveBeenNthCalledWith(1, 'fired 1')
+		expect(log).toHaveBeenNthCalledWith(2, 'fired 2')
 	})
 
 	test('two residents of one state can hold opposite restart policies: one survives a self-transition, the other restarts', () => {
-		const log: string[] = []
+		const log = vi.fn()
 		const doc = machine({
 			initial: 'on',
 			inputs: type<{ type: 'ping' }>(),
@@ -507,31 +526,32 @@ describe('actions', () => {
 				on: [
 					{
 						run: () => {
-							log.push('persistent:setup')
-							return () => log.push('persistent:teardown')
+							log('persistent:setup')
+							return () => log('persistent:teardown')
 						},
 						restart: false,
 					},
 					() => {
-						log.push('restarting:setup')
-						return () => log.push('restarting:teardown')
+						log('restarting:setup')
+						return () => log('restarting:teardown')
 					},
 				],
 			},
 		}).start()
 
-		expect(log).toEqual(['persistent:setup', 'restarting:setup'])
+		expect(log).toHaveBeenCalledTimes(2)
+		expect(log).toHaveBeenNthCalledWith(1, 'persistent:setup')
+		expect(log).toHaveBeenNthCalledWith(2, 'restarting:setup')
 		doc.send({ type: 'ping' })
-		expect(log).toEqual([
-			'persistent:setup',
-			'restarting:setup',
-			'restarting:teardown',
-			'restarting:setup',
-		])
+		expect(log).toHaveBeenCalledTimes(4)
+		expect(log).toHaveBeenNthCalledWith(1, 'persistent:setup')
+		expect(log).toHaveBeenNthCalledWith(2, 'restarting:setup')
+		expect(log).toHaveBeenNthCalledWith(3, 'restarting:teardown')
+		expect(log).toHaveBeenNthCalledWith(4, 'restarting:setup')
 	})
 
 	test('a throwing teardown, among several actions on one trigger, leaves the later ones (earlier in declaration order) unrun', () => {
-		const log: string[] = []
+		const log = vi.fn()
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ type: 'toggle' }>(),
@@ -542,7 +562,7 @@ describe('actions', () => {
 			},
 			actions: {
 				on: [
-					() => () => log.push('teardown 1'),
+					() => () => log('teardown 1'),
 					() => () => {
 						throw new Error('boom')
 					},
@@ -553,11 +573,11 @@ describe('actions', () => {
 		doc.send({ type: 'toggle' }) // off -> on
 
 		expect(() => doc.send({ type: 'toggle' })).toThrow('boom')
-		expect(log).toEqual([]) // teardown 2 threw before teardown 1 (reverse order) ran
+		expect(log).not.toHaveBeenCalled() // teardown 2 threw before teardown 1 (reverse order) ran
 	})
 
 	test('a record with `run` behaves the same as a bare function, for a residency and an edge alike', () => {
-		const log: string[] = []
+		const log = vi.fn()
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ type: 'toggle' }>(),
@@ -567,22 +587,23 @@ describe('actions', () => {
 				'on -toggle> off': () => {},
 			},
 			actions: {
-				on: { run: () => void log.push('setup') },
-				'off -toggle> on': { run: () => void log.push('edge') },
+				on: { run: () => log('setup') },
+				'off -toggle> on': { run: () => log('edge') },
 			},
 		}).start()
 
 		doc.send({ type: 'toggle' })
-		expect(log).toEqual(['setup', 'edge'])
+		expect(log).toHaveBeenCalledTimes(2)
+		expect(log).toHaveBeenNthCalledWith(1, 'setup')
+		expect(log).toHaveBeenNthCalledWith(2, 'edge')
 	})
 
 	test('an item that is callable *and* carries `run` runs its `run`, deliberately: the record shape wins over the callable', () => {
-		const log: string[] = []
+		const callable = vi.fn()
+		const run = vi.fn()
 		// Both item shapes in one value. `run` wins by decision, not by accident:
 		// this is a record that happens to be callable, not the reverse.
-		const both = Object.assign(() => void log.push('callable'), {
-			run: () => void log.push('run'),
-		})
+		const both = Object.assign(callable, { run })
 
 		const doc = machine({
 			initial: 'off',
@@ -596,7 +617,8 @@ describe('actions', () => {
 		}).start()
 
 		doc.send({ type: 'toggle' })
-		expect(log).toEqual(['run', 'run'])
+		expect(callable).not.toHaveBeenCalled()
+		expect(run).toHaveBeenCalledTimes(2)
 	})
 
 	test('an undeclared trigger is silently unreachable at runtime, matching the rest of the library: naming something absent is a no-op', () => {
@@ -611,7 +633,7 @@ describe('actions', () => {
 	})
 
 	test('a send from an action is queued like any other: the chain settles before the input lands, and the action is not re-entered', () => {
-		const log: string[] = []
+		const log = vi.fn()
 		const doc = machine({
 			initial: 'a',
 			inputs: type<{ type: 'go' } | { type: 'next' }>(),
@@ -622,28 +644,27 @@ describe('actions', () => {
 			},
 			actions: {
 				b: ({ send }) => {
-					log.push('b setup')
+					log('b setup')
 					send({ type: 'next' })
-					log.push('b setup returns')
-					return () => log.push('b teardown')
+					log('b setup returns')
+					return () => log('b teardown')
 				},
 				c: () => {
-					log.push('c setup')
+					log('c setup')
 				},
 			},
 		}).start()
-		doc.observe('* -> *', (e) => log.push(`listener: -> ${e.to.name}`))
+		doc.observe('* -> *', (e) => log(`listener: -> ${e.to.name}`))
 
 		doc.send({ type: 'go' })
 
-		expect(log).toEqual([
-			'b setup',
-			'b setup returns',
-			'listener: -> b',
-			'b teardown',
-			'c setup',
-			'listener: -> c',
-		])
+		expect(log).toHaveBeenCalledTimes(6)
+		expect(log).toHaveBeenNthCalledWith(1, 'b setup')
+		expect(log).toHaveBeenNthCalledWith(2, 'b setup returns')
+		expect(log).toHaveBeenNthCalledWith(3, 'listener: -> b')
+		expect(log).toHaveBeenNthCalledWith(4, 'b teardown')
+		expect(log).toHaveBeenNthCalledWith(5, 'c setup')
+		expect(log).toHaveBeenNthCalledWith(6, 'listener: -> c')
 		expect(doc.current).toEqual({ name: 'c' })
 	})
 })
