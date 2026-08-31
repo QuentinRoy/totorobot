@@ -241,23 +241,19 @@ describe('observing', () => {
 		const host = toggle.start()
 		host.send({ type: 'toggle' }) // off -> on: 'on' is current now, and it is not the initial state
 
-		const log: string[] = []
-		host.observe('on', () => {
-			log.push('setup')
-		})
+		const setup = vi.fn()
+		host.observe('on', setup)
 
-		expect(log).toEqual(['setup'])
+		expect(setup).toHaveBeenCalledOnce()
 	})
 
 	test('a residency attached while resident receives an arrival with no source or input, the same as machine startup', () => {
 		const host = toggle.start()
-		let seenArrival: unknown
+		const observer = vi.fn()
 
-		host.observe('off', (arrival) => {
-			seenArrival = arrival
-		})
+		host.observe('off', observer)
 
-		expect(seenArrival).toEqual({
+		expect(observer).toHaveBeenCalledExactlyOnceWith({
 			input: undefined,
 			from: undefined,
 			to: { name: 'off' },
@@ -267,32 +263,26 @@ describe('observing', () => {
 
 	test('restart does not gate registration setup: a false-returning predicate still runs setup and is never called for a synthetic arrival', () => {
 		const host = toggle.start()
-		const log: string[] = []
+		const setup = vi.fn()
 		const restart = vi.fn(() => false)
 
-		host.observe('off', {
-			run: () => {
-				log.push('setup')
-			},
-			restart,
-		})
+		host.observe('off', { run: setup, restart })
 
-		expect(log).toEqual(['setup'])
+		expect(setup).toHaveBeenCalledOnce()
 		expect(restart).not.toHaveBeenCalled()
 	})
 
 	test('unsubscribing a residency registered outside its state, before it is ever entered, is harmless', () => {
 		const host = toggle.start()
-		const log: string[] = []
+		const teardown = vi.fn()
+		const setup = vi.fn(() => teardown)
 
-		const off = host.observe('on', () => {
-			log.push('setup')
-			return () => log.push('teardown')
-		})
+		const off = host.observe('on', setup)
 		off()
 
 		host.send({ type: 'toggle' }) // off -> on: would have entered, had it stayed subscribed
-		expect(log).toEqual([])
+		expect(setup).not.toHaveBeenCalled()
+		expect(teardown).not.toHaveBeenCalled()
 	})
 
 	test('observe(state, fn) tears down and sets up again on a self-transition: restart falls out of matching both directions, same as a declared residency', () => {
