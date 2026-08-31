@@ -533,13 +533,20 @@ export let machine: <
 		}
 		let index: Index = Object.create(null)
 
-		// A labelled row is filed under its `from \0 input` pair, an immediate one
-		// under `from` alone: `send` only ever builds the first shape, so an
-		// immediate stays unreachable from it even for the empty input type, and
-		// one flat map does the work two nested ones used to (I16).
+		// Both kinds of row share one flat keyspace, which is what lets one map do
+		// the work two nested ones used to (I16). The key is the `from`/`input` pair
+		// with the length of `from` in front, not the two halves joined by some
+		// separator: names are arbitrary strings, so whatever character the
+		// separator were, a name may contain it — `'a\0b' -c>` and `a -b\0c>` join
+		// alike, and so do a bare `'a\0b'` and `a -b>`. A length decides the split
+		// before either half is read, and nothing in either half can disturb it.
+		// Written out at each of the three sites rather than shared as a helper: it
+		// measures 4 B smaller that way, being a shape brotli already knows (I16).
+		// An immediate is filed under the empty label, and `send` never builds one,
+		// so it stays unreachable from there even for the empty input type.
 		for (let key in transitions) {
 			let [from, input, to] = parse(key)
-			;(index[input ? from + '\0' + input : from] ??= []).push([
+			;(index[from.length + '\0' + from + input] ??= []).push([
 				to,
 				transitions[key]!,
 			])
@@ -673,7 +680,7 @@ export let machine: <
 				// per call, so settling the initial state does not spend the first send's.
 				let settle = (): void => {
 					let hops = 1e5
-					while (step(index[current.name])) {
+					while (step(index[current.name.length + '\0' + current.name])) {
 						// Counted down rather than up: the budget is the whole test. Far above
 						// any real chain — `'a -> a'` is legal, and a handler rewriting its own
 						// data until it declines terminates.
@@ -694,7 +701,14 @@ export let machine: <
 					dispatch(() =>
 						queue.push(() => {
 							// Read at drain time, so a queued send may correctly find no row.
-							if (step(index[current.name + '\0' + input?.type], input))
+							if (
+								step(
+									index[
+										current.name.length + '\0' + current.name + input?.type
+									],
+									input,
+								)
+							)
 								settle()
 						}),
 					)

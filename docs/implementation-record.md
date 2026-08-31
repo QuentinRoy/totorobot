@@ -223,6 +223,14 @@ figures from the shipped build.
   other — not a basis for choosing. The index wins on behaviour: dispatch is a
   lookup rather than a scan, and a malformed key arriving from untyped code cannot
   accidentally prefix-match.
+- **The index key length-prefixed, not separator-joined.** One flat keyspace for
+  labelled and immediate rows needs a key that encodes the `from`/`input` pair
+  injectively. Names are arbitrary strings, so no character is available as a
+  separator: `'a\0b' -c>` and `a -b\0c>` join alike whatever the separator is,
+  and filing an immediate under `from` alone collides outright with a labelled
+  row whose pair spells that name. Putting `from.length` in front costs 8 B and
+  is not optional. Spelling the key out at all three sites rather than sharing an
+  `at` helper is a further 4 B smaller — a repeated shape brotli already knows.
 - **Patterns parsed at registration, not matched by generation.** Generating the
   eight patterns a transition could answer to and testing membership: 4.8% larger,
   plus a `Set` allocated per transition. Parsing at registration also shares

@@ -256,6 +256,56 @@ describe('sending', () => {
 		})
 	})
 
+	// State and input names are arbitrary strings, so a name may contain whatever
+	// character the index joins a `from`/`input` pair with. Joining them naively
+	// files the immediate row of the state `a\0b` and the labelled row `a -b>`
+	// under one key, and the immediate — declared first — answers the send.
+	test('a state name that spells out a from/input pair does not shadow the labelled row', () => {
+		const ran: string[] = []
+		const collide = machine({
+			initial: 'a',
+			inputs: type<{ type: 'b' }>(),
+			states: type<
+				{ name: 'a' } | { name: 'a\0b' } | { name: 'bad' } | { name: 'good' }
+			>(),
+			transitions: {
+				'a\0b -> bad': () => {
+					ran.push('bad')
+				},
+				'a -b> good': () => {
+					ran.push('good')
+				},
+			},
+		})
+
+		const host = collide.start()
+		host.send({ type: 'b' })
+
+		expect(ran).toEqual(['good'])
+		expect(host.current).toEqual({ name: 'good' })
+	})
+
+	// The same hazard between two labelled rows, which uniform joining alone does
+	// not fix: `'a\0b' -c>` and `a -b\0c>` join to one key from either side.
+	test('two labelled rows whose from/input pairs join alike stay apart', () => {
+		const collide = machine({
+			initial: 'a',
+			inputs: type<{ type: 'c' } | { type: 'b\0c' }>(),
+			states: type<
+				{ name: 'a' } | { name: 'a\0b' } | { name: 'bad' } | { name: 'good' }
+			>(),
+			transitions: {
+				'a\0b -c> bad': () => {},
+				'a -b\0c> good': () => {},
+			},
+		})
+
+		const host = collide.start()
+		host.send({ type: 'b\0c' })
+
+		expect(host.current).toEqual({ name: 'good' })
+	})
+
 	test('send returns undefined when it was queued, too', () => {
 		const host = editor.start()
 
