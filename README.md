@@ -45,6 +45,7 @@ export const publication = machine({
 		| { type: 'revise'; text: string }
 		| { type: 'submit'; reviewer: string }
 		| { type: 'publish' }
+		| { type: 'expireReview' }
 		| { type: 'cancel' }
 	>(),
 
@@ -67,22 +68,30 @@ export const publication = machine({
 			text: state.text,
 			revision: state.revision,
 		}),
+		'review -expireReview> draft': ({ state }) => ({
+			text: state.text,
+			revision: state.revision,
+		}),
 		'draft -cancel> empty': () => {},
 	},
 
 	actions: {
-		'review -publish> published': ({ to }) => notify(to),
+		review: ({ send }) => {
+			const timer = setTimeout(() => send({ type: 'expireReview' }), 30_000)
+			return () => clearTimeout(timer)
+		},
 	},
 })
 
 const doc = publication.start()
 doc.send({ type: 'open', text: 'hello' })
+doc.send({ type: 'submit', reviewer: 'Quentin' })
 ```
 
 `reviewer` exists on `review` alone: `draft` does not have it yet, `published`
-has shed it again, and neither carries it as a nullable placeholder. The action
-runs when the `publish` edge commits, so every host created from this definition
-notifies the same way.
+has shed it again, and neither carries it as a nullable placeholder. While the
+document is in review, the action schedules an input back to the same host. Its
+teardown clears the timer if review ends first.
 
 ## Contents
 
