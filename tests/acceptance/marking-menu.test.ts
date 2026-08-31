@@ -122,7 +122,7 @@ const p2Far: Point = { x: 100, y: 100 }
 
 describe('acceptance: Reduced Marking Menu', () => {
 	test('trace 1: down enters startup, reports start, and schedules the dwell', () => {
-		using _restoreTimers = fakeTimers()
+		using _timers = fakeTimers()
 		const doc = markingMenu.start()
 		const reportedStart = vi.fn()
 		doc.observe('idle -down> startup', reportedStart)
@@ -139,7 +139,7 @@ describe('acceptance: Reduced Marking Menu', () => {
 	})
 
 	test('trace 2: a nearby move commits a same-state stroke update, then the dwell elapsing enters novice and reports open', () => {
-		using _restoreTimers = fakeTimers()
+		using _timers = fakeTimers()
 		const doc = markingMenu.start()
 		doc.send({ type: 'down', point: p0 }) // -> startup(origin: p0, stroke: [p0])
 
@@ -165,7 +165,7 @@ describe('acceptance: Reduced Marking Menu', () => {
 	})
 
 	test("trace 3 (fresh execution): a far move enters expert, and the startup residency's teardown cancels the dwell so no stale dwellElapsed can arrive", () => {
-		using _restoreTimers = fakeTimers()
+		using _timers = fakeTimers()
 		const doc = markingMenu.start()
 		doc.send({ type: 'down', point: p0 }) // -> startup(origin: p0, stroke: [p0])
 
@@ -184,7 +184,7 @@ describe('acceptance: Reduced Marking Menu', () => {
 	})
 
 	test('trace 4: cancel from startup returns to idle, cancels the dwell, and reports cancellation', () => {
-		using _restoreTimers = fakeTimers()
+		using _timers = fakeTimers()
 		const doc = markingMenu.start()
 		doc.send({ type: 'down', point: p0 }) // -> startup(origin: p0, stroke: [p0])
 
