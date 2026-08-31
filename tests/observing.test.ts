@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import { machine, type } from 'totorobot'
 import { activity, activityLog, chain, gate, toggle } from './fixtures.ts'
@@ -268,20 +268,17 @@ describe('observing', () => {
 	test('restart does not gate registration setup: a false-returning predicate still runs setup and is never called for a synthetic arrival', () => {
 		const host = toggle.start()
 		const log: string[] = []
-		let calls = 0
+		const restart = vi.fn(() => false)
 
 		host.observe('off', {
 			run: () => {
 				log.push('setup')
 			},
-			restart: () => {
-				calls++
-				return false
-			},
+			restart,
 		})
 
 		expect(log).toEqual(['setup'])
-		expect(calls).toBe(0)
+		expect(restart).not.toHaveBeenCalled()
 	})
 
 	test('unsubscribing a residency registered outside its state, before it is ever entered, is harmless', () => {
