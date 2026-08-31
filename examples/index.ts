@@ -1,4 +1,5 @@
 import { authMachine, signIn } from './case-studies/auth-machine.ts'
+import { nextResults, searchBox } from './case-studies/search-box.ts'
 import { trafficLight } from './case-studies/traffic-light.ts'
 
 console.log('--- Traffic light (per-state data) ---')
@@ -34,3 +35,27 @@ const now = auth.current
 if (now.name === 'authenticated') {
 	console.log(`\ntoken (typed, no null check needed): ${now.token}`)
 }
+
+console.log('\n--- Search box (the `actions` block owns the effects) ---')
+
+const search = searchBox.start()
+search.observe('* -> *', (e) => console.log(`  -> ${e.to.name}`))
+
+// Reporting is the caller's, and `observe` takes the same record `actions`
+// does: a bare state key is a residency, and `restart: false` keeps this one
+// from firing again on a `typing -type> typing` keystroke.
+search.observe('typing', {
+	run: (e) => console.log(`  [ping] composing, from "${e.to.query}"`),
+	restart: false,
+})
+search.observe('loading -results> results', (e) =>
+	console.log(`  [edge] ${e.to.items.length} hit(s) for "${e.to.query}"`),
+)
+
+// Three keystrokes inside the debounce window: the timer restarts each time,
+// the one-per-session ping does not.
+search.send({ type: 'type', text: 't' })
+search.send({ type: 'type', text: 'to' })
+search.send({ type: 'type', text: 'tot' })
+
+console.log('  results:', await nextResults(search))
