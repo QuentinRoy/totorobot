@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import { machine, type } from 'totorobot'
-import { chain, gate, toggle } from './fixtures.ts'
+import { activity, activityLog, chain, gate, toggle } from './fixtures.ts'
 import { residency } from './helpers.ts'
 
 describe('observing', () => {
@@ -180,6 +180,163 @@ describe('observing', () => {
 		host.send({ type: 'go' })
 
 		expect(log).toEqual(['setup', 'teardown'])
+	})
+
+	test('a bare state key passed to observe scopes setup and teardown to residency, like a declared action', () => {
+		const host = chain.start()
+		const log: string[] = []
+
+		host.observe('c', () => {
+			log.push('setup')
+			return () => log.push('teardown')
+		})
+
+		host.send({ type: 'go' })
+		expect(log).toEqual(['setup', 'teardown'])
+	})
+
+	test('observe(state, fn) residency produces the same log as an actions-declared residency, for the same machine', () => {
+		const recipeLog: string[] = []
+		const recipeHost = chain.start()
+		recipeHost.observe('b', () => {
+			recipeLog.push('setup')
+			return () => recipeLog.push('teardown')
+		})
+		recipeHost.send({ type: 'go' })
+
+		activityLog.length = 0
+		activity.start().send({ type: 'go' })
+
+		expect(activityLog).toEqual(recipeLog)
+	})
+
+	test('a residency attached while the host already occupies its state runs immediately: registration order does not decide it', () => {
+		const host = toggle.start()
+		const log: string[] = []
+
+		// The equivalent entry pattern never fires: the arrival already happened.
+		host.observe('* -> off', () => log.push('never'))
+		host.observe('off', () => {
+			log.push('setup')
+		})
+
+		expect(log).toEqual(['setup'])
+	})
+
+	test('unsubscribing a residency tears down the one currently in flight, and more than once stays harmless', () => {
+		const host = toggle.start()
+		const log: string[] = []
+
+		const off = host.observe('off', () => {
+			log.push('setup')
+			return () => log.push('teardown')
+		})
+		off()
+
+		expect(() => off()).not.toThrow()
+		expect(log).toEqual(['setup', 'teardown'])
+	})
+
+	test('observe(state, fn) tears down and sets up again on a self-transition: restart falls out of matching both directions, same as a declared residency', () => {
+		const pinger = machine({
+			initial: 'idle',
+			inputs: type<{ type: 'ping' }>(),
+			states: type<{ name: 'idle' }>(),
+			transitions: { 'idle -ping> idle': () => {} },
+		})
+		const host = pinger.start()
+		const log: string[] = []
+
+		host.observe('idle', () => {
+			log.push('setup')
+			return () => log.push('teardown')
+		})
+
+		expect(log).toEqual(['setup'])
+		host.send({ type: 'ping' })
+		expect(log).toEqual(['setup', 'teardown', 'setup'])
+	})
+
+	test('observe(state, { run, restart: false }) survives a self-transition: no teardown, no second setup', () => {
+		const pinger = machine({
+			initial: 'idle',
+			inputs: type<{ type: 'ping' }>(),
+			states: type<{ name: 'idle' }>(),
+			transitions: { 'idle -ping> idle': () => {} },
+		})
+		const host = pinger.start()
+		const log: string[] = []
+
+		host.observe('idle', {
+			run: () => {
+				log.push('setup')
+				return () => log.push('teardown')
+			},
+			restart: false,
+		})
+
+		host.send({ type: 'ping' })
+		host.send({ type: 'ping' })
+		expect(log).toEqual(['setup'])
+	})
+
+	test('observe(state, { run, restart }) decides a self-transition case by case, from the resident data either side', () => {
+		const setter = machine({
+			initial: 'idle',
+			inputs: type<{ type: 'set'; id: number }>(),
+			states: type<{ name: 'idle'; id: number }>(),
+			transitions: {
+				'idle -set> idle': ({ input }) => ({ id: input.id }),
+			},
+		})
+		const host = setter.start({ id: 0 })
+		const log: string[] = []
+
+		host.observe('idle', {
+			run: (e) => {
+				log.push(`setup:${e.to.id}`)
+				return () => log.push(`teardown:${e.to.id}`)
+			},
+			restart: (from, to) => from.id !== to.id,
+		})
+
+		host.send({ type: 'set', id: 0 }) // same id: no restart
+		host.send({ type: 'set', id: 1 }) // different id: restarts
+		expect(log).toEqual(['setup:0', 'teardown:0', 'setup:1'])
+	})
+
+	test('a declared residency and an observe-attached one on the same state: actions before listeners, entry and exit alike', () => {
+		const log: string[] = []
+		const doc = machine({
+			initial: 'off',
+			inputs: type<{ type: 'toggle' }>(),
+			states: type<{ name: 'off' } | { name: 'on' }>(),
+			transitions: {
+				'off -toggle> on': () => {},
+				'on -toggle> off': () => {},
+			},
+			actions: {
+				on: () => {
+					log.push('action:setup')
+					return () => log.push('action:teardown')
+				},
+			},
+		}).start()
+
+		doc.observe('on', () => {
+			log.push('observe:setup')
+			return () => log.push('observe:teardown')
+		})
+
+		doc.send({ type: 'toggle' }) // off -> on: both enter
+		doc.send({ type: 'toggle' }) // on -> off: both leave
+
+		expect(log).toEqual([
+			'action:setup',
+			'observe:setup',
+			'action:teardown',
+			'observe:teardown',
+		])
 	})
 
 	test('a self-transition matches both the exit pattern and the entry pattern', () => {

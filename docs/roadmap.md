@@ -27,24 +27,6 @@ syntax is claimed ahead of the design that would justify it.
 
 _Argued in: [rationale §10](design-record.md#revision-the-composition-boundary)._
 
-## Residency on `observe` — the same record `actions` takes
-
-Scoping setup and teardown to "while resident in a state" works two ways now:
-the [caller-side recipe](../README.md#residency) over two `observe` patterns,
-for a machine you did not declare it with, and a bare-key trigger in
-[`actions`](../README.md#actions-lifetime-scoped-work), for one you did. What is
-left is `observe` accepting the same record `actions` does —
-`observe(pattern, { run, restart })` beside the unchanged
-`observe(pattern, listener)` — including a bare state key meaning residency
-there too, so a caller-side residency and a declared one share one policy
-vocabulary instead of two.
-
-Whether this lands is as open as everything else here, but it breaks nothing
-that exists today either way: `actions` already settled the shape, this is only
-`observe` learning to accept it.
-
-_Argued in: [rationale §11](design-record.md#residency-is-derivable-not-a-host-feature)._
-
 ## Horizontal composition — the chosen direction
 
 Two independent HCI toolkits, six years apart, converged on the same answer for
