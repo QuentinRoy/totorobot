@@ -359,6 +359,13 @@ whichever kind of trigger fired it and identical to what a matching
 resident state. On the initial state, which no transition caused, `from` and
 `input` are `undefined`, so reading `from` needs a narrowing first.
 
+**Starting a host runs a declared residency on the initial state, never an
+edge action.** Entering the initial state is not a transition, so no edge
+action fires there, `* -> *` included — only real transitions afterwards do,
+`from` always present. An initial immediate chain still fires an edge action
+per hop it takes, and the residency on any state it passes through, after the
+initial state's own residency has run.
+
 **Only a residency may return a teardown.** Returning one from an edge is a
 compile error, so moving a helper between the two cannot silently strand its
 cleanup. An `async` body is rejected for the same reason: it returns a promise.

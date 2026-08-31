@@ -712,9 +712,12 @@ export let machine: <
 
 				// Under the drain `send` takes, so a send from one of these hops runs after
 				// the chain settles (§11 The host, "`start` settles under the drain").
-				// Entering `initial` is not a transition, so no `from` (§9 Actions).
+				// Entering `initial` is not a transition, so no `from` — which is what an
+				// edge row, wildcard source included, needs to fire (§9 Actions, "the
+				// startup slice"); `row[4]` is the teardown key only a residency row has,
+				// so filtering on it is what keeps startup residency-only.
 				dispatch(() => {
-					enter(acts)
+					enter(acts.filter((row) => row[4]))
 					settle()
 				})
 

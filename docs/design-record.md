@@ -1680,6 +1680,16 @@ because none could exist yet to miss it — `observe` stays unreachable until `s
 returns, same as always. Pinned in `tests/queue.test.ts`, "actions fired by
 `start()`".
 
+### Closed: startup excludes edge actions
+
+The coverage above pinned residency at startup but left a gap: `enter(acts)`
+also swept in a wildcard-source edge action, `* -> *` included, since a
+wildcard reads a missing `from` — the initial arrival, which no transition
+caused — the same as a real predecessor. Fixed by filtering that one `enter`
+call to residency rows (`row[4]`, the teardown key only those carry); `fire`'s
+own matching, shared with every real transition and listener, is unchanged.
+Pinned in `tests/actions.test.ts`, "startup invokes no edge action".
+
 ## 10. Composition
 
 > **Designed, deferred.** This is the design that was returned to, not the plan;
