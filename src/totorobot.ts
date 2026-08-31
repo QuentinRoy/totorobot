@@ -1,9 +1,10 @@
 /**
  * Totorobot — finite state machines declared as a transition table. One
  * definition builder, one host, no dependencies. The API is specified in
- * `README.md` and argued in `docs/design-record.md` (cited as §n); the compiler
- * behaviour behind the type layer is in `docs/implementation-record.md` (cited
- * as In). Comments state the consequence and cite the argument.
+ * `README.md` and argued in `docs/design-record.md`, whose sections are cited
+ * by number and title (§9 Actions); the compiler behaviour behind the type
+ * layer is in `docs/implementation-record.md`, cited as In. Comments state the
+ * consequence and cite the argument.
  *
  * The runtime is golfed (I15): minification strips comments and renames locals,
  * so only code *shape* is left to spend (I16), and `pnpm size` arbitrates. The
@@ -68,7 +69,8 @@ type StateName<S extends StateVocab> = S['name']
 
 /**
  * A union, not a validating conditional, because a union is what an editor
- * offers as completions — |states|² × |inputs| of them (§12 prices it).
+ * offers as completions — |states|² × |inputs| of them, priced in §12 Sending
+ * inputs.
  */
 type Key<I extends InputVocab, S extends StateVocab> =
 	| `${StateName<S>} -${InputType<I>}> ${StateName<S>}`
@@ -81,7 +83,8 @@ type To<K> = K extends `${string} -${string}> ${infer T}` ? T : never
 
 /**
  * `*` collides with the pattern wildcard, a padded name with the grammar's own
- * delimiters: a key minting either names a state nothing can address (§5).
+ * delimiters: a key minting either names a state nothing can address (§5 The
+ * declared vocabulary).
  */
 type RoundTrips<N extends string> = N extends '*' | ` ${string}` | `${string} `
 	? never
@@ -171,8 +174,9 @@ type Select<Coordinate extends string, All extends string> = [
  * `send` is the whole declared vocabulary from every state, never narrowed to
  * what `from` or `to` handles: a queued input is read at drain time, by which
  * point the machine has moved, so the normal reaction sends something the state
- * it was notified about does not handle (§12). Spelled into both arms rather
- * than intersected onto the union, so a discriminant still narrows the record.
+ * it was notified about does not handle (§12 Sending inputs). Spelled into both
+ * arms rather than intersected onto the union, so a discriminant still narrows
+ * the record.
  */
 type Send<I extends InputVocab> = (input: I) => void
 
@@ -211,13 +215,13 @@ type Listener<
 // ---------------------------------------------------------------------------
 // Actions
 //
-// Every action takes the same one argument, whichever kind of trigger fired
-// it: the transition record, `send` included, exactly what a matching listener
-// receives (§9). A residency trigger is an arrival, so its `to` is the resident
-// state; an edge trigger's is whatever its pattern targets. One shape across
-// both kinds and `observe`, rather than a bag per kind that would carry `send`
-// twice. Only the return types differ, and only to keep a teardown from being
-// stranded on an edge.
+// Every action takes the same one argument, whichever kind of trigger fired it:
+// the transition record, `send` included, exactly what a matching listener
+// receives (§9 Actions). A residency trigger is an arrival, so its `to` is the
+// resident state; an edge trigger's is whatever its pattern targets. One shape
+// across both kinds and `observe`, rather than a bag per
+// kind that would carry `send` twice. Only the return types differ, and only to
+// keep a teardown from being stranded on an edge.
 // ---------------------------------------------------------------------------
 
 /** What a residency action may return, to release what it opened on exit. */
@@ -228,7 +232,7 @@ type Teardown = () => void
  * `from` and `input` are `undefined` there. Its own arm rather than a widened
  * `Transition`, which `observe` and every edge share: `input: undefined`
  * already discriminates an immediate hop, so `from: undefined` extends that
- * vocabulary instead of inventing a second one (§9).
+ * vocabulary instead of inventing a second one (§9 Actions).
  */
 type Initial<I extends InputVocab, S extends StateVocab, N extends string> = {
 	readonly input: undefined
@@ -239,12 +243,12 @@ type Initial<I extends InputVocab, S extends StateVocab, N extends string> = {
 
 /**
  * Fires on arrival at its state, by any route `* -> N` covers; the teardown it
- * returns runs on exit (§9). The trailing `| void` is not the bivariance hole
- * it looks like — that only opens when a signature's return type *is* `void`,
- * not when `void` is one arm of a union, where an explicit wrong-shaped or
- * `async` return is still rejected (I27). It is what lets a setup with nothing
- * to tear down end in a plain statement rather than an explicit
- * `return undefined`.
+ * returns runs on exit (§9 Actions). The trailing `| void` is not the
+ * bivariance hole it looks like — that only opens when a signature's return
+ * type *is* `void`, not when `void` is one arm of a union, where an explicit
+ * wrong-shaped or `async` return is still rejected (I27). It is what lets a
+ * setup with nothing to tear down end in a plain statement rather than an
+ * explicit `return undefined`.
  */
 type ResidencyAction<
 	I extends InputVocab,
@@ -271,7 +275,7 @@ type EdgeAction<
  * An action is its run function alone, a record with `run`, or an array of
  * either — declaration order for setup, reverse for teardown. `Extra` widens
  * the record with fields only some kinds take, so the same shape serves an
- * edge (nothing extra) and a residency (`restart`) alike (§9).
+ * edge (nothing extra) and a residency (`restart`) alike (§9 Actions).
  */
 type Action<Run, Extra extends object = {}> =
 	| Run
@@ -280,20 +284,22 @@ type Action<Run, Extra extends object = {}> =
 
 /**
  * `restart` is consulted only on a self-transition; the default is to restart
- * (§9). `NoInfer` on the predicate's parameters for the same reason `Table`'s
- * handler needs it on `state` (I14): unguarded, a block-bodied predicate
- * reopens `S` as an inference site and the whole table collapses (I28).
+ * (§9 Actions). `NoInfer` on the predicate's parameters for the same reason
+ * `Table`'s handler needs it on `state` (I14): unguarded, a block-bodied
+ * predicate reopens `S` as an inference site and the whole table collapses
+ * (I28).
  */
 type Restart<N extends StateVocab> = {
 	readonly restart?: boolean | ((from: NoInfer<N>, to: NoInfer<N>) => boolean)
 }
 
 /**
- * Checked row by row, like `Table`: decidable from the string alone (§9), an
- * edge-shaped key (`from -input> to`, wildcards included) against `Pattern`,
- * else a bare key against the declared state names. Either miss reports its
- * own `not a trigger: '…'` rather than poisoning a well-formed neighbour.
- * `restart` has no meaning on an edge, so only the residency arm widens with it.
+ * Checked row by row, like `Table`: decidable from the string alone (§9
+ * Actions), an edge-shaped key (`from -input> to`, wildcards included) against
+ * `Pattern`, else a bare key against the declared state names. Either miss
+ * reports its own `not a trigger: '…'` rather than poisoning a well-formed
+ * neighbour. `restart` has no meaning on an edge, so only the residency arm
+ * widens with it.
  */
 type Actions<I extends InputVocab, S extends StateVocab, A extends string> = {
 	readonly [P in A]: P extends `${string} -${string}> ${string}`
@@ -308,7 +314,8 @@ type Actions<I extends InputVocab, S extends StateVocab, A extends string> = {
 /**
  * What `observe` takes for a bare state key: a residency action alone or in a
  * `{ run, restart }` record, the same two shapes `Actions` allows for one —
- * everything but the array, which a caller gets by calling `observe` twice (§11).
+ * everything but the array, which a caller gets by calling `observe` twice (§11
+ * The host).
  */
 type ObserveAction<
 	I extends InputVocab,
@@ -337,8 +344,9 @@ interface Host<
 	readonly send: Send<I>
 	// Generic in the pattern, so a listener's record is narrowed by it. A bare
 	// state key is the second, overloaded form: the same record `actions` takes
-	// for a residency, minus the array — call `observe` again for a second one
-	// — and minus the third-argument options form, deliberately not added (§11).
+	// for a residency, minus the array — call `observe` again for a second one —
+	// and minus the third-argument options form, deliberately not added (§11 The
+	// host).
 	readonly observe: {
 		<P extends Pattern<I, S>>(
 			pattern: P,
@@ -436,8 +444,8 @@ export let type = <T>(): T | undefined => undefined
 
 /**
  * One queue and one flag for every host: peer composition is two machines wired
- * to each other, and rule 4 holds across that wiring (§11). A thunk closes over
- * whichever host queued it.
+ * to each other, and rule 4 holds across that wiring (§11 The host). A thunk
+ * closes over whichever host queued it.
  */
 let queue: (() => void)[] = []
 let draining = 0
@@ -469,10 +477,10 @@ let dispatch = (work?: () => void): void => {
 /**
  * One row from a key and an item, bare or arrow alike: shared by the `actions`
  * block and a bare-key `observe`, so a caller-side residency and a declared one
- * parse identically (§11). `item.run ?? item` reads both item shapes at once: a
- * plain function has no `run`, and a value carrying one is a record that happens
- * to be callable, not the reverse. An arrow row stops at its handler, `key` and
- * `restart` meaning nothing on one (I16).
+ * parse identically (§11 The host). `item.run ?? item` reads both item shapes
+ * at once: a plain function has no `run`, and a value carrying one is a record
+ * that happens to be callable, not the reverse. An arrow row stops at its
+ * handler, `key` and `restart` meaning nothing on one (I16).
  */
 let toRow = (key: string, item: UncheckedItem): Registration => {
 	let run = item.run ?? item
@@ -482,21 +490,21 @@ let toRow = (key: string, item: UncheckedItem): Registration => {
 }
 
 /**
- * Declare a machine. The result is inert data: the index lives in a closure, the
- * configuration object is never touched, and only `start` is exposed. Keys are
- * parsed once, so dispatch is a lookup rather than a scan (I16).
+ * Declare a machine. The result is inert data: the index lives in a closure,
+ * the configuration object is never touched, and only `start` is exposed. Keys
+ * are parsed once, so dispatch is a lookup rather than a scan (I16).
  *
- * `inputs` and `states` are the vocabulary's only inference sites, and both are
- * optional — omitting one keeps the names `transitions` mentions and widens only
- * their data. `initial` is a `NoInfer` position rather than a third site (I21),
- * intersected with `Init` to recover its name, which is what lets `start` follow
- * the initial state's data. `RawI`/`RawS` are what the properties infer to and
- * `I`/`S` the resolved vocabularies; collapsing each pair into one fails (I19),
- * and the defaults hold only because `Table`'s `NoInfer` closes the handler
- * parameters — as would overloads, at the cost of per-row diagnostics (I14). `K`
- * comes from the mapped type in `transitions`, with no second one beside it (I20).
- * `A` is the same idea again for `actions`: inferred from that block's own
- * keys, contributing nothing back to `I`, `S` or `K` (§9).
+ * `inputs` and `states` are the vocabulary's only inference sites, both optional
+ * — omitting one keeps the names `transitions` mentions and widens only their
+ * data. `initial` is a `NoInfer` position rather than a third site (I21),
+ * intersected with `Init` to recover its name, which is what lets `start`
+ * follow the initial state's data. `RawI`/`RawS` are what the properties infer
+ * to and `I`/`S` the resolved vocabularies; collapsing each pair into one fails
+ * (I19), and the defaults hold only because `Table`'s `NoInfer` closes the
+ * handler parameters — as would overloads, at the cost of per-row diagnostics
+ * (I14). `K` comes from the mapped type in `transitions`, with no second one
+ * beside it (I20). `A` is the same idea again for `actions`: inferred from that
+ * block's own keys, contributing nothing back to `I`, `S` or `K` (§9 Actions).
  */
 export let machine: <
 	Init extends string,
@@ -544,7 +552,7 @@ export let machine: <
 		// telling the two kinds apart, so one loop matches both and listeners
 		// besides (I16). A bare key naming nothing declared is a silent no-op, as
 		// everywhere else; an arrow goes through `parse`, which throws on a
-		// malformed one. An array is unwrapped to one row per element (§9).
+		// malformed one. An array is unwrapped to one row per element (§9 Actions).
 		let actionRows: Registration[] = []
 		for (let key in actions) {
 			for (let item of [actions[key]!].flat())
@@ -562,13 +570,13 @@ export let machine: <
 				let listeners: Registration[] = []
 
 				// A fresh row per host: a teardown is written on the row itself, and
-				// `actionRows` belongs to the definition (§9). `listeners` needs no copy;
-				// `observe` builds its rows host-local already.
+				// `actionRows` belongs to the definition (§9 Actions). `listeners` needs no
+				// copy; `observe` builds its rows host-local already.
 				let acts = actionRows.map((row) => [...row] as Registration)
 
 				// `false` survives, a predicate decides from the two states either side,
-				// anything else restarts, an omitted `restart` included (§9). `.call` is
-				// the cheapest thing only a function has.
+				// anything else restarts, an omitted `restart` included (§9 Actions).
+				// `.call` is the cheapest thing only a function has.
 				let restarts = (
 					r: Registration[5],
 					from: StateVocab,
@@ -583,9 +591,9 @@ export let machine: <
 				// The wildcard rules once, for actions, residencies and listeners alike:
 				// `*` and `''` stand for any, and a missing `from` — the initial arrival,
 				// which no transition caused — matches no edge row, so that case needs no
-				// branch of its own (§9). Only a residency has a teardown key, stores what
-				// it returns, and consults `restart` on a self-transition, which is what
-				// makes `restart: false` neither tear down nor set up again.
+				// branch of its own (§9 Actions). Only a residency has a teardown key,
+				// stores what it returns, and consults `restart` on a self-transition,
+				// which is what makes `restart: false` neither tear down nor set up again.
 				let fire = (list: Registration[], e: Arrival): void => {
 					for (let row of list) {
 						let [f, l, t, run, key, restart] = row
@@ -604,8 +612,8 @@ export let machine: <
 				}
 
 				// The arrival no transition caused: `from` and `input` are simply absent
-				// (§9). Shared by `start` and a bare-key `observe`, which goes through
-				// `fire` for the `to === state` test its third clause already does.
+				// (§9 Actions). Shared by `start` and a bare-key `observe`, which goes
+				// through `fire` for the `to === state` test its third clause already does.
 				let enter = (list: Registration[]): void =>
 					fire(list, { to: current, send } as Arrival)
 
@@ -623,7 +631,7 @@ export let machine: <
 							// The residency being left tears down before the commit, actions
 							// before listeners, each in reverse declaration order, so several on
 							// one trigger unwind like a stack. A throw here abandons the hop with
-							// nothing committed and the later teardowns unrun (§9).
+							// nothing committed and the later teardowns unrun (§9 Actions).
 							for (let list of [acts, listeners]) {
 								for (let row of list.toReversed()) {
 									if (
@@ -643,7 +651,7 @@ export let machine: <
 							// without closing over the host it was registered on.
 							let record: Transition = { input, from, to: current, send }
 
-							// Actions in declaration order, then listeners (§9).
+							// Actions in declaration order, then listeners (§9 Actions).
 							fire(acts, record)
 							fire(listeners, record)
 							// One input yields at most one transition.
@@ -685,9 +693,9 @@ export let machine: <
 					dispatch()
 				}
 
-				// Under the drain `send` takes, so a send from one of these hops runs
-				// after the chain settles (§11, "`start` settles under the drain").
-				// Entering `initial` is not a transition, so no `from` (§9).
+				// Under the drain `send` takes, so a send from one of these hops runs after
+				// the chain settles (§11 The host, "`start` settles under the drain").
+				// Entering `initial` is not a transition, so no `from` (§9 Actions).
 				dispatch(() => {
 					enter(acts)
 					settle()
@@ -703,15 +711,17 @@ export let machine: <
 						action: Listener | ActionItem,
 					): (() => void) => {
 						// `toRow` reads a bare `pattern` as residency on that state, the same
-						// as a bare key in `actions`, so the two share one parser (§11).
+						// as a bare key in `actions`, so the two share one parser (§11 The
+						// host).
 						let registration = toRow(pattern, action as UncheckedItem)
 						listeners = [...listeners, registration]
-						// Already resident when observed: no arrival will announce it, so it
-						// runs once here instead, registration order never deciding whether a
-						// residency fires (§11). The teardown key is the residency guard;
-						// `fire` tests `to` against the current state itself.
+						// Already resident when observed: no arrival will announce it, so it runs
+						// once here instead, registration order never deciding whether a
+						// residency fires (§11 The host). The teardown key is the residency
+						// guard; `fire` tests `to` against the current state itself.
 						if (registration[4]) enter([registration])
-						// Idempotent, and a residency in flight tears down on the way out (§11).
+						// Idempotent (§11 The host), and a residency in flight tears down on
+						// the way out.
 						return () => {
 							listeners = listeners.filter((other) => other != registration)
 							clear(registration)
@@ -727,7 +737,8 @@ export let machine: <
 /**
  * What `fire` hands whatever it matched. The transition record, except that
  * `from` is absent on the initial state's arrival, which no transition caused;
- * only an action can see that one, since a missing `from` matches no edge (§9).
+ * only an action can see that one, since a missing `from` matches no edge (§9
+ * Actions).
  */
 type Arrival = {
 	readonly input: InputVocab | undefined
@@ -741,8 +752,9 @@ type Arrival = {
  * parsed pattern and what to run. `key` is the state a residency is on, absent
  * on the other two, and the only thing telling them apart, which is what lets
  * `fire` serve all three (I16). `teardown` is a residency's own return, read
- * back on departure or on unsubscribing. Not `readonly`: it is written in place,
- * on the row's identity, which is why a host copies `actionRows` first (§9).
+ * back on departure or on unsubscribing. Not `readonly`: it is written in
+ * place, on the row's identity, which is why a host copies `actionRows` first
+ * (§9 Actions).
  */
 type Registration = [
 	from: string,
