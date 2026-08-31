@@ -177,6 +177,73 @@ describe('actions', () => {
 		expect(log).toHaveBeenNthCalledWith(3, 'setup:1')
 	})
 
+	test('the restart predicate runs exactly once per self-transition, not once for teardown and again for setup', () => {
+		const restart = vi.fn(() => true)
+		const doc = machine({
+			initial: 'idle',
+			inputs: type<{ type: 'ping' }>(),
+			states: type<{ name: 'idle' }>(),
+			transitions: { 'idle -ping> idle': () => {} },
+			actions: {
+				idle: { run: () => {}, restart }, // no teardown returned: still active for the next decision
+			},
+		}).start()
+
+		doc.send({ type: 'ping' })
+		expect(restart).toHaveBeenCalledTimes(1)
+		doc.send({ type: 'ping' })
+		doc.send({ type: 'ping' })
+		expect(restart).toHaveBeenCalledTimes(3)
+	})
+
+	test('two residents of one state each get their own restart decision, not a shared one', () => {
+		const restartA = vi.fn(() => true)
+		const restartB = vi.fn(() => false)
+		const doc = machine({
+			initial: 'idle',
+			inputs: type<{ type: 'ping' }>(),
+			states: type<{ name: 'idle' }>(),
+			transitions: { 'idle -ping> idle': () => {} },
+			actions: {
+				idle: [
+					{ run: () => {}, restart: restartA },
+					{ run: () => {}, restart: restartB },
+				],
+			},
+		}).start()
+
+		doc.send({ type: 'ping' })
+		expect(restartA).toHaveBeenCalledTimes(1)
+		expect(restartB).toHaveBeenCalledTimes(1)
+	})
+
+	test('a restart predicate that throws prevents the self-transition from committing, without undoing a teardown already run earlier in the same unwind', () => {
+		const log = vi.fn()
+		const doc = machine({
+			initial: 'idle',
+			inputs: type<{ type: 'ping' }>(),
+			states: type<{ name: 'idle' }>(),
+			transitions: { 'idle -ping> idle': () => {} },
+			actions: {
+				idle: [
+					{
+						run: () => {},
+						restart: () => {
+							throw new Error('boom')
+						},
+					},
+					{ run: () => () => log('teardown'), restart: true },
+				],
+			},
+		}).start()
+
+		// Teardown runs in reverse declaration order, so the second action's
+		// teardown completes before the first action's predicate throws.
+		expect(() => doc.send({ type: 'ping' })).toThrow('boom')
+		expect(log).toHaveBeenCalledExactlyOnceWith('teardown')
+		expect(doc.current).toEqual({ name: 'idle' })
+	})
+
 	test('a key containing -> is an edge: it fires once per matching transition', () => {
 		const action = vi.fn()
 		const doc = machine({

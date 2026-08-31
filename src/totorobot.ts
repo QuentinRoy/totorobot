@@ -574,16 +574,6 @@ export let machine: <
 				// copy; `observe` builds its rows host-local already.
 				let acts = actionRows.map((row) => [...row] as Registration)
 
-				// `false` survives, a predicate decides from the two states either side,
-				// anything else restarts, an omitted `restart` included (§9 Actions).
-				// `.call` is the cheapest thing only a function has.
-				let restarts = (
-					r: Registration[5],
-					from: StateVocab,
-					to: StateVocab,
-				): boolean =>
-					(r as Predicate)?.call ? (r as Predicate)(from, to) : r !== false
-
 				// A teardown runs at most once: `void` blanks the slot in the same
 				// assignment that calls it (I16).
 				let clear = (row: Registration) => (row[6] = void row[6]?.())
@@ -592,18 +582,17 @@ export let machine: <
 				// `*` and `''` stand for any, and a missing `from` — the initial arrival,
 				// which no transition caused — matches no edge row, so that case needs no
 				// branch of its own (§9 Actions). Only a residency has a teardown key,
-				// stores what it returns, and consults `restart` on a self-transition,
-				// which is what makes `restart: false` neither tear down nor set up again.
+				// stores what it returns, and gates setup on a self-transition by
+				// `row[7]`, the decision `step` already made below: one call to
+				// `restart` serves both halves of the same residency's hop (§9 Actions).
 				let fire = (list: Registration[], e: Arrival): void => {
 					for (let row of list) {
-						let [f, l, t, run, key, restart] = row
+						let [f, l, t, run, key] = row
 						if (
 							(f === '*' || f === e.from?.name) &&
 							(l === '' || l === e.input?.type) &&
 							(t === '*' || t === e.to.name) &&
-							(!key ||
-								e.to.name !== e.from?.name ||
-								restarts(restart, e.from!, e.to))
+							(!key || e.to.name !== e.from?.name || row[7])
 						) {
 							let teardown = run(e)
 							if (key) row[6] = teardown as Teardown | undefined
@@ -631,12 +620,20 @@ export let machine: <
 							// The residency being left tears down before the commit, actions
 							// before listeners, each in reverse declaration order, so several on
 							// one trigger unwind like a stack. A throw here abandons the hop with
-							// nothing committed and the later teardowns unrun (§9 Actions).
+							// nothing committed and the later teardowns unrun (§9 Actions). `false`
+							// survives, a predicate decides from the two states either side,
+							// anything else restarts, an omitted `restart` included; `.call` is the
+							// cheapest thing only a function has. `row[7]` banks that one decision
+							// for `fire` to reuse below, on that same row's setup, so a predicate
+							// the caller wrote once is asked once (§9 Actions).
 							for (let list of [acts, listeners]) {
 								for (let row of list.toReversed()) {
 									if (
 										row[4] === from.name &&
-										(to !== from.name || restarts(row[5], from, next))
+										(to !== from.name ||
+											(row[7] = (row[5] as Predicate)?.call
+												? (row[5] as Predicate)(from, next)
+												: row[5] !== false))
 									) {
 										clear(row)
 									}
@@ -755,9 +752,11 @@ type Arrival = {
  * parsed pattern and what to run. `key` is the state a residency is on, absent
  * on the other two, and the only thing telling them apart, which is what lets
  * `fire` serve all three (I16). `teardown` is a residency's own return, read
- * back on departure or on unsubscribing. Not `readonly`: it is written in
- * place, on the row's identity, which is why a host copies `actionRows` first
- * (§9 Actions).
+ * back on departure or on unsubscribing. `restarted` is `step`'s self-transition
+ * decision, banked for `fire` to reuse: the row's own scratch slot, since a
+ * shared cache would mix up two residents of one state (§9 Actions). Not
+ * `readonly`: both are written in place, on the row's identity, which is why a
+ * host copies `actionRows` first (§9 Actions).
  */
 type Registration = [
 	from: string,
@@ -767,6 +766,7 @@ type Registration = [
 	key?: string,
 	restart?: boolean | ((from: StateVocab, to: StateVocab) => boolean),
 	teardown?: Teardown | undefined,
+	restarted?: boolean,
 ]
 
 /** One action, unchecked: a run function alone or in a record (I23). */
