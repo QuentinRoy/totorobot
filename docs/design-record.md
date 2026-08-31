@@ -60,8 +60,9 @@ Twenty axes. All twenty were closed. **Two late revisions then reopened two of t
 were decided after the rest of this record, and merged into the sections they revise: the
 [composition boundary](#revision-the-composition-boundary) into §10, and the
 [shape of a named thing](#revision-the-shape-of-a-named-thing) into §5. States, inputs,
-`observe`, and the 3-field transition record are shipped; outputs and `emit` remain
-unbuilt.
+`observe`, `actions`, and the transition record are shipped; outputs and `emit`
+remain unbuilt. The record carries a fourth field, `send`, added after the sections
+below were written ([§11](#the-listener-gets-send-too)).
 
 | #   | Axis                       | Answer                                                                                                       | §      |
 | --- | -------------------------- | ------------------------------------------------------------------------------------------------------------ | ------ |
@@ -78,9 +79,9 @@ unbuilt.
 | 11  | The word for what you send | `inputs`, not `events` — the core is not a mailbox                                                           | 5      |
 | 12  | Typed send site            | **dropped** — broad `send` only; reversible later                                                            | 12     |
 | 13  | Composition                | **deferred from v1** — shape unsettled; a design to return to                                                | 10     |
-| 14  | Actions in v1              | **deferred** — v1 has no effect mechanism at all                                                             | 9      |
+| 14  | Actions in v1              | **deferred** — v1 shipped no effect mechanism; `actions` landed in 1.1                                       | 9      |
 | 15  | Immediate transitions      | `'from -> to'`, no input — **shipped**, chained, budget-guarded                                              | 6      |
-| 16  | Observation                | on the host, patterns, no residency key — **shipped as** `observe`                                           | 11, 10 |
+| 16  | Observation                | on the host, patterns — **shipped as** `observe`; the residency key followed in 1.1                          | 11, 10 |
 | 17  | Commit ordering            | a chain per input, FIFO; commit, notify in order, queue                                                      | 11     |
 | 18  | Definition and instance    | **split kept** — `publication.start(data)`                                                                   | 11     |
 | 19  | Disposal and errors        | no `stop()` — the host owns nothing; a throw propagates                                                      | 11     |
@@ -1467,13 +1468,23 @@ The design argument settles it, and settled it before any of this was measured.
 than the bare-call ergonomics a constructor buys at one of them. Options also
 uniquely admit `signal: AbortSignal`, which no wrapper can express.
 
+**A trigger takes one action or a list of them.** The value is a bare function, a
+record, or an array of either, which is what the losing records-as-a-list layout was
+credited with above: two activities in one state stay separable without being merged
+into one closure, and they can hold opposite policies. A list sets up in declaration
+order and tears down in reverse, so a resource acquired later comes down before the
+one it was built on.
+
 **The field is `restart`, and it takes `boolean | ((from, to) => boolean)`.** `false`
 survives re-entry; a predicate decides case by case from the resident data before and
 after. It is named for the decision rather than for the occasion, which is what makes
 the boolean readable: `restart: false` says what does not happen, where
 `reentry: false` would deny the re-entry itself. `boolean` rather than `false` alone,
 so that a computed flag typechecks and `{ ...base, restart: true }` can put the
-default back.
+default back. On an edge trigger it is a compile-time error, switched on whether the
+key contains `->`, because an edge has no residency to restart. A returned teardown is
+rejected there for the same reason, so moving a helper from a state key to an edge key
+cannot silently strand its cleanup.
 
 The predicate absorbs what looked like a separate question. A finer-grained policy
 (restart only when something relevant changed) was expected to need a second field,
@@ -1558,9 +1569,14 @@ and leaves two meanings standing.
 A consequence worth noticing: under one shared key language, `observe()` can also
 accept a bare state key and mean residency, with the same setup-and-teardown
 shape, making `observe` and `actions` structurally identical and differing only in who
-owns them. That is what v1 uses.
+owns them. That is what shipped: `actions` in 1.1, and `observe` taking the bare key
+and the same record right after.
 
 ### Not in v1
+
+> **Historical.** This section argues the deferral as it was decided, and v1 shipped
+> under it. `actions` landed in 1.1, once commit ordering was settled and the
+> residency mechanism had one owner, which is what reasons 1 and 2 below asked for.
 
 **Do actions earn their place without composition?** Honestly, in both directions.
 They do buy something on their own: residency-scoped lifetime with automatic
@@ -2049,7 +2065,7 @@ invoke(…))`.
 > **A late revision, merged here from what was §16 of the chronological record.**
 > Decided after v1's surface was written, and it changes that surface. Outputs and
 > `emit` (axis 7) remain unbuilt and deferred past v1; `observe` (axis 16) is shipped,
-> and the state/input shapes and 3-field transition record of
+> and the state/input shapes and transition record of
 > [§5's revision](#revision-the-shape-of-a-named-thing) are shipped. It settles where a
 > machine's boundary goes; it does not replace the three designs above, which are
 > preserved as they were argued.
@@ -2274,14 +2290,16 @@ the initial data is an argument or lives in the definition beside `initial:`.
 > by the name alone, nothing else: `observe` says what the method does, which is
 > report transitions, where `.on` read as registering a handler for a string-named event, the
 > mailbox connotation axis 11 already rejected for `inputs`. Same patterns, same two
-> arguments, same record, same unsubscribe function, bare state keys still illegal.
+> arguments, same record, same unsubscribe function.
 > `.on` is left unclaimed for the later output channel, so that channel is pure
 > addition. The transition record this method delivers is reshaped by
 > [§5's revision](#revision-the-shape-of-a-named-thing).
 
 `doc.observe(pattern, fn)` returns an unsubscribe function. Many listeners, edge patterns
 in the transition key language, and **no bare-state key**: a key with no arrow
-means residency, which the host does not implement.
+means residency, which the host does not implement. That last part held for v1 only.
+1.1 gave `observe` the bare key and the `{ run, restart }` record `actions` takes,
+after `actions` had made the host own a lifetime anyway.
 
 **On the host, never the definition.** The prototype attaches listeners to the
 definition, which contradicts the ownership split §9 relies on: two hosts running
@@ -2324,6 +2342,27 @@ Solid and Vue stores are the same shape. A construction-time observer supplies
 neither, so every framework consumer writes its own fan-out. P0.11 asks for
 browser-first and framework-neutral, which argues for the standard shape rather than
 against it.
+
+### The listener gets `send` too
+
+> **Shipped after the section above was written.** It adds a field to the record
+> that section specifies, and changes none of its arguments.
+
+The record a listener receives carries `send` beside `input`, `from` and `to`, so a
+reaction drives the machine without closing over the host it was registered on. It is
+the host's own binding rather than a wrapper, hoisted above the `dispatch` that runs
+the initial chain, so the drain rules hold by construction: the listener is not
+re-entered, and the input is read when the queue reaches it.
+
+**It is not narrowed to what the notified state handles**, and cannot be, for the
+reason [§12](#decided-a-broad-send-and-no-typed-send-site) gives: a send is queued, so
+the state at delivery need not be the state at the call. Narrowing would make the
+ordinary reaction a compile error.
+
+This does not reopen axis 7. `emit` was dropped because a listener recovers everything
+from `{ input, from, to }`, which is a claim about data; `send` is a capability, and
+adding one hands the listener no fact it could not already compute. Every action
+receives the same record, per [§9's revision](#revision-one-argument-for-every-action-not-a-bag-per-kind).
 
 ### Residency is derivable, not a host feature
 
@@ -2370,10 +2409,13 @@ interpretation of a block, needing only "actions before listeners", which the co
 order needs regardless. And residency **can arrive at any time without any version
 having been wrong**, because nothing about it is breaking to add.
 
-The answer above is scoped to v1. If `actions` lands, `observe` takes the bare key
-with it and the same `restart` field (§9), so a caller-side residency and a declared
-one do not end up with two policy vocabularies; the
-[roadmap](roadmap.md#residency--a-recipe-today-maybe-declared-later) carries it.
+The answer above is scoped to v1, and 1.1 revisited it in the order predicted here:
+`actions` landed first, then `observe` gained the bare key and the same `restart`
+field (§9), so a caller-side residency and a declared one share one policy vocabulary.
+Nothing that existed before either broke, which is what made the deferral cheap. The
+dividing line moved with it: once the host held a teardown for `actions`, holding one
+for a listener cost a slot on the same row, and the recipe above became one way to
+write what the host now does rather than the only one.
 
 ### Commit ordering
 
@@ -2923,7 +2965,8 @@ listeners on the definition (two hosts would share them) · handing a listener a
 snapshot or the live host instead of the transition record (loses the cause,
 reopens `emit`) · nesting a reaction's send instead of queueing it (robot3 does
 this; P0.7 forbids it) · a bare state key on `observe()` for residency (derivable in
-ten lines; the host owning a lifetime is what `actions` is for)
+ten lines; the host owning a lifetime is what `actions` is for — reversed in 1.1 once
+`actions` had built that lifetime, and the key came with it)
 
 **Composition.** Peers (wiring lives outside the definition) · inlining (cannot
 express a product) · a `children:` map · an outcome map in `actions` (a hidden
@@ -2961,9 +3004,9 @@ pinned) · a class or `new` for instantiation.
   candidate rows are tried is invisible. It stops being invisible the moment
   anything puts effects back in a handler — true of all three layouts.
 
-Opened by the two late revisions (outputs and actions remain open; how policy is
-spelled closed in [§9](#restart-and-how-the-policy-is-spelled), as options on both
-`observe` and `actions`):
+Opened by the two late revisions (outputs remain open; `actions` shipped in 1.1, and
+how policy is spelled closed in [§9](#restart-and-how-the-policy-is-spelled) as a
+`restart` field on a record, which `observe` now takes as well):
 
 - **Whether the record survives inference in the action bag.** In the prototype's
   shim, wrapping a context-sensitive action collapsed every argument bag to `never` —
@@ -2978,12 +3021,12 @@ spelled closed in [§9](#restart-and-how-the-policy-is-spelled), as options on b
   vocabulary, which is what `actions` would be, provided something hands it that
   vocabulary; it fails outright in `transitions`, which is an inference site. So the
   choice between them is the design argument in §9, not a type-layer verdict.
-  **Narrower now than it was**: the block exists, as bare functions, and its bag
-  does not collapse — [I27](implementation-record.md#i27) is a separate,
-  unrelated inference gap in the same code, closed the way `Table` already
-  closes it for a payload-free target. **Still open**: the record form,
-  `restart`, and the array arm are not built yet, and the wildcard-trigger cost
-  above was never about the value shape.
+  **Closed by construction**: the block exists, with the record form, `restart`
+  and the array arm all built, and its bag does not collapse —
+  [I27](implementation-record.md#i27) and
+  [I28](implementation-record.md#i28) are separate inference gaps in the same
+  code, closed the way `Table` and a handler's `state` already close them.
+  Wildcard triggers survived, so the cost this bullet recorded was never paid.
 
 ## Where the code is
 
