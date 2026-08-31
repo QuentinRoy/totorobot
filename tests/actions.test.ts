@@ -275,8 +275,9 @@ describe('actions', () => {
 			input: { type: 'toggle' },
 			from: { name: 'off' },
 			to: { name: 'on' },
-			send: doc.send,
+			send: expect.any(Function),
 		})
+		expect(action.mock.calls[0][0].send).toBe(doc.send)
 	})
 
 	test('residency on the initial state receives the one arrival with no transition behind it: from and input are undefined', () => {
@@ -297,8 +298,9 @@ describe('actions', () => {
 			input: undefined,
 			from: undefined,
 			to: { name: 'off' },
-			send: doc.send,
+			send: expect.any(Function),
 		})
+		expect(action.mock.calls[0][0].send).toBe(doc.send)
 	})
 
 	test("an edge action's argument is the transition it fired on, identical to what a matching listener receives", () => {
@@ -320,8 +322,9 @@ describe('actions', () => {
 			input: { type: 'toggle' },
 			from: { name: 'off' },
 			to: { name: 'on' },
-			send: doc.send,
+			send: expect.any(Function),
 		})
+		expect(action.mock.calls[0][0].send).toBe(doc.send)
 	})
 
 	test('an initial immediate chain still emits each real transition separately, with a defined source, after the initial residency has run', () => {

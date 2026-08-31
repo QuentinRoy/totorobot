@@ -129,6 +129,9 @@ describe('observing', () => {
 			to: { name: 'draft' },
 			send: expect.any(Function),
 		})
+		expect(observer.mock.calls[0][0].send).toBe(host.send)
+		expect(observer.mock.calls[1][0].send).toBe(host.send)
+		expect(observer.mock.calls[2][0].send).toBe(host.send)
 	})
 
 	test('unlabelled patterns match an immediate hop at both ends; a labelled pattern never matches it', () => {
@@ -259,6 +262,7 @@ describe('observing', () => {
 			to: { name: 'off' },
 			send: expect.any(Function),
 		})
+		expect(observer.mock.calls[0][0].send).toBe(host.send)
 	})
 
 	test('restart does not gate registration setup: a false-returning predicate still runs setup and is never called for a synthetic arrival', () => {
