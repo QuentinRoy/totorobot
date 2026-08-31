@@ -3,18 +3,18 @@
  * acceptance case. `idle`, `startup`, `expert` and `novice` over `down`,
  * `move`, `dwellElapsed`, `up` and `cancel`.
  *
- * The case is specified in terms of effects — "reports start", "schedules
- * dwell", "cancels token", "opens a menu" — but v1 owns no effects; `actions`
- * is deferred (docs/roadmap.md). Every effect below is therefore re-expressed
- * as a caller-side `.observe()` listener, which is v1's documented answer:
- * "the caller writes a function". This shape is a deferral decided in the
- * design, not a limitation discovered here.
+ * The dwell is internal — nothing outside the machine needs to know it is
+ * pending — so it is a `startup` residency: scheduled on entry, cancelled by
+ * its teardown. Everything else the case asks for (interaction feedback, menu
+ * display, selection and cancellation reporting) is external, and stays a
+ * caller-side `.observe()` listener, same as the residency draws the
+ * internal/external line in the doc.
  *
  * Distance calculation, stroke append and the menu itself are ordinary
  * domain helpers, per the spec, rather than library features.
  */
 
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import { machine, type } from 'totorobot'
 
@@ -29,28 +29,17 @@ type Stroke = readonly Point[]
 type MarkingMenuInputs =
 	| { type: 'down'; point: Point }
 	| { type: 'move'; point: Point }
-	| { type: 'dwellElapsed'; token: number }
+	| { type: 'dwellElapsed' }
 	| { type: 'up'; point: Point }
 	| { type: 'cancel'; point: Point }
 type MarkingMenuStates =
-	| { name: 'idle'; nextToken: number }
-	| {
-			name: 'startup'
-			origin: Point
-			stroke: Stroke
-			timerToken: number
-			nextToken: number
-	  }
-	| { name: 'expert'; stroke: Stroke; nextToken: number }
-	| {
-			name: 'novice'
-			menu: Menu
-			center: Point
-			stroke: Stroke
-			nextToken: number
-	  }
+	| { name: 'idle' }
+	| { name: 'startup'; origin: Point; stroke: Stroke }
+	| { name: 'expert'; stroke: Stroke }
+	| { name: 'novice'; menu: Menu; center: Point; stroke: Stroke }
 
 const DWELL_DISTANCE_THRESHOLD = 10
+const DWELL_DELAY = 500
 
 function distance(a: Point, b: Point): number {
 	return Math.hypot(a.x - b.x, a.y - b.y)
@@ -65,25 +54,14 @@ const rootMenu: Menu = {
 	children: [{ label: 'copy' }, { label: 'paste' }],
 }
 
-/**
- * Two residents of `startup`, opposite `restart` policies — the scenario the
- * design record's composition chapter records as wanting exactly this (§10):
- * a dwell that must survive a wiggle beside a trail that redraws on every
- * track. Cleared per test, like `activityLog` elsewhere.
- */
-const dwellLog: string[] = []
-const trailLog: string[] = []
-
 const markingMenu = machine({
 	initial: 'idle',
 	inputs: type<MarkingMenuInputs>(),
 	states: type<MarkingMenuStates>(),
 	transitions: {
-		'idle -down> startup': ({ state, input }) => ({
+		'idle -down> startup': ({ input }) => ({
 			origin: input.point,
 			stroke: [input.point],
-			timerToken: state.nextToken,
-			nextToken: state.nextToken + 1,
 		}),
 		'startup -move> startup': ({ state, input, skip }) =>
 			distance(state.origin, input.point) < DWELL_DISTANCE_THRESHOLD
@@ -92,19 +70,12 @@ const markingMenu = machine({
 		'startup -move> expert': ({ state, input, skip }) =>
 			distance(state.origin, input.point) < DWELL_DISTANCE_THRESHOLD
 				? skip()
-				: {
-						stroke: appendStroke(state.stroke, input.point),
-						nextToken: state.nextToken,
-					},
-		'startup -dwellElapsed> novice': ({ state, input, skip }) =>
-			input.token === state.timerToken
-				? {
-						menu: rootMenu,
-						center: state.origin,
-						stroke: state.stroke,
-						nextToken: state.nextToken,
-					}
-				: skip(),
+				: { stroke: appendStroke(state.stroke, input.point) },
+		'startup -dwellElapsed> novice': ({ state }) => ({
+			menu: rootMenu,
+			center: state.origin,
+			stroke: state.stroke,
+		}),
 		'expert -move> expert': ({ state, input }) => ({
 			...state,
 			stroke: appendStroke(state.stroke, input.point),
@@ -113,26 +84,30 @@ const markingMenu = machine({
 			...state,
 			stroke: appendStroke(state.stroke, input.point),
 		}),
-		'startup -up> idle': ({ state }) => ({ nextToken: state.nextToken }),
-		'expert -up> idle': ({ state }) => ({ nextToken: state.nextToken }),
-		'novice -up> idle': ({ state }) => ({ nextToken: state.nextToken }),
-		'startup -cancel> idle': ({ state }) => ({ nextToken: state.nextToken }),
-		'expert -cancel> idle': ({ state }) => ({ nextToken: state.nextToken }),
-		'novice -cancel> idle': ({ state }) => ({ nextToken: state.nextToken }),
+		'startup -up> idle': () => ({}),
+		'expert -up> idle': () => ({}),
+		'novice -up> idle': () => ({}),
+		'startup -cancel> idle': () => ({}),
+		'expert -cancel> idle': () => ({}),
+		'novice -cancel> idle': () => ({}),
 	},
 	actions: {
-		startup: [
-			{
-				run: () => {
-					dwellLog.push('schedule')
-					return () => dwellLog.push('cancel')
-				},
-				restart: false,
+		// The dwell is internal: nothing outside the machine needs to know it
+		// is pending. Owning the timer deletes the token — cancelling it on
+		// exit is what makes a stale `dwellElapsed` unable to arrive at all,
+		// not a guard against one that does.
+		startup: {
+			run: ({ send }) => {
+				let timer = setTimeout(
+					() => send({ type: 'dwellElapsed' }),
+					DWELL_DELAY,
+				)
+				return () => clearTimeout(timer)
 			},
-			() => {
-				trailLog.push('track')
-			},
-		],
+			// A wiggle within the threshold is a self-transition; `restart: false`
+			// keeps the dwell's deadline from being pushed away by it.
+			restart: false,
+		},
 	},
 })
 
@@ -141,95 +116,101 @@ const p1Near: Point = { x: 1, y: 1 }
 const p2Far: Point = { x: 100, y: 100 }
 
 describe('acceptance: Reduced Marking Menu', () => {
-	test('trace 1: down enters startup, reports start, and schedules the dwell token', () => {
-		const doc = markingMenu.start({ nextToken: 0 })
-		const log: string[] = []
-		doc.observe('idle -down> startup', () => log.push('report:start'))
-		doc.observe('idle -down> startup', (e) =>
-			log.push(`schedule:${e.to.timerToken}`),
-		)
+	test('trace 1: down enters startup, reports start, and schedules the dwell', () => {
+		vi.useFakeTimers()
+		try {
+			const doc = markingMenu.start()
+			const log: string[] = []
+			doc.observe('idle -down> startup', () => log.push('report:start'))
 
-		doc.send({ type: 'down', point: p0 })
+			doc.send({ type: 'down', point: p0 })
 
-		expect(doc.current).toEqual({
-			name: 'startup',
-			origin: p0,
-			stroke: [p0],
-			timerToken: 0,
-			nextToken: 1,
-		})
-		expect(log).toEqual(['report:start', 'schedule:0'])
+			expect(doc.current).toEqual({
+				name: 'startup',
+				origin: p0,
+				stroke: [p0],
+			})
+			expect(log).toEqual(['report:start'])
+			expect(vi.getTimerCount()).toBe(1)
+		} finally {
+			vi.useRealTimers()
+		}
 	})
 
-	test('trace 2: a nearby move commits a same-state stroke update, then a matching dwellElapsed enters novice and reports open', () => {
-		const doc = markingMenu.start({ nextToken: 0 })
-		doc.send({ type: 'down', point: p0 }) // -> startup(timerToken: 0, nextToken: 1)
+	test('trace 2: a nearby move commits a same-state stroke update, then the dwell elapsing enters novice and reports open', () => {
+		vi.useFakeTimers()
+		try {
+			const doc = markingMenu.start()
+			doc.send({ type: 'down', point: p0 }) // -> startup(origin: p0, stroke: [p0])
 
-		doc.send({ type: 'move', point: p1Near })
-		expect(doc.current).toEqual({
-			name: 'startup',
-			origin: p0,
-			stroke: [p0, p1Near],
-			timerToken: 0,
-			nextToken: 1,
-		})
+			doc.send({ type: 'move', point: p1Near })
+			expect(doc.current).toEqual({
+				name: 'startup',
+				origin: p0,
+				stroke: [p0, p1Near],
+			})
 
-		const log: string[] = []
-		doc.observe('startup -dwellElapsed> novice', () => log.push('open'))
+			const log: string[] = []
+			doc.observe('startup -dwellElapsed> novice', () => log.push('open'))
 
-		doc.send({ type: 'dwellElapsed', token: 0 }) // matches the scheduled token
+			vi.advanceTimersByTime(DWELL_DELAY)
 
-		expect(doc.current).toEqual({
-			name: 'novice',
-			menu: rootMenu,
-			center: p0,
-			stroke: [p0, p1Near],
-			nextToken: 1,
-		})
-		expect(log).toEqual(['open'])
+			expect(doc.current).toEqual({
+				name: 'novice',
+				menu: rootMenu,
+				center: p0,
+				stroke: [p0, p1Near],
+			})
+			expect(log).toEqual(['open'])
+		} finally {
+			vi.useRealTimers()
+		}
 	})
 
-	test('trace 3 (fresh execution): a far move enters expert and cancels the dwell token; a later stale dwellElapsed does not enter novice', () => {
-		const doc = markingMenu.start({ nextToken: 0 })
-		doc.send({ type: 'down', point: p0 }) // -> startup(timerToken: 0, nextToken: 1)
+	test("trace 3 (fresh execution): a far move enters expert, and the startup residency's teardown cancels the dwell so no stale dwellElapsed can arrive", () => {
+		vi.useFakeTimers()
+		try {
+			const doc = markingMenu.start()
+			doc.send({ type: 'down', point: p0 }) // -> startup(origin: p0, stroke: [p0])
 
-		const log: string[] = []
-		doc.observe('startup -move> expert', (e) =>
-			log.push(`cancel:${e.from.timerToken}`),
-		)
+			doc.send({ type: 'move', point: p2Far })
+			expect(doc.current).toEqual({
+				name: 'expert',
+				stroke: [p0, p2Far],
+			})
 
-		doc.send({ type: 'move', point: p2Far })
-		expect(doc.current).toEqual({
-			name: 'expert',
-			stroke: [p0, p2Far],
-			nextToken: 1,
-		})
-		expect(log).toEqual(['cancel:0'])
+			expect(vi.getTimerCount()).toBe(0) // the residency's teardown ran on the way out
 
-		const before = doc.current
-		doc.send({ type: 'dwellElapsed', token: 0 }) // stale: token 0 was already cancelled
-		expect(doc.current).toEqual(before)
-		expect(doc.current.name).not.toBe('novice')
+			const before = doc.current
+			vi.advanceTimersByTime(DWELL_DELAY) // nothing to fire: no stale dwell can arrive
+			expect(doc.current).toEqual(before)
+			expect(doc.current.name).not.toBe('novice')
+		} finally {
+			vi.useRealTimers()
+		}
 	})
 
-	test('trace 4: cancel from startup returns to idle, cancels the dwell token, and reports cancellation', () => {
-		const doc = markingMenu.start({ nextToken: 0 })
-		doc.send({ type: 'down', point: p0 }) // -> startup(timerToken: 0, nextToken: 1)
+	test('trace 4: cancel from startup returns to idle, cancels the dwell, and reports cancellation', () => {
+		vi.useFakeTimers()
+		try {
+			const doc = markingMenu.start()
+			doc.send({ type: 'down', point: p0 }) // -> startup(origin: p0, stroke: [p0])
 
-		const log: string[] = []
-		doc.observe('startup -cancel> idle', (e) => {
-			log.push(`cancel:${e.from.timerToken}`)
-			log.push('report:cancel')
-		})
+			const log: string[] = []
+			doc.observe('startup -cancel> idle', () => log.push('report:cancel'))
 
-		doc.send({ type: 'cancel', point: p0 })
+			doc.send({ type: 'cancel', point: p0 })
 
-		expect(doc.current).toEqual({ name: 'idle', nextToken: 1 })
-		expect(log).toEqual(['cancel:0', 'report:cancel'])
+			expect(doc.current).toEqual({ name: 'idle' })
+			expect(log).toEqual(['report:cancel'])
+			expect(vi.getTimerCount()).toBe(0)
+		} finally {
+			vi.useRealTimers()
+		}
 	})
 
 	test('trace 5: an input unavailable in the current state produces no transition, not a same-state update', () => {
-		const doc = markingMenu.start({ nextToken: 0 })
+		const doc = markingMenu.start()
 		const before = doc.current
 		const log: string[] = []
 		doc.observe('* -> *', () => log.push('fired'))
@@ -238,23 +219,5 @@ describe('acceptance: Reduced Marking Menu', () => {
 
 		expect(doc.current).toEqual(before)
 		expect(log).toEqual([])
-	})
-
-	test('two residents of startup hold opposite restart policies: the dwell survives a wiggle, the trail restarts on every track', () => {
-		dwellLog.length = 0
-		trailLog.length = 0
-
-		const doc = markingMenu.start({ nextToken: 0 })
-		doc.send({ type: 'down', point: p0 }) // enters startup: both residents set up
-		expect(dwellLog).toEqual(['schedule'])
-		expect(trailLog).toEqual(['track'])
-
-		doc.send({ type: 'move', point: p1Near }) // wiggle: within the dwell threshold
-		doc.send({ type: 'move', point: p1Near }) // wiggle again
-		expect(dwellLog).toEqual(['schedule']) // restart: false: no reschedule
-		expect(trailLog).toEqual(['track', 'track', 'track']) // default: redraws each time
-
-		doc.send({ type: 'up', point: p1Near }) // leaves startup: dwell is cancelled
-		expect(dwellLog).toEqual(['schedule', 'cancel'])
 	})
 })
