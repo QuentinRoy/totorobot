@@ -2,18 +2,16 @@
 'totorobot': minor
 ---
 
-Widen `actions` values: a bare function, a record with `run`, or an array of
-either. The record adds `restart` — `boolean | ((from, to) => boolean)`,
-consulted only on a self-transition, restarting by default — and the array
-lets one trigger carry several actions, set up in order and torn down in
-reverse:
+`actions` values widen to a record with `run` and `restart`, or an array of
+either, alongside the existing bare function:
 
 ```ts
 actions: {
 	connected: { run: ({ to }) => subscribe(to.url), restart: false },
-	loading: [({ send }) => poll(send), () => track('loading')],
 }
 ```
 
-`restart` on an edge trigger is a compile error. Existing bare-function
-actions need no change.
+`restart` (`boolean | ((from, to) => boolean)`) is consulted only on a
+self-transition and restarts by default; it's a compile error on an edge.
+Arrays set up in order and tear down in reverse. Existing actions need no
+change.
