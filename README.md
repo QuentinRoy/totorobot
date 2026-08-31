@@ -20,7 +20,7 @@ be optional everywhere and checked everywhere.
 
 A definition is inert data. `.start()` hands you a running host to send inputs to
 and observe, and that host is the only thing that ever changes. The whole library
-is 1.6 kB minified, 820 bytes over the wire, with no dependencies.
+is 1.8 kB minified, 865 bytes over the wire, with no dependencies.
 
 The design keeps asking one question: how much state-machine correctness can
 TypeScript enforce while the creation API stays small enough to hold in your
@@ -690,14 +690,13 @@ an odd name by hand is deliberate in a way a doubled space never is.
 
 ## Beyond v1
 
-`observe` accepting the same record `actions` does, a declared `emit` channel,
-and horizontal composition are sketched in [the roadmap](docs/roadmap.md), and
-none of it is promised.
+A declared `emit` channel and horizontal composition are sketched in
+[the roadmap](docs/roadmap.md), and neither is promised.
 
 ## Documentation
 
 - [Roadmap](docs/roadmap.md) — what might come after v1: a declared output
-  channel, residency on `observe`, and composition.
+  channel and composition.
 - [Design record](docs/design-record.md) — the decision ledger: what was
   considered and rejected, and on what evidence.
 - [Research notes](docs/research/) — ten prior-art notes on automata theory,

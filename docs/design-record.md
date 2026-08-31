@@ -81,7 +81,7 @@ below were written ([§11](#the-listener-gets-send-too)).
 | 13  | Composition                | **deferred from v1** — shape unsettled; a design to return to                                                | 10     |
 | 14  | Actions in v1              | **deferred** — v1 shipped no effect mechanism; `actions` landed in 1.1                                       | 9      |
 | 15  | Immediate transitions      | `'from -> to'`, no input — **shipped**, chained, budget-guarded                                              | 6      |
-| 16  | Observation                | on the host, patterns, no residency key — **shipped as** `observe`                                           | 11, 10 |
+| 16  | Observation                | on the host, patterns — **shipped as** `observe`; the residency key followed in 1.1                          | 11, 10 |
 | 17  | Commit ordering            | a chain per input, FIFO; commit, notify in order, queue                                                      | 11     |
 | 18  | Definition and instance    | **split kept** — `publication.start(data)`                                                                   | 11     |
 | 19  | Disposal and errors        | no `stop()` — the host owns nothing; a throw propagates                                                      | 11     |
@@ -1569,9 +1569,8 @@ and leaves two meanings standing.
 A consequence worth noticing: under one shared key language, `observe()` can also
 accept a bare state key and mean residency, with the same setup-and-teardown
 shape, making `observe` and `actions` structurally identical and differing only in who
-owns them. `actions` shipped without it: `observe` still rejects a bare key, and the
-[roadmap](roadmap.md#residency-on-observe--the-same-record-actions-takes) carries the
-consequence rather than the record claiming it.
+owns them. That is what shipped: `actions` in 1.1, and `observe` taking the bare key
+and the same record right after.
 
 ### Not in v1
 
@@ -2408,11 +2407,10 @@ interpretation of a block, needing only "actions before listeners", which the co
 order needs regardless. And residency **can arrive at any time without any version
 having been wrong**, because nothing about it is breaking to add.
 
-The answer above is scoped to v1, and 1.1 did not change it: `actions` landed and
-`observe` still rejects a bare key. Giving it one, with the same `restart` field (§9),
-is what would keep a caller-side residency and a declared one on one policy
-vocabulary, and the
-[roadmap](roadmap.md#residency-on-observe--the-same-record-actions-takes) carries it.
+The answer above is scoped to v1, and 1.1 revisited it in the order predicted here:
+`actions` landed first, then `observe` gained the bare key and the same `restart`
+field (§9), so a caller-side residency and a declared one share one policy vocabulary.
+Nothing that existed before either broke, which is what made the deferral cheap.
 
 ### Commit ordering
 
@@ -3002,7 +3000,7 @@ pinned) · a class or `new` for instantiation.
 
 Opened by the two late revisions (outputs remain open; `actions` shipped in 1.1, and
 how policy is spelled closed in [§9](#restart-and-how-the-policy-is-spelled) as a
-`restart` field on a record, which `observe` does not yet take):
+`restart` field on a record, which `observe` now takes as well):
 
 - **Whether the record survives inference in the action bag.** In the prototype's
   shim, wrapping a context-sensitive action collapsed every argument bag to `never` —
