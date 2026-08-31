@@ -35,13 +35,14 @@ let skip = (): Skip => SKIP
  * leaves an unlabelled arrow's label empty: hence `''` as the label wildcard.
  * Shared by `machine()` and `observe()`, so the two cannot drift.
  */
-let parse = (key: string): [from: string, input: string, to: string] => {
-	let parts = key.split(/ -|> /)
-	let [from, input, to] = parts
-	if (parts.length !== 3 || !from || !to) {
-		throw new SyntaxError(`not a transition: '${key}'`)
+let parse = (
+	key: string,
+	parts = key.split(/ -|> /),
+): [from: string, input: string, to: string] => {
+	if (parts.length !== 3 || !parts[0] || !parts[2]) {
+		throw SyntaxError(`not a transition: '${key}'`)
 	}
-	return [from, input as string, to]
+	return parts as [string, string, string]
 }
 
 // ---------------------------------------------------------------------------
@@ -420,13 +421,14 @@ interface UncheckedHost {
 }
 
 /**
- * Source to input to rows, in order. Null-prototype at both levels, so
+ * Every row of the table, in order, under the pair that reaches it: a labelled
+ * row under `from \0 input`, an immediate one under `from` alone. One flat map
+ * rather than a map of maps — smaller to build and to read (I16) — and the two
+ * key shapes are what keeps an immediate unreachable from `send`, which would
+ * otherwise find it by sending the empty input type. Null-prototype, so
  * `send({ type: 'toString' })` finds nothing to call (I16).
  */
-type InputRows = Record<string, Record<string, Row[] | undefined> | undefined>
-
-/** Kept apart from `InputRows`: an immediate is unreachable from `send`. */
-type ImmediateRows = Record<string, Row[] | undefined>
+type Index = Record<string, Row[] | undefined>
 
 /**
  * Carries a vocabulary at the type level and returns `undefined`, all a caller
@@ -440,43 +442,48 @@ export let type = <T>(): T | undefined => undefined
  * whichever host queued it.
  */
 let queue: (() => void)[] = []
-let draining = false
+let draining = 0
 
 /**
  * Run `work`, and everything it queues, as one dispatch: the window rule 4 is
  * stated in terms of. Named for that window rather than for the `draining` flag.
- * `send` queued its work already; `start` runs its chain inline, but inside the
- * window.
+ * `start` passes the chain it settles inline; `send` passes a `work` that only
+ * pushes. One shape serves both, either side of the flag: inside a window the
+ * outermost call drains what was pushed, outside one this call does.
  */
-let dispatch = (work?: () => void): void => {
-	// Already inside a dispatch: the outermost call owns the drain.
-	if (draining) return work?.()
-	draining = true
+let dispatch = (work: () => void): void => {
+	// Already inside a dispatch: the outermost call owns the drain. Raising the
+	// flag is the same expression that tests it — only the outermost call reads
+	// a zero — and the `finally` below puts it back down.
+	if (draining++) return work()
 	try {
-		work?.()
-		for (let run; (run = queue.shift());) run()
+		work()
+		// Live iteration, not a shift loop: the array iterator re-reads `length`
+		// every step, so work queued by work already running is picked up in the
+		// same pass, and the `finally` below is what empties the queue either way.
+		for (let run of queue) run()
 	} finally {
 		// In a `finally` so a throwing listener leaves every host usable; the queue is
 		// abandoned, not drained, and what committed stays committed.
-		draining = false
-		queue.length = 0
+		queue.length = draining = 0
 	}
 }
 
 /**
  * One row from a key and an item, bare or arrow alike: shared by the `actions`
  * block and a bare-key `observe`, so a caller-side residency and a declared one
- * parse identically (§11).
+ * parse identically (§11). A bare key is one with no separator anywhere in it,
+ * which is the same test as splitting it and counting one piece, spelled as the
+ * match it already is, and `item.run ?? item` reads both item shapes at once —
+ * a plain function has no `run`. An arrow row stops at its handler: `key` and
+ * `restart` mean nothing on one, and a row that simply ends is as good as a row
+ * padded with the blanks nothing reads (I16).
  */
-let toRow = (key: string, item: ActionItem): Registration => {
-	let bare = key.split(/ -|> /).length === 1
-	let head: [string, string, string] = bare ? ['*', '', key] : parse(key)
-	return [
-		...head,
-		typeof item === 'function' ? item : item.run,
-		bare ? key : '',
-		bare && typeof item !== 'function' ? item.restart : undefined,
-	] as Registration
+let toRow = (key: string, item: any): Registration => {
+	let run = item.run ?? item
+	return / -|> /.test(key)
+		? ([...parse(key), run] as Registration)
+		: ['*', '', key, run, key, item.restart]
 }
 
 /**
@@ -496,7 +503,7 @@ let toRow = (key: string, item: ActionItem): Registration => {
  * `A` is the same idea again for `actions`: inferred from that block's own
  * keys, contributing nothing back to `I`, `S` or `K` (§9).
  */
-export function machine<
+export let machine: <
 	Init extends string,
 	K extends string,
 	RawI extends InputVocab | undefined = undefined,
@@ -512,231 +519,229 @@ export function machine<
 	readonly states?: RawS | undefined
 	readonly transitions: Table<I, S, K>
 	readonly actions?: Actions<I, S, A> | undefined
-}): Machine<I, S, K, Init>
-// The implementation signature, never seen by a caller. `unknown` because a row's
-// value can be the poison string literal, which no concrete type implements (I23).
-export function machine(definition: unknown): unknown {
-	let { initial, transitions, actions } = definition as unknown as {
-		readonly initial: string
-		readonly transitions: Readonly<Record<string, UncheckedHandler>>
-		readonly actions?: Readonly<
-			Record<string, ActionItem | readonly ActionItem[]>
-		>
-	}
-	let index: InputRows = Object.create(null)
-	let immediates: ImmediateRows = Object.create(null)
-
-	for (let key in transitions) {
-		let [from, input, to] = parse(key)
-		let row: Row = [to, transitions[key]!]
-		// An empty label means an unlabelled arrow, `parse` having rejected the rest.
-		if (input === '') {
-			;(immediates[from] ??= []).push(row)
-		} else {
-			let bySource = (index[from] ??= Object.create(null))
-			;(bySource[input as string] ??= []).push(row)
+}) => Machine<I, S, K, Init> =
+	// The implementation, never seen by a caller through the annotation above.
+	// `unknown` because a row's value can be the poison string literal, which no
+	// concrete type implements (I23).
+	((definition: unknown): unknown => {
+		let { initial, transitions, actions } = definition as unknown as {
+			readonly initial: string
+			readonly transitions: Readonly<Record<string, UncheckedHandler>>
+			readonly actions?: Readonly<
+				Record<string, ActionItem | readonly ActionItem[]>
+			>
 		}
-	}
+		let index: Index = Object.create(null)
 
-	// A bare key has no arrow, so splitting on the separators leaves it in one
-	// piece. Residency on `N` *is* the pattern `* -> N`, so it is stored as one and
-	// only the trailing teardown key tells the two kinds apart — which is what lets
-	// one loop match both, and listeners besides (I16). A bare key is taken at face
-	// value: naming a state nothing declares is a silent no-op, as everywhere else.
-	// An arrow means `parse`, which throws on a malformed key like a row does.
-	// A value is unwrapped to one row per array element, run and restart alike,
-	// so the array arm costs nothing beyond this loop (§9).
-	let actionRows: Registration[] = []
-	for (let key in actions) {
-		for (let item of ([] as ActionItem[]).concat(actions[key]!)) {
-			actionRows.push(toRow(key, item))
+		// A labelled row is filed under its `from \0 input` pair, an immediate one
+		// under `from` alone: `send` only ever builds the first shape, so an
+		// immediate stays unreachable from it even for the empty input type, and
+		// one flat map does the work two nested ones used to (I16).
+		for (let key in transitions) {
+			let [from, input, to] = parse(key)
+			;(index[input ? from + '\0' + input : from] ??= []).push([
+				to,
+				transitions[key]!,
+			])
 		}
-	}
 
-	return {
-		start: (data?: object): UncheckedHost => {
-			// A closure variable behind a getter, not a property `send` mutates:
-			// measured smaller (I16). `current` is the whole tagged state.
-			let current: StateVocab = { ...data, name: initial }
+		// Residency on `N` *is* the pattern `* -> N`, so it is stored as one and only
+		// the trailing teardown key tells the two kinds apart — which is what lets one
+		// loop match both, and listeners besides (I16). A bare key is taken at face
+		// value: naming a state nothing declares is a silent no-op, as everywhere else.
+		// An arrow means `parse`, which throws on a malformed key like a row does.
+		// A value is unwrapped to one row per array element, run and restart alike,
+		// so the array arm costs nothing beyond this loop (§9).
+		let actionRows: Registration[] = []
+		for (let key in actions) {
+			for (let item of [actions[key]!].flat()) actionRows.push(toRow(key, item))
+		}
 
-			// Copy-on-write at registration, iteration at dispatch: allocation lands on
-			// the path that runs least, and it measures smaller (I16).
-			let listeners: Registration[] = []
+		return {
+			start: (data?: object): UncheckedHost => {
+				// A closure variable behind a getter, not a property `send` mutates:
+				// measured smaller (I16). `current` is the whole tagged state.
+				let current: StateVocab = { ...data, name: initial }
 
-			// A fresh row per host: a residency's teardown lives on its own row
-			// (below), and `actionRows` is the definition's, shared by every host of
-			// it (§9). `listeners` needs no such copy — every row on it is already
-			// host-local, built fresh by `observe` below.
-			let acts = actionRows.map((row) => row.slice() as Registration)
+				// Copy-on-write at registration, iteration at dispatch: allocation lands on
+				// the path that runs least, and it measures smaller (I16).
+				let listeners: Registration[] = []
 
-			// `false` survives; a predicate decides from the two full states either
-			// side of the self-transition; anything else, including an omitted
-			// `restart`, restarts (§9).
-			let restarts = (
-				r: Registration[5],
-				from: StateVocab,
-				to: StateVocab,
-			): boolean => (typeof r === 'function' ? r(from, to) : r !== false)
+				// A fresh row per host: a residency's teardown lives on its own row
+				// (below), and `actionRows` is the definition's, shared by every host of
+				// it (§9). `listeners` needs no such copy — every row on it is already
+				// host-local, built fresh by `observe` below.
+				let acts = actionRows.map((row) => [...row] as Registration)
 
-			// The wildcard rules, once, for actions, `observe`'s residencies and
-			// listeners alike: `*` and `''` stand for any. A residency row carries a
-			// teardown key and stores what it returns, on the row itself; an edge row
-			// and a listener carry `''` and do not. `from` is optional only for the
-			// initial arrival, which no transition caused, and which this same loop
-			// therefore fires without a case of its own (§9). A residency row on a
-			// self-transition also consults `restart` here, not only in the departing
-			// teardown below, so `restart: false` neither tears down nor sets up again.
-			let fire = (list: Registration[], e: Arrival): void => {
-				for (let row of list) {
-					let [f, l, t, run, key, restart] = row
-					if (
-						(f === '*' || f === e.from?.name) &&
-						(l === '' || l === e.input?.type) &&
-						(t === '*' || t === e.to.name) &&
-						(!key ||
-							e.to.name !== e.from?.name ||
-							restarts(restart, e.from, e.to))
-					) {
-						let teardown = run(e)
-						if (key) row[6] = teardown as Teardown | undefined
-					}
-				}
-			}
+				// `false` survives; a predicate decides from the two full states either
+				// side of the self-transition; anything else, including an omitted
+				// `restart`, restarts (§9). `.call` is the cheapest thing only a function
+				// has, and nothing here is validated anyway.
+				let restarts = (
+					r: Registration[5],
+					from: StateVocab,
+					to: StateVocab,
+				): boolean => ((r as any)?.call ? (r as any)(from, to) : r !== false)
 
-			// One row-scanning path for both kinds of transition: commit the first row
-			// that does not decline, and report whether the machine moved. Fusing this
-			// with the chain below, or splitting a `commit` helper out of it, both
-			// measured larger (I16).
-			let step = (rows: Row[] = [], input?: InputVocab): boolean => {
-				for (let [to, handler] of rows) {
-					let payload = handler({ state: current, input, skip })
-					// Declining is ordinary and silent: try the next row for this pair.
-					if (payload === SKIP) continue
+				// A teardown runs at most once: `void` discards whatever it returned and
+				// blanks the slot in the same assignment, so nothing it happened to hand
+				// back is ever left there to be called again (I16).
+				let clear = (row: Registration) => (row[6] = void row[6]?.())
 
-					let from = current
-					let next: StateVocab = { ...payload, name: to }
-					let self = to === from.name
-
-					// The residency being left tears down before the commit, actions
-					// before listeners and each in reverse declaration order, so several
-					// on one trigger unwind like a stack; a throw here abandons the hop —
-					// later teardowns unrun — with nothing of it committed yet (§9). A
-					// self-transition consults each row's own `restart` instead of always
-					// tearing down.
-					for (let list of [acts, listeners]) {
-						for (let i = list.length; i--;) {
-							let row = list[i]!
-							let [, , , , key, restart] = row
-							if (
-								key === from.name &&
-								(!self || restarts(restart, from, next))
-							) {
-								row[6]?.()
-								row[6] = undefined
-							}
+				// The wildcard rules, once, for actions, `observe`'s residencies and
+				// listeners alike: `*` and `''` stand for any. A residency row carries a
+				// teardown key and stores what it returns, on the row itself; an edge row
+				// and a listener have no such key and do not. `from` is absent only for the
+				// initial arrival, which no transition caused, and which this same loop
+				// therefore fires without a case of its own (§9). A residency row on a
+				// self-transition also consults `restart` here, not only in the departing
+				// teardown below, so `restart: false` neither tears down nor sets up again.
+				let fire = (list: Registration[], e: Arrival): void => {
+					for (let row of list) {
+						let [f, l, t, run, key, restart] = row
+						if (
+							(f === '*' || f === e.from?.name) &&
+							(l === '' || l === e.input?.type) &&
+							(t === '*' || t === e.to.name) &&
+							(!key ||
+								e.to.name !== e.from?.name ||
+								restarts(restart, e.from!, e.to))
+						) {
+							let teardown = run(e)
+							if (key) row[6] = teardown as Teardown | undefined
 						}
 					}
-
-					// Commit, then notify, so every listener sees a machine that agrees
-					// with the record. The tag is spread last, so a handler that spread its
-					// source into the return cannot leave the source's tag behind.
-					current = next
-					// The same `send` the host exposes: a reaction drives the machine
-					// without closing over the host it was registered on.
-					let record: Transition = { input, from, to: current, send }
-
-					// Actions in block declaration order, then listeners, both given this
-					// same record (§9).
-					fire(acts, record)
-					fire(listeners, record)
-					// One input yields at most one transition.
-					return true
 				}
-				return false
-			}
 
-			// A chain is one arrival's worth of work, however many hops; the budget is
-			// per call, so settling the initial state does not spend the first send's.
-			let settle = (): void => {
-				let hops = 0
-				while (step(immediates[current.name])) {
-					// Far above any real chain: `'a -> a'` is legal, and a handler rewriting
-					// its own data until it declines terminates.
-					if (hops++ >= 1e5) {
-						throw new RangeError(
-							`maximum transitions reached in '${current.name}'`,
-						)
+				// The arrival no transition caused: `from` and `input` are simply absent,
+				// which reads as `undefined` everywhere either is looked at, and which
+				// matches no edge row (§9). Shared by `start` and a bare-key `observe`,
+				// which is also why that one goes through `fire` rather than calling its
+				// own row: the `to === state` test it needs is already the third clause.
+				let enter = (list: Registration[]): void =>
+					fire(list, { to: current, send } as Arrival)
+
+				// One row-scanning path for both kinds of transition: commit the first row
+				// that does not decline, and report whether the machine moved. Fusing this
+				// with the chain below, or splitting a `commit` helper out of it, both
+				// measured larger (I16).
+				let step = (rows: Row[] = [], input?: InputVocab): boolean => {
+					for (let [to, handler] of rows) {
+						let payload = handler({ state: current, input, skip })
+						// Declining is ordinary and silent: try the next row for this pair.
+						if (payload !== SKIP) {
+							let from = current
+							let next: StateVocab = { ...payload, name: to }
+
+							// The residency being left tears down before the commit, actions
+							// before listeners and each in reverse declaration order, so several
+							// on one trigger unwind like a stack; a throw here abandons the hop —
+							// later teardowns unrun — with nothing of it committed yet (§9). A
+							// self-transition consults each row's own `restart` instead of always
+							// tearing down.
+							for (let list of [acts, listeners]) {
+								for (let row of list.toReversed()) {
+									if (
+										row[4] === from.name &&
+										(to !== from.name || restarts(row[5], from, next))
+									) {
+										clear(row)
+									}
+								}
+							}
+
+							// Commit, then notify, so every listener sees a machine that agrees
+							// with the record. The tag is spread last, so a handler that spread its
+							// source into the return cannot leave the source's tag behind.
+							current = next
+							// The same `send` the host exposes: a reaction drives the machine
+							// without closing over the host it was registered on.
+							let record: Transition = { input, from, to: current, send }
+
+							// Actions in block declaration order, then listeners, both given this
+							// same record (§9).
+							fire(acts, record)
+							fire(listeners, record)
+							// One input yields at most one transition.
+							return true
+						}
+					}
+					return false
+				}
+
+				// A chain is one arrival's worth of work, however many hops; the budget is
+				// per call, so settling the initial state does not spend the first send's.
+				let settle = (): void => {
+					let hops = 1e5
+					while (step(index[current.name])) {
+						// Counted down rather than up: the budget is the whole test. Far above
+						// any real chain — `'a -> a'` is legal, and a handler rewriting its own
+						// data until it declines terminates.
+						if (!hops--) {
+							throw RangeError(
+								`maximum transitions reached in '${current.name}'`,
+							)
+						}
 					}
 				}
-			}
-			// Declared before the first `step` runs, because every transition record
-			// carries it; the host below re-exports this one binding.
-			let send = (input: InputVocab): void => {
-				// Queued rather than run, whether the call came from this host's
-				// listener, another host's, or a hop `start` is settling.
-				queue.push(() => {
-					// Read at drain time, so a queued send may correctly find no row.
-					if (step(index[current.name]?.[input?.type], input)) settle()
-				})
-				dispatch()
-			}
+				// Declared before the first `step` runs, because every transition record
+				// carries it; the host below re-exports this one binding. The work is
+				// queued rather than run, whether the call came from this host's listener,
+				// another host's, or a hop `start` is settling. A block body, not an
+				// expression one: `send` returns nothing, while `dispatch` inside a window
+				// hands back whatever `work` returned.
+				let send = (input: InputVocab): void => {
+					dispatch(() =>
+						queue.push(() => {
+							// Read at drain time, so a queued send may correctly find no row.
+							if (step(index[current.name + '\0' + input?.type], input))
+								settle()
+						}),
+					)
+				}
 
-			// Under the drain `send` takes, so a send from one of these hops — the
-			// initial state's own residency included — runs after the chain settles
-			// (§11, "`start` settles under the drain"). Entering `initial` is not a
-			// transition, so the arrival carries no `from`, which is also what stops
-			// an edge row from matching it (§9).
-			dispatch(() => {
-				fire(acts, {
-					input: undefined,
-					from: undefined,
-					to: current,
+				// Under the drain `send` takes, so a send from one of these hops — the
+				// initial state's own residency included — runs after the chain settles
+				// (§11, "`start` settles under the drain"). Entering `initial` is not a
+				// transition, so the arrival carries no `from`, which is also what stops
+				// an edge row from matching it (§9).
+				dispatch(() => {
+					enter(acts)
+					settle()
+				})
+
+				return {
+					get current(): StateVocab {
+						return current
+					},
+
+					observe: (
+						pattern: string,
+						action: Listener | ActionItem,
+					): (() => void) => {
+						// `toRow` reads a bare `pattern` as residency on that state, the same
+						// as a bare key in `actions`, so the two share one parser (§11).
+						let registration = toRow(pattern, action)
+						listeners = [...listeners, registration]
+						// Already resident when observed: no arrival will announce it, so it
+						// runs once here instead — registration order cannot decide whether a
+						// residency fires (§11). Only a residency, hence the teardown-key
+						// guard; `fire` itself does the rest, `to` against the current state
+						// included, so this needs no comparison of its own.
+						if (registration[4]) enter([registration])
+						// Idempotent, and a residency in flight tears down on the way out,
+						// matching the disposer the caller-side recipe returns (§11).
+						return () => {
+							listeners = listeners.filter((other) => other != registration)
+							clear(registration)
+						}
+					},
+
 					send,
-				})
-				settle()
-			})
-
-			return {
-				get current(): StateVocab {
-					return current
-				},
-
-				observe: (
-					pattern: string,
-					action: Listener | ActionItem,
-				): (() => void) => {
-					// `toRow` reads a bare `pattern` as residency on that state, the same
-					// as a bare key in `actions`, so the two share one parser (§11). Cast
-					// because a listener is declared over `Transition`, which has a
-					// `from`, while a row's `run` accepts the wider `Arrival`. Sound: only
-					// `step` fires a non-residency row, and it always has a real transition.
-					let registration = toRow(pattern, action as ActionItem)
-					listeners = [...listeners, registration]
-					// Already resident when observed: no arrival will announce it, so it
-					// runs once here instead — registration order cannot decide whether a
-					// residency fires (§11).
-					if (registration[4] === current.name) {
-						registration[6] = registration[3]({
-							input: undefined,
-							from: undefined,
-							to: current,
-							send,
-						}) as Teardown | undefined
-					}
-					// Idempotent, and a residency in flight tears down on the way out,
-					// matching the disposer the caller-side recipe returns (§11).
-					return () => {
-						listeners = listeners.filter((other) => other !== registration)
-						registration[6]?.()
-						registration[6] = undefined
-					}
-				},
-
-				send,
-			}
-		},
-	} as unknown
-}
+				}
+			},
+		} as unknown
+	}) as any
 
 /**
  * What `fire` hands whatever it matched. The transition record, except that
@@ -753,12 +758,13 @@ type Arrival = {
 /**
  * One row shape for a listener, an edge action and a residency action alike:
  * a parsed pattern and what to run. `key` is the state a residency is on, and
- * `''` for the two kinds that are not one — the only thing telling them apart,
+ * absent on the two kinds that are not one — the only thing telling them apart,
  * which is what lets `fire` serve all three (I16). `teardown` is a residency's
- * own return, read back on departure or on unsubscribing; every row gets a
- * slot, but only a residency ever writes to it (I23). Not `readonly`: `teardown`
- * is written in place, on the row's own identity, which is why a host copies
- * `actionRows` first rather than writing to the definition's shared rows (§9).
+ * own return, read back on departure or on unsubscribing; only a residency ever
+ * has that slot, and only it ever writes to one (I23). Not `readonly`:
+ * `teardown` is written in place, on the row's own identity, which is why a host
+ * copies `actionRows` first rather than writing to the definition's shared rows
+ * (§9).
  */
 type Registration = [
 	from: string,
