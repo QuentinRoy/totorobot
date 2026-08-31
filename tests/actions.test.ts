@@ -532,10 +532,8 @@ describe('actions', () => {
 
 	test('an item that is callable *and* carries `run` runs its `run`, deliberately: the record shape wins over the callable', () => {
 		const log: string[] = []
-		// Both item shapes in one value. Which of the two runs is a decision, not
-		// an accident of how the shapes are told apart: `run` is read first, so a
-		// value carrying one is a record that happens to be callable, never a
-		// callable that happens to carry a property.
+		// Both item shapes in one value. `run` wins by decision, not by accident:
+		// this is a record that happens to be callable, not the reverse.
 		const both = Object.assign(() => void log.push('callable'), {
 			run: () => void log.push('run'),
 		})

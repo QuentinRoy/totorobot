@@ -308,9 +308,8 @@ describe('observing', () => {
 	test('observe takes an item that is callable *and* carries `run` the same way an actions block does: `run` wins', () => {
 		const log: string[] = []
 		const host = toggle.start()
-		// The same precedence on the public path, since `observe` and the actions
-		// block share one parser: `run` is read first, so this is a record that
-		// happens to be callable, not the other way round.
+		// The same precedence on the public path: `observe` and the actions block
+		// share one parser.
 		const both = Object.assign(() => void log.push('callable'), {
 			run: () => void log.push('run'),
 		})

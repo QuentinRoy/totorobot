@@ -421,12 +421,10 @@ interface UncheckedHost {
 }
 
 /**
- * Every row of the table, in order, under the pair that reaches it, an immediate
- * row being one whose input half is empty. One flat map
- * rather than a map of maps — smaller to build and to read (I16) — and the empty
- * input half is what keeps an immediate unreachable from `send`, which would
- * otherwise find it by sending the empty input type. Null-prototype, so
- * `send({ type: 'toString' })` finds nothing to call (I16).
+ * Every row of the table, in order, under the pair that reaches it; an immediate
+ * row's input half is empty, and `send` never builds an empty one, so it stays
+ * unreachable from there. One flat map rather than a map of maps, and
+ * null-prototype, so `send({ type: 'toString' })` finds nothing to call (I16).
  */
 type Index = Record<string, Row[] | undefined>
 
@@ -448,20 +446,18 @@ let draining = 0
  * Run `work`, and everything it queues, as one dispatch: the window rule 4 is
  * stated in terms of. Named for that window rather than for the `draining` flag.
  * `start` passes the chain it settles inline; `send` has queued its work already
- * and passes nothing, which is why `work` is optional (I16). One shape serves
- * both, either side of the flag: inside a window the outermost call drains what
- * was pushed, outside one this call does.
+ * and passes nothing, hence the optional parameter (I16). Inside a window the
+ * outermost call drains what was pushed; outside one, this call does.
  */
 let dispatch = (work?: () => void): void => {
 	// Already inside a dispatch: the outermost call owns the drain. Raising the
-	// flag is the same expression that tests it — only the outermost call reads
-	// a zero — and the `finally` below puts it back down.
+	// flag is the same expression that tests it; only the outermost reads a zero.
 	if (draining++) return work?.()
 	try {
 		work?.()
-		// Live iteration, not a shift loop: the array iterator re-reads `length`
-		// every step, so work queued by work already running is picked up in the
-		// same pass, and the `finally` below is what empties the queue either way.
+		// Live iteration, not a shift loop: the iterator re-reads `length`, so work
+		// queued by running work is picked up in the same pass. The `finally`
+		// empties the queue either way.
 		for (let run of queue) run()
 	} finally {
 		// In a `finally` so a throwing listener leaves every host usable; the queue is
@@ -473,13 +469,10 @@ let dispatch = (work?: () => void): void => {
 /**
  * One row from a key and an item, bare or arrow alike: shared by the `actions`
  * block and a bare-key `observe`, so a caller-side residency and a declared one
- * parse identically (§11). A bare key is one with no separator anywhere in it,
- * which is the same test as splitting it and counting one piece, spelled as the
- * match it already is, and `item.run ?? item` reads both item shapes at once —
- * a plain function has no `run`, and a value carrying one is a record that
- * happens to be callable rather than the reverse. An arrow row stops at its handler: `key` and
- * `restart` mean nothing on one, and a row that simply ends is as good as a row
- * padded with the blanks nothing reads (I16).
+ * parse identically (§11). `item.run ?? item` reads both item shapes at once: a
+ * plain function has no `run`, and a value carrying one is a record that happens
+ * to be callable, not the reverse. An arrow row stops at its handler, `key` and
+ * `restart` meaning nothing on one (I16).
  */
 let toRow = (key: string, item: UncheckedItem): Registration => {
 	let run = item.run ?? item
@@ -535,17 +528,10 @@ export let machine: <
 		}
 		let index: Index = Object.create(null)
 
-		// Both kinds of row share one flat keyspace, which is what lets one map do
-		// the work two nested ones used to (I16). The key is the `from`/`input` pair
-		// with the length of `from` in front, not the two halves joined by some
-		// separator: names are arbitrary strings, so whatever character the
-		// separator were, a name may contain it — `'a\0b' -c>` and `a -b\0c>` join
-		// alike, and so do a bare `'a\0b'` and `a -b>`. A length decides the split
-		// before either half is read, and nothing in either half can disturb it.
-		// Written out at each of the three sites rather than shared as a helper: it
-		// measures 4 B smaller that way, being a shape brotli already knows (I16).
-		// An immediate is filed under the empty label, and `send` never builds one,
-		// so it stays unreachable from there even for the empty input type.
+		// One flat keyspace for both kinds of row, keyed by the `from`/`input` pair
+		// with the length of `from` in front. Names are arbitrary strings, so no
+		// character is free to be a separator; a length is (I16). Spelled out at all
+		// three sites rather than shared, which measures smaller (I16).
 		for (let key in transitions) {
 			let [from, input, to] = parse(key)
 			;(index[from.length + '\0' + from + input] ??= []).push([
@@ -698,9 +684,8 @@ export let machine: <
 				// Declared before the first `step` runs, because every transition record
 				// carries it; the host below re-exports this one binding. The work is
 				// queued rather than run, whether the call came from this host's listener,
-				// another host's, or a hop `start` is settling — and pushing it before
-				// `dispatch` rather than from inside a `work` closure is what keeps
-				// `dispatch`'s parameter optional, which measures smaller (I16).
+				// another host's, or a hop `start` is settling. Pushed before `dispatch`
+				// rather than inside a `work` closure, which measures smaller (I16).
 				let send = (input: InputVocab): void => {
 					queue.push(() => {
 						// Read at drain time, so a queued send may correctly find no row.
@@ -796,11 +781,7 @@ type ActionItem =
 	| Registration[3]
 	| { readonly run: Registration[3]; readonly restart?: Registration[5] }
 
-/**
- * The two item shapes as one, which is what `item.run ?? item` reads (I23): a
- * union would make `run` unreadable on the function arm, and this is exactly the
- * value that arm is checked to be before it reaches the runtime.
- */
+/** The two item shapes as one: a union hides `run` on the function arm (I23). */
 type UncheckedItem = Registration[3] & {
 	readonly run?: Registration[3]
 	readonly restart?: Registration[5]
