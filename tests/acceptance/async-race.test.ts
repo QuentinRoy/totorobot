@@ -16,7 +16,7 @@
  * required race exercises.
  */
 
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import { machine, type } from 'totorobot'
 
@@ -141,6 +141,7 @@ describe('acceptance: asynchronous request race', () => {
 	})
 
 	test('the required race: a stale success for a cancelled request is free, and the live request still succeeds', async () => {
+		using abort = vi.spyOn(AbortController.prototype, 'abort')
 		requests.clear()
 		const doc = asyncRequest.start({ nextRequestId: 0 })
 
@@ -155,6 +156,7 @@ describe('acceptance: asynchronous request race', () => {
 
 		doc.send({ type: 'cancel' }) // 2. cancel request 0: teardown aborts it
 		expect(doc.current).toEqual({ name: 'idle', nextRequestId: 1 })
+		expect(abort).toHaveBeenCalledOnce()
 
 		doc.send({ type: 'start' }) // 3. start request 1
 		expect(doc.current).toEqual({

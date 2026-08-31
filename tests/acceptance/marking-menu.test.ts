@@ -17,6 +17,7 @@
 import { describe, expect, test, vi } from 'vitest'
 
 import { machine, type } from 'totorobot'
+import { fakeTimers } from '../helpers.ts'
 
 type Item = { readonly label: string }
 type Menu = {
@@ -117,107 +118,91 @@ const p2Far: Point = { x: 100, y: 100 }
 
 describe('acceptance: Reduced Marking Menu', () => {
 	test('trace 1: down enters startup, reports start, and schedules the dwell', () => {
-		vi.useFakeTimers()
-		try {
-			const doc = markingMenu.start()
-			const log: string[] = []
-			doc.observe('idle -down> startup', () => log.push('report:start'))
+		using _timers = fakeTimers()
+		const doc = markingMenu.start()
+		const reportedStart = vi.fn()
+		doc.observe('idle -down> startup', reportedStart)
 
-			doc.send({ type: 'down', point: p0 })
+		doc.send({ type: 'down', point: p0 })
 
-			expect(doc.current).toEqual({
-				name: 'startup',
-				origin: p0,
-				stroke: [p0],
-			})
-			expect(log).toEqual(['report:start'])
-			expect(vi.getTimerCount()).toBe(1)
-		} finally {
-			vi.useRealTimers()
-		}
+		expect(doc.current).toEqual({
+			name: 'startup',
+			origin: p0,
+			stroke: [p0],
+		})
+		expect(reportedStart).toHaveBeenCalledOnce()
+		expect(vi.getTimerCount()).toBe(1)
 	})
 
 	test('trace 2: a nearby move commits a same-state stroke update, then the dwell elapsing enters novice and reports open', () => {
-		vi.useFakeTimers()
-		try {
-			const doc = markingMenu.start()
-			doc.send({ type: 'down', point: p0 }) // -> startup(origin: p0, stroke: [p0])
+		using _timers = fakeTimers()
+		const doc = markingMenu.start()
+		doc.send({ type: 'down', point: p0 }) // -> startup(origin: p0, stroke: [p0])
 
-			doc.send({ type: 'move', point: p1Near })
-			expect(doc.current).toEqual({
-				name: 'startup',
-				origin: p0,
-				stroke: [p0, p1Near],
-			})
+		doc.send({ type: 'move', point: p1Near })
+		expect(doc.current).toEqual({
+			name: 'startup',
+			origin: p0,
+			stroke: [p0, p1Near],
+		})
 
-			const log: string[] = []
-			doc.observe('startup -dwellElapsed> novice', () => log.push('open'))
+		const opened = vi.fn()
+		doc.observe('startup -dwellElapsed> novice', opened)
 
-			vi.advanceTimersByTime(DWELL_DELAY)
+		vi.advanceTimersByTime(DWELL_DELAY)
 
-			expect(doc.current).toEqual({
-				name: 'novice',
-				menu: rootMenu,
-				center: p0,
-				stroke: [p0, p1Near],
-			})
-			expect(log).toEqual(['open'])
-		} finally {
-			vi.useRealTimers()
-		}
+		expect(doc.current).toEqual({
+			name: 'novice',
+			menu: rootMenu,
+			center: p0,
+			stroke: [p0, p1Near],
+		})
+		expect(opened).toHaveBeenCalledOnce()
 	})
 
 	test("trace 3 (fresh execution): a far move enters expert, and the startup residency's teardown cancels the dwell so no stale dwellElapsed can arrive", () => {
-		vi.useFakeTimers()
-		try {
-			const doc = markingMenu.start()
-			doc.send({ type: 'down', point: p0 }) // -> startup(origin: p0, stroke: [p0])
+		using _timers = fakeTimers()
+		const doc = markingMenu.start()
+		doc.send({ type: 'down', point: p0 }) // -> startup(origin: p0, stroke: [p0])
 
-			doc.send({ type: 'move', point: p2Far })
-			expect(doc.current).toEqual({
-				name: 'expert',
-				stroke: [p0, p2Far],
-			})
+		doc.send({ type: 'move', point: p2Far })
+		expect(doc.current).toEqual({
+			name: 'expert',
+			stroke: [p0, p2Far],
+		})
 
-			expect(vi.getTimerCount()).toBe(0) // the residency's teardown ran on the way out
+		expect(vi.getTimerCount()).toBe(0) // the residency's teardown ran on the way out
 
-			const before = doc.current
-			vi.advanceTimersByTime(DWELL_DELAY) // nothing to fire: no stale dwell can arrive
-			expect(doc.current).toEqual(before)
-			expect(doc.current.name).not.toBe('novice')
-		} finally {
-			vi.useRealTimers()
-		}
+		const before = doc.current
+		vi.advanceTimersByTime(DWELL_DELAY) // nothing to fire: no stale dwell can arrive
+		expect(doc.current).toEqual(before)
+		expect(doc.current.name).not.toBe('novice')
 	})
 
 	test('trace 4: cancel from startup returns to idle, cancels the dwell, and reports cancellation', () => {
-		vi.useFakeTimers()
-		try {
-			const doc = markingMenu.start()
-			doc.send({ type: 'down', point: p0 }) // -> startup(origin: p0, stroke: [p0])
+		using _timers = fakeTimers()
+		const doc = markingMenu.start()
+		doc.send({ type: 'down', point: p0 }) // -> startup(origin: p0, stroke: [p0])
 
-			const log: string[] = []
-			doc.observe('startup -cancel> idle', () => log.push('report:cancel'))
+		const reportedCancellation = vi.fn()
+		doc.observe('startup -cancel> idle', reportedCancellation)
 
-			doc.send({ type: 'cancel', point: p0 })
+		doc.send({ type: 'cancel', point: p0 })
 
-			expect(doc.current).toEqual({ name: 'idle' })
-			expect(log).toEqual(['report:cancel'])
-			expect(vi.getTimerCount()).toBe(0)
-		} finally {
-			vi.useRealTimers()
-		}
+		expect(doc.current).toEqual({ name: 'idle' })
+		expect(reportedCancellation).toHaveBeenCalledOnce()
+		expect(vi.getTimerCount()).toBe(0)
 	})
 
 	test('trace 5: an input unavailable in the current state produces no transition, not a same-state update', () => {
 		const doc = markingMenu.start()
 		const before = doc.current
-		const log: string[] = []
-		doc.observe('* -> *', () => log.push('fired'))
+		const observer = vi.fn()
+		doc.observe('* -> *', observer)
 
 		doc.send({ type: 'move', point: p1Near }) // idle has no row for move
 
 		expect(doc.current).toEqual(before)
-		expect(log).toEqual([])
+		expect(observer).not.toHaveBeenCalled()
 	})
 })

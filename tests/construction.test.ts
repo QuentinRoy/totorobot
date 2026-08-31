@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import { machine, type } from 'totorobot'
 import { toggle } from './fixtures.ts'
@@ -158,12 +158,12 @@ describe('construction', () => {
 		const hostA = toggle.start()
 		const hostB = toggle.start()
 
-		const log: string[] = []
-		hostA.observe('* -> *', () => log.push('a'))
+		const observer = vi.fn()
+		hostA.observe('* -> *', observer)
 
 		hostB.send({ type: 'toggle' })
 
-		expect(log).toEqual([])
+		expect(observer).not.toHaveBeenCalled()
 	})
 
 	test('nothing ever mutates the definition', () => {

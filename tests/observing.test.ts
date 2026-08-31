@@ -7,40 +7,41 @@ import { residency } from './helpers.ts'
 describe('observing', () => {
 	test('on returns an unsubscribe function, and calling it more than once is harmless', () => {
 		const doc = toggle.start()
-		const log: string[] = []
+		const observer = vi.fn()
 
-		const off = doc.observe('* -> *', () => log.push('fired'))
+		const off = doc.observe('* -> *', observer)
 		off()
 
 		expect(() => off()).not.toThrow()
 
 		doc.send({ type: 'toggle' })
-		expect(log).toEqual([])
+		expect(observer).not.toHaveBeenCalled()
 	})
 
 	test('listeners fire after the commit, in registration order', () => {
 		const doc = toggle.start()
-		const log: string[] = []
+		const first = vi.fn()
+		const second = vi.fn()
 
-		doc.observe('* -> *', () => log.push('first'))
-		doc.observe('* -> *', () => log.push('second'))
+		doc.observe('* -> *', first)
+		doc.observe('* -> *', second)
 
 		doc.send({ type: 'toggle' })
-		expect(log).toEqual(['first', 'second'])
+		expect(first).toHaveBeenCalledOnce()
+		expect(second).toHaveBeenCalledOnce()
+		expect(first).toHaveBeenCalledBefore(second)
 	})
 
 	test("inside a listener, the record's target end deep-equals current", () => {
 		const doc = toggle.start()
-		let seenTo: unknown
-		let seenCurrent: unknown
+		const observer = vi.fn()
 
 		doc.observe('* -> *', (e) => {
-			seenTo = e.to
-			seenCurrent = doc.current
+			observer(e.to, doc.current)
 		})
 
 		doc.send({ type: 'toggle' })
-		expect(seenTo).toEqual(seenCurrent)
+		expect(observer).toHaveBeenCalledExactlyOnceWith(doc.current, doc.current)
 	})
 
 	test('* matches any state, an unlabelled arrow matches any input, and a labelled one matches only that input', () => {
@@ -101,34 +102,33 @@ describe('observing', () => {
 
 	test("an immediate transition's record carries input: undefined, distinguishable from a payload-free input", () => {
 		const host = gate.start()
-		const records: unknown[] = []
-		host.observe('* -> *', (e) => records.push(e))
+		const observer = vi.fn()
+		host.observe('* -> *', observer)
 
 		// draft -submit> checking (input-driven), then checking -> allowed (immediate)
 		host.send({ type: 'submit', quota: 1 })
 		// allowed -reset> draft — a payload-free input, not an immediate
 		host.send({ type: 'reset' })
 
-		expect(records).toEqual([
-			{
-				input: { type: 'submit', quota: 1 },
-				from: { name: 'draft' },
-				to: { name: 'checking', quota: 1 },
-				send: expect.any(Function),
-			},
-			{
-				input: undefined,
-				from: { name: 'checking', quota: 1 },
-				to: { name: 'allowed', quota: 1 },
-				send: expect.any(Function),
-			},
-			{
-				input: { type: 'reset' },
-				from: { name: 'allowed', quota: 1 },
-				to: { name: 'draft' },
-				send: expect.any(Function),
-			},
-		])
+		expect(observer).toHaveBeenCalledTimes(3)
+		expect(observer).toHaveBeenNthCalledWith(1, {
+			input: { type: 'submit', quota: 1 },
+			from: { name: 'draft' },
+			to: { name: 'checking', quota: 1 },
+			send: expect.any(Function),
+		})
+		expect(observer).toHaveBeenNthCalledWith(2, {
+			input: undefined,
+			from: { name: 'checking', quota: 1 },
+			to: { name: 'allowed', quota: 1 },
+			send: expect.any(Function),
+		})
+		expect(observer).toHaveBeenNthCalledWith(3, {
+			input: { type: 'reset' },
+			from: { name: 'allowed', quota: 1 },
+			to: { name: 'draft' },
+			send: expect.any(Function),
+		})
 	})
 
 	test('unlabelled patterns match an immediate hop at both ends; a labelled pattern never matches it', () => {
@@ -212,15 +212,15 @@ describe('observing', () => {
 
 	test('a residency attached while the host already occupies its state runs immediately: registration order does not decide it', () => {
 		const host = toggle.start()
-		const log: string[] = []
+		const entryPattern = vi.fn()
+		const setup = vi.fn()
 
 		// The equivalent entry pattern never fires: the arrival already happened.
-		host.observe('* -> off', () => log.push('never'))
-		host.observe('off', () => {
-			log.push('setup')
-		})
+		host.observe('* -> off', entryPattern)
+		host.observe('off', setup)
 
-		expect(log).toEqual(['setup'])
+		expect(entryPattern).not.toHaveBeenCalled()
+		expect(setup).toHaveBeenCalledOnce()
 	})
 
 	test('unsubscribing a residency tears down the one currently in flight, and more than once stays harmless', () => {
@@ -313,19 +313,18 @@ describe('observing', () => {
 			transitions: { 'idle -ping> idle': () => {} },
 		})
 		const host = pinger.start()
-		const log: string[] = []
+		const teardown = vi.fn()
+		const setup = vi.fn(() => teardown)
 
 		host.observe('idle', {
-			run: () => {
-				log.push('setup')
-				return () => log.push('teardown')
-			},
+			run: setup,
 			restart: false,
 		})
 
 		host.send({ type: 'ping' })
 		host.send({ type: 'ping' })
-		expect(log).toEqual(['setup'])
+		expect(setup).toHaveBeenCalledOnce()
+		expect(teardown).not.toHaveBeenCalled()
 	})
 
 	test('observe(state, { run, restart }) decides a self-transition case by case, from the resident data either side', () => {
@@ -354,18 +353,20 @@ describe('observing', () => {
 	})
 
 	test('observe takes an item that is callable *and* carries `run` the same way an actions block does: `run` wins', () => {
-		const log: string[] = []
+		const callable = vi.fn()
+		const run = vi.fn()
 		const host = toggle.start()
 		// The same precedence on the public path: `observe` and the actions block
 		// share one parser.
-		const both = Object.assign(() => void log.push('callable'), {
-			run: () => void log.push('run'),
+		const both = Object.assign(callable, {
+			run,
 		})
 
 		host.observe('on', both)
 		host.send({ type: 'toggle' })
 
-		expect(log).toEqual(['run'])
+		expect(callable).not.toHaveBeenCalled()
+		expect(run).toHaveBeenCalledOnce()
 	})
 
 	test('a declared residency and an observe-attached one on the same state: actions before listeners, entry and exit alike', () => {
@@ -413,24 +414,27 @@ describe('observing', () => {
 		})
 
 		const doc = pinger.start()
-		const log: string[] = []
-		doc.observe('idle -> *', () => log.push('exit'))
-		doc.observe('* -> idle', () => log.push('entry'))
+		const exit = vi.fn()
+		const entry = vi.fn()
+		doc.observe('idle -> *', exit)
+		doc.observe('* -> idle', entry)
 
 		doc.send({ type: 'ping' })
-		expect(log).toEqual(['exit', 'entry'])
+		expect(exit).toHaveBeenCalledOnce()
+		expect(entry).toHaveBeenCalledOnce()
+		expect(exit).toHaveBeenCalledBefore(entry)
 	})
 
 	test("a record's send is the host's own: a reaction drives the machine without closing over it", () => {
 		const host = toggle.start()
-		let seen: unknown
+		const observer = vi.fn()
 
 		host.observe('* -> on', (e) => {
-			seen = e.send
+			observer(e.send)
 		})
 
 		host.send({ type: 'toggle' })
-		expect(seen).toBe(host.send)
+		expect(observer).toHaveBeenCalledExactlyOnceWith(host.send)
 	})
 
 	test('a send from a listener is queued: the listener is not re-entered, and the machine settles afterwards', () => {
@@ -472,15 +476,15 @@ describe('observing', () => {
 		})
 
 		const host = fork.start()
-		const log: string[] = []
-		host.observe('* -> *', (e) => log.push(e.to.name))
+		const observer = vi.fn()
+		host.observe('* -> *', (e) => observer(e.to.name))
 
 		// `z` is a row on `a`, the state the listener is told about — but the
 		// machine is in `b` by the time the queue reads it, and `b` has no rows.
 		host.observe('a -x> b', (e) => e.send({ type: 'z' }))
 		host.send({ type: 'x' })
 
-		expect(log).toEqual(['b'])
+		expect(observer).toHaveBeenCalledExactlyOnceWith('b')
 		expect(host.current).toEqual({ name: 'b' })
 	})
 

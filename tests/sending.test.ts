@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import { machine, type } from 'totorobot'
 import { chain, editor, gate, pending } from './fixtures.ts'
@@ -6,10 +6,10 @@ import { chain, editor, gate, pending } from './fixtures.ts'
 describe('sending', () => {
 	test('a handled input commits, and every listener whose pattern matches fires', () => {
 		const host = editor.start()
-		const broad: string[] = []
-		const narrow: string[] = []
-		host.observe('* -> *', () => broad.push('broad'))
-		host.observe('idle -open> draft', () => narrow.push('narrow'))
+		const broad = vi.fn()
+		const narrow = vi.fn()
+		host.observe('* -> *', broad)
+		host.observe('idle -open> draft', narrow)
 
 		host.send({ type: 'open', text: 'hello' })
 
@@ -18,21 +18,21 @@ describe('sending', () => {
 			text: 'hello',
 			revision: 0,
 		})
-		expect(broad).toEqual(['broad'])
-		expect(narrow).toEqual(['narrow'])
+		expect(broad).toHaveBeenCalledOnce()
+		expect(narrow).toHaveBeenCalledOnce()
 	})
 
 	test('an input no row matches changes nothing and fires no listener', () => {
 		const host = editor.start()
 		const before = host.current
-		const log: string[] = []
-		host.observe('* -> *', () => log.push('fired'))
+		const observer = vi.fn()
+		host.observe('* -> *', observer)
 
 		// 'idle' has no row for 'lock'.
 		host.send({ type: 'lock' })
 
 		expect(host.current).toEqual(before)
-		expect(log).toEqual([])
+		expect(observer).not.toHaveBeenCalled()
 	})
 
 	// Deliberately mirrors the no-match test above: the all-decline case must be
@@ -41,14 +41,14 @@ describe('sending', () => {
 		const host = editor.start()
 		host.send({ type: 'open', text: 'hello' })
 		const before = host.current
-		const log: string[] = []
-		host.observe('* -> *', () => log.push('fired'))
+		const observer = vi.fn()
+		host.observe('* -> *', observer)
 
 		// 'draft -poke> draft' is the only row for 'poke', and it always declines.
 		host.send({ type: 'poke' })
 
 		expect(host.current).toEqual(before)
-		expect(log).toEqual([])
+		expect(observer).not.toHaveBeenCalled()
 	})
 
 	test('with several rows for one source/input pair, the first that does not decline wins', () => {
@@ -91,14 +91,12 @@ describe('sending', () => {
 		const host = editor.start()
 		host.send({ type: 'open', text: 'hello' })
 
-		let event: unknown
-		host.observe('draft -revise> draft', (e) => {
-			event = e
-		})
+		const observer = vi.fn()
+		host.observe('draft -revise> draft', observer)
 
 		host.send({ type: 'revise', text: 'goodbye' })
 
-		expect(event).toEqual({
+		expect(observer).toHaveBeenCalledExactlyOnceWith({
 			input: { type: 'revise', text: 'goodbye' },
 			from: { name: 'draft', text: 'hello', revision: 0 },
 			to: { name: 'draft', text: 'goodbye', revision: 1 },
@@ -112,18 +110,19 @@ describe('sending', () => {
 	})
 
 	test('a handler receives the source state and the input; a payload-free input carries only its tag', () => {
-		const received: unknown[] = []
+		const act = vi.fn()
+		const ping = vi.fn()
 		const probe = machine({
 			initial: 'ready',
 			inputs: type<{ type: 'act'; n: number } | { type: 'ping' }>(),
 			states: type<{ name: 'ready'; count: number }>(),
 			transitions: {
 				'ready -act> ready': ({ state, input }) => {
-					received.push([state, input])
+					act(state, input)
 					return { count: state.count + input.n }
 				},
 				'ready -ping> ready': ({ state, input }) => {
-					received.push([state, input])
+					ping(state, input)
 					return { ...state }
 				},
 			},
@@ -133,13 +132,14 @@ describe('sending', () => {
 		host.send({ type: 'act', n: 2 })
 		host.send({ type: 'ping' })
 
-		expect(received).toEqual([
-			[
-				{ name: 'ready', count: 1 },
-				{ type: 'act', n: 2 },
-			],
-			[{ name: 'ready', count: 3 }, { type: 'ping' }],
-		])
+		expect(act).toHaveBeenCalledExactlyOnceWith(
+			{ name: 'ready', count: 1 },
+			{ type: 'act', n: 2 },
+		)
+		expect(ping).toHaveBeenCalledExactlyOnceWith(
+			{ name: 'ready', count: 3 },
+			{ type: 'ping' },
+		)
 	})
 
 	test('a handler whose target carries no payload returns nothing', () => {
@@ -215,7 +215,7 @@ describe('sending', () => {
 		})
 
 		test('an immediate row receives input as undefined, not the input that entered the state', () => {
-			const received: unknown[] = []
+			const immediate = vi.fn()
 			const relay = machine({
 				initial: 'draft',
 				inputs: type<{ type: 'submit' }>(),
@@ -224,16 +224,14 @@ describe('sending', () => {
 				>(),
 				transitions: {
 					'draft -submit> checking': () => {},
-					'checking -> settled': ({ input }) => {
-						received.push(input)
-					},
+					'checking -> settled': ({ input }) => immediate(input),
 				},
 			})
 
 			const host = relay.start()
 			host.send({ type: 'submit' })
 
-			expect(received).toEqual([undefined])
+			expect(immediate).toHaveBeenCalledExactlyOnceWith(undefined)
 		})
 
 		test('a state whose immediate rows all skip stays put, its input rows still live', () => {
@@ -259,7 +257,8 @@ describe('sending', () => {
 	// Names are arbitrary strings, so a state name may spell out a `from`/`input`
 	// pair joined by whatever character the index joins one with.
 	test('a state name that spells out a from/input pair does not shadow the labelled row', () => {
-		const ran: string[] = []
+		const bad = vi.fn()
+		const good = vi.fn()
 		const collide = machine({
 			initial: 'a',
 			inputs: type<{ type: 'b' }>(),
@@ -267,19 +266,16 @@ describe('sending', () => {
 				{ name: 'a' } | { name: 'a\0b' } | { name: 'bad' } | { name: 'good' }
 			>(),
 			transitions: {
-				'a\0b -> bad': () => {
-					ran.push('bad')
-				},
-				'a -b> good': () => {
-					ran.push('good')
-				},
+				'a\0b -> bad': bad,
+				'a -b> good': good,
 			},
 		})
 
 		const host = collide.start()
 		host.send({ type: 'b' })
 
-		expect(ran).toEqual(['good'])
+		expect(bad).not.toHaveBeenCalled()
+		expect(good).toHaveBeenCalledOnce()
 		expect(host.current).toEqual({ name: 'good' })
 	})
 
@@ -306,16 +302,16 @@ describe('sending', () => {
 	test('send returns undefined when it was queued, too', () => {
 		const host = editor.start()
 
-		let queued: unknown = 'unset'
+		const queued = vi.fn()
 		const off = host.observe('idle -> draft', () => {
 			// A send from inside a listener is queued rather than run nested;
 			// it still returns nothing to its caller.
-			queued = host.send({ type: 'touch' })
+			queued(host.send({ type: 'touch' }))
 		})
 
 		host.send({ type: 'open', text: 'hello' })
 		off()
 
-		expect(queued).toBeUndefined()
+		expect(queued).toHaveBeenCalledExactlyOnceWith(undefined)
 	})
 })

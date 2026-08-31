@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import { machine, type } from 'totorobot'
 import { activity, activityLog, chain } from './fixtures.ts'
@@ -6,7 +6,7 @@ import { residency } from './helpers.ts'
 
 describe('actions', () => {
 	test('a bare-key trigger runs its action on entry to that state', () => {
-		const log: string[] = []
+		const setup = vi.fn()
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ type: 'toggle' }>(),
@@ -16,19 +16,18 @@ describe('actions', () => {
 				'on -toggle> off': () => {},
 			},
 			actions: {
-				on: () => {
-					log.push('setup')
-				},
+				on: setup,
 			},
 		}).start()
 
-		expect(log).toEqual([])
+		expect(setup).not.toHaveBeenCalled()
 		doc.send({ type: 'toggle' })
-		expect(log).toEqual(['setup'])
+		expect(setup).toHaveBeenCalledOnce()
 	})
 
 	test("a bare-key trigger's returned teardown runs on exit from that state", () => {
-		const log: string[] = []
+		const teardown = vi.fn()
+		const setup = vi.fn(() => teardown)
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ type: 'toggle' }>(),
@@ -38,21 +37,19 @@ describe('actions', () => {
 				'on -toggle> off': () => {},
 			},
 			actions: {
-				on: () => {
-					log.push('setup')
-					return () => log.push('teardown')
-				},
+				on: setup,
 			},
 		}).start()
 
 		doc.send({ type: 'toggle' }) // off -> on: setup
-		expect(log).toEqual(['setup'])
+		expect(setup).toHaveBeenCalledOnce()
+		expect(teardown).not.toHaveBeenCalled()
 		doc.send({ type: 'toggle' }) // on -> off: teardown
-		expect(log).toEqual(['setup', 'teardown'])
+		expect(teardown).toHaveBeenCalledOnce()
 	})
 
 	test('an action with no returned teardown is fine: exiting the state calls nothing', () => {
-		const log: string[] = []
+		const setup = vi.fn()
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ type: 'toggle' }>(),
@@ -62,15 +59,13 @@ describe('actions', () => {
 				'on -toggle> off': () => {},
 			},
 			actions: {
-				on: () => {
-					log.push('setup')
-				},
+				on: setup,
 			},
 		}).start()
 
 		doc.send({ type: 'toggle' })
 		expect(() => doc.send({ type: 'toggle' })).not.toThrow()
-		expect(log).toEqual(['setup'])
+		expect(setup).toHaveBeenCalledOnce()
 	})
 
 	test('a self-transition tears down and sets up again: restart falls out of matching both directions', () => {
@@ -175,7 +170,7 @@ describe('actions', () => {
 	})
 
 	test('a key containing -> is an edge: it fires once per matching transition', () => {
-		const log: string[] = []
+		const action = vi.fn()
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ type: 'toggle' }>(),
@@ -185,20 +180,18 @@ describe('actions', () => {
 				'on -toggle> off': () => {},
 			},
 			actions: {
-				'off -toggle> on': () => {
-					log.push('fired')
-				},
+				'off -toggle> on': action,
 			},
 		}).start()
 
 		doc.send({ type: 'toggle' }) // off -> on: matches
 		doc.send({ type: 'toggle' }) // on -> off: does not match
 		doc.send({ type: 'toggle' }) // off -> on: matches again
-		expect(log).toEqual(['fired', 'fired'])
+		expect(action).toHaveBeenCalledTimes(2)
 	})
 
 	test('an edge trigger is drawn from the same pattern language observe uses: a wildcard matches', () => {
-		const log: string[] = []
+		const action = vi.fn()
 		const doc = machine({
 			initial: 'a',
 			inputs: type<{ type: 'x' } | { type: 'y' }>(),
@@ -208,18 +201,17 @@ describe('actions', () => {
 				'a -y> c': () => {},
 			},
 			actions: {
-				'a -> *': () => {
-					log.push('left a')
-				},
+				'a -> *': action,
 			},
 		}).start()
 
 		doc.send({ type: 'x' })
-		expect(log).toEqual(['left a'])
+		expect(action).toHaveBeenCalledOnce()
 	})
 
 	test('an exact edge trigger and a wildcard edge trigger both matching one transition both fire, in declaration order', () => {
-		const log: string[] = []
+		const wildcard = vi.fn()
+		const exact = vi.fn()
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ type: 'toggle' }>(),
@@ -229,47 +221,43 @@ describe('actions', () => {
 				'on -toggle> off': () => {},
 			},
 			actions: {
-				'* -> on': () => {
-					log.push('wildcard')
-				},
-				'off -toggle> on': () => {
-					log.push('exact')
-				},
+				'* -> on': wildcard,
+				'off -toggle> on': exact,
 			},
 		}).start()
 
 		doc.send({ type: 'toggle' })
-		expect(log).toEqual(['wildcard', 'exact'])
+		expect(wildcard).toHaveBeenCalledOnce()
+		expect(exact).toHaveBeenCalledOnce()
+		expect(wildcard).toHaveBeenCalledBefore(exact)
 	})
 
 	test('startup invokes no edge action, whichever pattern shape declares it: wildcard source, wildcard target, fully wildcard, pinned', () => {
-		const log: string[] = []
+		const wildcardSource = vi.fn()
+		const wildcardTarget = vi.fn()
+		const fullyWildcard = vi.fn()
+		const pinned = vi.fn()
 		machine({
 			initial: 'a',
 			inputs: type<{ type: 'x' }>(),
 			states: type<{ name: 'a' } | { name: 'b' }>(),
 			transitions: { 'a -x> b': () => {} },
 			actions: {
-				'* -> a': () => {
-					log.push('wildcard source')
-				},
-				'a -> *': () => {
-					log.push('wildcard target')
-				},
-				'* -> *': () => {
-					log.push('fully wildcard')
-				},
-				'b -> a': () => {
-					log.push('pinned')
-				},
+				'* -> a': wildcardSource,
+				'a -> *': wildcardTarget,
+				'* -> *': fullyWildcard,
+				'b -> a': pinned,
 			},
 		}).start()
 
-		expect(log).toEqual([])
+		expect(wildcardSource).not.toHaveBeenCalled()
+		expect(wildcardTarget).not.toHaveBeenCalled()
+		expect(fullyWildcard).not.toHaveBeenCalled()
+		expect(pinned).not.toHaveBeenCalled()
 	})
 
 	test('a residency action receives the arrival that entered its state, the same record shape an edge action and a listener get, with `to` the resident state', () => {
-		let seenArrival: unknown
+		const action = vi.fn()
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ type: 'toggle' }>(),
@@ -278,24 +266,21 @@ describe('actions', () => {
 				'off -toggle> on': () => {},
 			},
 			actions: {
-				on: (arrival) => {
-					seenArrival = arrival
-				},
+				on: action,
 			},
 		}).start()
 
 		doc.send({ type: 'toggle' })
-		expect(seenArrival).toEqual({
+		expect(action).toHaveBeenCalledExactlyOnceWith({
 			input: { type: 'toggle' },
 			from: { name: 'off' },
 			to: { name: 'on' },
-			send: expect.any(Function),
+			send: doc.send,
 		})
-		expect((seenArrival as { send: unknown }).send).toBe(doc.send)
 	})
 
 	test('residency on the initial state receives the one arrival with no transition behind it: from and input are undefined', () => {
-		let seenArrival: unknown
+		const action = vi.fn()
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ type: 'toggle' }>(),
@@ -304,23 +289,20 @@ describe('actions', () => {
 				'off -toggle> on': () => {},
 			},
 			actions: {
-				off: (arrival) => {
-					seenArrival = arrival
-				},
+				off: action,
 			},
 		}).start()
 
-		expect(seenArrival).toEqual({
+		expect(action).toHaveBeenCalledExactlyOnceWith({
 			input: undefined,
 			from: undefined,
 			to: { name: 'off' },
-			send: expect.any(Function),
+			send: doc.send,
 		})
-		expect((seenArrival as { send: unknown }).send).toBe(doc.send)
 	})
 
 	test("an edge action's argument is the transition it fired on, identical to what a matching listener receives", () => {
-		let seenTransition: unknown
+		const action = vi.fn()
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ type: 'toggle' }>(),
@@ -329,20 +311,17 @@ describe('actions', () => {
 				'off -toggle> on': () => {},
 			},
 			actions: {
-				'off -toggle> on': (transition) => {
-					seenTransition = transition
-				},
+				'off -toggle> on': action,
 			},
 		}).start()
 
 		doc.send({ type: 'toggle' })
-		expect(seenTransition).toEqual({
+		expect(action).toHaveBeenCalledExactlyOnceWith({
 			input: { type: 'toggle' },
 			from: { name: 'off' },
 			to: { name: 'on' },
-			send: expect.any(Function),
+			send: doc.send,
 		})
-		expect((seenTransition as { send: unknown }).send).toBe(doc.send)
 	})
 
 	test('an initial immediate chain still emits each real transition separately, with a defined source, after the initial residency has run', () => {
@@ -393,7 +372,10 @@ describe('actions', () => {
 	})
 
 	test('per commit: teardown of the residency being left, then the commit, then the actions in declaration order, then listeners', () => {
-		const log: string[] = []
+		const teardown = vi.fn()
+		const edgeAction = vi.fn()
+		const setup = vi.fn()
+		const listener = vi.fn()
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ type: 'toggle' }>(),
@@ -403,24 +385,27 @@ describe('actions', () => {
 				'on -toggle> off': () => {},
 			},
 			actions: {
-				off: () => () => log.push('teardown off'),
-				'off -toggle> on': () => {
-					log.push('edge action')
-				},
-				on: () => {
-					log.push('setup on')
-				},
+				off: () => teardown,
+				'off -toggle> on': edgeAction,
+				on: setup,
 			},
 		}).start()
 
-		doc.observe('* -> *', () => log.push('listener'))
+		doc.observe('* -> *', listener)
 		doc.send({ type: 'toggle' })
 
-		expect(log).toEqual(['teardown off', 'edge action', 'setup on', 'listener'])
+		expect(teardown).toHaveBeenCalledOnce()
+		expect(edgeAction).toHaveBeenCalledOnce()
+		expect(setup).toHaveBeenCalledOnce()
+		expect(listener).toHaveBeenCalledOnce()
+		expect(teardown).toHaveBeenCalledBefore(edgeAction)
+		expect(edgeAction).toHaveBeenCalledBefore(setup)
+		expect(setup).toHaveBeenCalledBefore(listener)
 	})
 
 	test('an action that throws propagates, abandoning the rest of that commit: what committed stays committed, and the host is usable afterwards', () => {
-		const log: string[] = []
+		const setup = vi.fn()
+		const listener = vi.fn()
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ type: 'toggle' }>(),
@@ -433,17 +418,16 @@ describe('actions', () => {
 				'off -toggle> on': () => {
 					throw new Error('boom')
 				},
-				on: () => {
-					log.push('setup on') // declared after the throwing edge: must never run
-				},
+				on: setup, // declared after the throwing edge: must never run
 			},
 		}).start()
 
-		doc.observe('* -> *', () => log.push('listener')) // must never run either
+		doc.observe('* -> *', listener) // must never run either
 
 		expect(() => doc.send({ type: 'toggle' })).toThrow('boom')
 		expect(doc.current).toEqual({ name: 'on' }) // the transition itself stays committed
-		expect(log).toEqual([])
+		expect(setup).not.toHaveBeenCalled()
+		expect(listener).not.toHaveBeenCalled()
 
 		// the host is usable afterwards
 		doc.send({ type: 'toggle' })
