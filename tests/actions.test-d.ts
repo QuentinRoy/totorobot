@@ -285,3 +285,29 @@ test('an async body is rejected on both a residency and an edge trigger, since i
 		},
 	})
 })
+
+test('the block declares no vocabulary of its own: a definition with actions is the same type as one without', () => {
+	const rows = {
+		'off -toggle> on': () => ({ count: 0 }),
+		'on -toggle> off': () => {},
+	} as const
+
+	const bare = machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: rows,
+	})
+	const withActions = machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: rows,
+		actions: { on: () => {} },
+	})
+
+	expectTypeOf(withActions).toEqualTypeOf<typeof bare>()
+	expectTypeOf(withActions.start().send).toEqualTypeOf<
+		(input: Inputs) => void
+	>()
+})

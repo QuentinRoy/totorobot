@@ -540,4 +540,41 @@ describe('actions', () => {
 			}).start(),
 		).not.toThrow()
 	})
+
+	test('a send from an action is queued like any other: the chain settles before the input lands, and the action is not re-entered', () => {
+		const log: string[] = []
+		const doc = machine({
+			initial: 'a',
+			inputs: type<{ type: 'go' } | { type: 'next' }>(),
+			states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
+			transitions: {
+				'a -go> b': () => {},
+				'b -next> c': () => {},
+			},
+			actions: {
+				b: ({ send }) => {
+					log.push('b setup')
+					send({ type: 'next' })
+					log.push('b setup returns')
+					return () => log.push('b teardown')
+				},
+				c: () => {
+					log.push('c setup')
+				},
+			},
+		}).start()
+		doc.observe('* -> *', (e) => log.push(`listener: -> ${e.to.name}`))
+
+		doc.send({ type: 'go' })
+
+		expect(log).toEqual([
+			'b setup',
+			'b setup returns',
+			'listener: -> b',
+			'b teardown',
+			'c setup',
+			'listener: -> c',
+		])
+		expect(doc.current).toEqual({ name: 'c' })
+	})
 })
