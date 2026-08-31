@@ -1,20 +1,8 @@
-import { vi } from 'vitest'
-
 /**
  * Small utilities shared across the v1 test suite. Nothing here asserts
  * anything about the library; it exists so two test files don't carry the
  * same helper verbatim.
  */
-
-/**
- * Installs Vitest's fake clock and restores real timers when disposed.
- *
- * Use with `using` so every test restores timers even when an assertion throws.
- */
-export function fakeTimers() {
-	vi.useFakeTimers()
-	return { [Symbol.dispose]: () => vi.useRealTimers() }
-}
 
 /**
  * Clones plain objects and arrays; leaves functions and other values by reference.
