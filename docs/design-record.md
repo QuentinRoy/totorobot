@@ -2290,14 +2290,16 @@ the initial data is an argument or lives in the definition beside `initial:`.
 > by the name alone, nothing else: `observe` says what the method does, which is
 > report transitions, where `.on` read as registering a handler for a string-named event, the
 > mailbox connotation axis 11 already rejected for `inputs`. Same patterns, same two
-> arguments, same record, same unsubscribe function, bare state keys still illegal.
+> arguments, same record, same unsubscribe function.
 > `.on` is left unclaimed for the later output channel, so that channel is pure
 > addition. The transition record this method delivers is reshaped by
 > [§5's revision](#revision-the-shape-of-a-named-thing).
 
 `doc.observe(pattern, fn)` returns an unsubscribe function. Many listeners, edge patterns
 in the transition key language, and **no bare-state key**: a key with no arrow
-means residency, which the host does not implement.
+means residency, which the host does not implement. That last part held for v1 only.
+1.1 gave `observe` the bare key and the `{ run, restart }` record `actions` takes,
+after `actions` had made the host own a lifetime anyway.
 
 **On the host, never the definition.** The prototype attaches listeners to the
 definition, which contradicts the ownership split §9 relies on: two hosts running
@@ -2410,7 +2412,10 @@ having been wrong**, because nothing about it is breaking to add.
 The answer above is scoped to v1, and 1.1 revisited it in the order predicted here:
 `actions` landed first, then `observe` gained the bare key and the same `restart`
 field (§9), so a caller-side residency and a declared one share one policy vocabulary.
-Nothing that existed before either broke, which is what made the deferral cheap.
+Nothing that existed before either broke, which is what made the deferral cheap. The
+dividing line moved with it: once the host held a teardown for `actions`, holding one
+for a listener cost a slot on the same row, and the recipe above became one way to
+write what the host now does rather than the only one.
 
 ### Commit ordering
 
@@ -2960,7 +2965,8 @@ listeners on the definition (two hosts would share them) · handing a listener a
 snapshot or the live host instead of the transition record (loses the cause,
 reopens `emit`) · nesting a reaction's send instead of queueing it (robot3 does
 this; P0.7 forbids it) · a bare state key on `observe()` for residency (derivable in
-ten lines; the host owning a lifetime is what `actions` is for)
+ten lines; the host owning a lifetime is what `actions` is for — reversed in 1.1 once
+`actions` had built that lifetime, and the key came with it)
 
 **Composition.** Peers (wiring lives outside the definition) · inlining (cannot
 express a product) · a `children:` map · an outcome map in `actions` (a hidden
