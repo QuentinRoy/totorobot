@@ -45,6 +45,7 @@ export const publication = machine({
 		| { type: 'revise'; text: string }
 		| { type: 'submit'; reviewer: string }
 		| { type: 'publish' }
+		| { type: 'expireReview' }
 		| { type: 'cancel' }
 	>(),
 
@@ -67,17 +68,32 @@ export const publication = machine({
 			text: state.text,
 			revision: state.revision,
 		}),
+		'review -expireReview> draft': ({ state }) => ({
+			text: state.text,
+			revision: state.revision,
+		}),
 		'draft -cancel> empty': () => {},
+	},
+
+	actions: {
+		review: ({ send }) => {
+			const timer = setTimeout(() => send({ type: 'expireReview' }), 30_000)
+			return () => clearTimeout(timer)
+		},
 	},
 })
 
 const doc = publication.start()
 doc.observe('* -> published', (e) => notify(e.to))
 doc.send({ type: 'open', text: 'hello' })
+doc.send({ type: 'submit', reviewer: 'Quentin' })
 ```
 
 `reviewer` exists on `review` alone: `draft` does not have it yet, `published`
-has shed it again, and neither carries it as a nullable placeholder.
+has shed it again, and neither carries it as a nullable placeholder. While the
+document is in review, the action schedules an input back to the same host. Its
+teardown clears the timer if review ends first. Publication notification stays
+with the caller, attached through `observe`.
 
 ## Contents
 
@@ -543,7 +559,9 @@ takes the next id, and a result carrying a stale one declines:
 ```ts
 import { machine, type } from 'totorobot'
 
-declare const api: { search(query: string): Promise<string[]> }
+declare const api: {
+	search(query: string, signal: AbortSignal): Promise<string[]>
+}
 
 const search = machine({
 	inputs: type<
@@ -568,6 +586,11 @@ const search = machine({
 			query: input.query,
 			nextId: state.nextId + 1,
 		}),
+		'running -run> running': ({ state, input }) => ({
+			id: state.nextId,
+			query: input.query,
+			nextId: state.nextId + 1,
+		}),
 		'running -resolved> done': ({ state, input, skip }) =>
 			input.id === state.id
 				? { hits: input.hits, nextId: state.nextId }
@@ -579,36 +602,32 @@ const search = machine({
 		'done -clear> idle': ({ state }) => ({ nextId: state.nextId }),
 		'failed -clear> idle': ({ state }) => ({ nextId: state.nextId }),
 	},
+
+	actions: {
+		running: ({ to, send }) => {
+			const controller = new AbortController()
+
+			void api.search(to.query, controller.signal).then(
+				(hits) => send({ type: 'resolved', id: to.id, hits }),
+				(reason) =>
+					send({ type: 'rejected', id: to.id, reason: String(reason) }),
+			)
+
+			return () => controller.abort()
+		},
+	},
 })
 
 const box = search.start({ nextId: 0 })
 box.observe('* -> failed', (e) => console.error(e.to.reason))
-
-async function run(query: string) {
-	box.send({ type: 'run', query })
-	const started = box.current
-	if (started.name !== 'running') return
-	try {
-		box.send({
-			type: 'resolved',
-			id: started.id,
-			hits: await api.search(query),
-		})
-	} catch (err) {
-		box.send({ type: 'rejected', id: started.id, reason: String(err) })
-	}
-}
+box.send({ type: 'run', query: 'totoro' })
 ```
 
-Four things are doing work here. `started` is narrowed to `running`, so
-`started.id` exists to close over; the same read on `idle` would not compile.
-Awaiting after that read is safe because a value read from `current` never
-changes underneath you. The two `skip()` rows are the whole staleness policy, so
-an overtaken response finds no row and does nothing. And `e.to.reason` is
-readable in the listener only because the pattern pins the target to `failed`.
-
-Nothing here schedules or cancels the request. The machine records which one it
-is waiting for; starting and abandoning the work stays the caller's.
+The `running` action starts the request and returns its teardown. Sending another
+`run` takes the self-transition, aborts the old request, and starts a new one.
+The two `skip()` rows cover the race where an old promise settles despite being
+aborted: its id no longer matches, so it does nothing. `e.to.reason` is readable
+in the listener because the pattern pins the target to `failed`.
 
 ## What the types check
 
