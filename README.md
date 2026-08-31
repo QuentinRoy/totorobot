@@ -20,7 +20,7 @@ be optional everywhere and checked everywhere.
 
 A definition is inert data. `.start()` hands you a running host to send inputs to
 and observe, and that host is the only thing that ever changes. The whole library
-is 1.8 kB minified, 865 bytes over the wire, with no dependencies.
+is 1.5 kB minified, 767 bytes over the wire, with no dependencies.
 
 The design keeps asking one question: how much state-machine correctness can
 TypeScript enforce while the creation API stays small enough to hold in your

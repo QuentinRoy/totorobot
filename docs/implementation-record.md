@@ -210,8 +210,11 @@ name survives minification when it is accessed dynamically.
 
 The ledger that [I15](#i15) exists to protect. Each line is an alternative that
 was built and measured against the real toolchain, not estimated. Brotli unless
-said otherwise; percentages are from the pre-implementation prototypes, byte
-figures from the shipped build.
+said otherwise; percentages are from the pre-implementation prototypes. A byte
+figure is only meaningful against the build it was taken on, so each one names
+its build: **pre-golf** is the 1,790 B raw / 865 B brotli bundle, **golfed** the
+1,517 B / 767 B one the rewrite landed. A pre-golf delta has not been re-measured
+since; treat it as the reason the shape was chosen, not as a current number.
 
 - **`SKIP` as a symbol, not a self-returning function.** `const skip = () => skip`
   makes the function its own sentinel and saves a binding, at single-digit bytes,
@@ -223,13 +226,22 @@ figures from the shipped build.
   other — not a basis for choosing. The index wins on behaviour: dispatch is a
   lookup rather than a scan, and a malformed key arriving from untyped code cannot
   accidentally prefix-match.
+- **The index key length-prefixed, not separator-joined.** One flat keyspace for
+  labelled and immediate rows needs a key that encodes the `from`/`input` pair
+  injectively. Names are arbitrary strings, so no character is available as a
+  separator: `'a\0b' -c>` and `a -b\0c>` join alike whatever the separator is,
+  and filing an immediate under `from` alone collides outright with a labelled
+  row whose pair spells that name. Putting `from.length` in front costs 8 B and
+  is not optional. Spelling the key out at all three sites rather than sharing an
+  `at` helper is a further 4 B smaller — a repeated shape brotli already knows.
 - **Patterns parsed at registration, not matched by generation.** Generating the
   eight patterns a transition could answer to and testing membership: 4.8% larger,
   plus a `Set` allocated per transition. Parsing at registration also shares
   `parse` with the index build, which is part of why it compresses better.
-- **Null-prototype index, at both levels.** +10 B, the whole cost of an untyped
-  `send({ type: 'toString' })` finding nothing rather than finding
-  `Object.prototype`'s method and calling it as a handler.
+- **Null-prototype index.** 4 B golfed (17 raw, 15 gzip), the whole cost of an
+  untyped `send({ type: 'toString' })` finding nothing rather than finding
+  `Object.prototype`'s method and calling it as a handler. Was +10 B over two
+  levels pre-golf; the keyspace is flat now, so the prototype is bought once.
 - **`current` as a closure variable behind a getter, not a property `send`
   mutates.** The assigned property comes out larger: mutating a bound object costs
   more than a getter closing over a local, and the getter needs no identifier for
@@ -239,16 +251,39 @@ figures from the shipped build.
   (29 raw, 14 gzip), and it allocates on the path that runs most. Observable
   behaviour is identical under both.
 - **One `step`, called twice.** Folding the input hop and the immediate chain into
-  a single loop by reassigning `rows`: 13 B larger, and three mutable locals where
-  the nested form has one. A `commit` helper called from two near-identical
-  scanning loops: 49 B larger.
+  a single loop by reassigning `rows`: 13 B larger pre-golf, and three mutable
+  locals where the nested form has one. A `commit` helper called from two
+  near-identical scanning loops: 49 B larger pre-golf.
+- **A row that simply ends, not one padded to full width.** An edge row stops at
+  its handler, since `key` and `restart` mean nothing on one; padding both slots
+  so every row is the same length is 10 B larger golfed. Reading an absent slot
+  is `undefined` either way, which is what the padding would have spelled.
+- **A teardown cleared in the assignment that calls it.** `row[6] = void row[6]?.()`
+  against calling it and blanking the slot on the next line: 9 B larger golfed
+  (4 raw). Both run a teardown at most once; the one-expression form is also what
+  keeps `clear` an arrow with no body.
+- **The drain loop iterates the queue live, rather than shifting off it.** A
+  `for (let run; (run = queue.shift()); )` loop is 14 B larger golfed. The array
+  iterator re-reads `length` each step, so both pick up work queued by running
+  work; the `finally` empties the queue under either.
+- **`draining` as a counter, not a boolean.** A tie on brotli, 4 B on raw and 2 on
+  gzip. `draining++` raises the flag in the expression that tests it, and
+  `queue.length = draining = 0` puts it back down in the assignment that empties
+  the queue, so the counter is two statements shorter for the same behaviour.
+- **`machine` as an annotated `let`, not an overloaded `function`.** The overload
+  pair — declared signature, then an implementation one taking `unknown` — is 5 B
+  larger golfed (7 raw). The annotated binding states the caller-facing type once
+  and casts its initializer, and the emitted declaration is the same either way.
 - **`dispatch(work?)`, not a required parameter.** The optional call is one cheap
   token; a required parameter pushes `send` into allocating a closure per call
-  just to hand its `queue.push` over.
+  just to hand its `queue.push` over. Re-measured against the golfed bundle,
+  where the closure would have been the only argument at that call site: the
+  required form is 8 B larger (775 vs 767), so it loses on size as well as on
+  allocation, and the optional parameter stays.
 - **The departure loop over `[acts, listeners]`, not a `leave` helper called
   twice.** The two-element array literal plus one nested loop measures smaller
   than factoring the row scan into a named function and calling it once per row
-  array (1,790 B vs 1,810 B raw).
+  array (1,790 B vs 1,810 B raw, pre-golf).
 
 ### <a id="i17"></a>I17 — The empty-payload encoding is tagged, not an index signature
 
@@ -347,12 +382,23 @@ alone, an input for `.type` alone, and a payload is only ever spread — so
 `StateVocab`, `InputVocab | undefined` and `object` type the whole runtime with no
 cast added and a byte-identical bundle.
 
-`machine`'s implementation signature took `any` on the recorded grounds that a row's
-value can be the poison string literal. `unknown` implements it too: overload
-compatibility is an assignability check, and the body casts before reading. Not
-academic, since declarations are generated from these signatures — a rollup that
-preferred an implementation signature to its overload would hand callers `any`
-rather than merely losing precision.
+The golfed runtime reintroduced three, and none of them survived either, at a
+byte-identical bundle: an item that is read for both `run` and a call is an
+intersection rather than a union (a union makes `run` unreadable on the function
+arm), the `restart` predicate is `Extract<Registration[5], Function>` where its
+`.call` is tested, and the annotated `machine` binding casts its initializer to
+`typeof machine` rather than to `any`. Assertions are erased, so a cast is free;
+`any` buys nothing here that a name for the shape does not.
+
+`machine`'s implementation half took `any` on the recorded grounds that a row's
+value can be the poison string literal. `unknown` implements it too: the body
+casts before reading, and what the implementation must satisfy is an
+assignability check either way — against the other half of an overload pair when
+`machine` was a `function`, against the annotation when it became an annotated
+`let` whose initializer is cast (I16). Not academic, since declarations are
+generated from these signatures — a rollup that preferred the implementation half
+to the declared one would hand callers `any` rather than merely losing
+precision.
 
 ### <a id="i24"></a>I24 — A generic call in a table value cannot see a vocabulary that arrives as a default
 
