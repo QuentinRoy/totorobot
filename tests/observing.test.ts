@@ -237,6 +237,26 @@ describe('observing', () => {
 		expect(log).toEqual(['setup', 'teardown'])
 	})
 
+	test('observe(state, fn) tears down and sets up again on a self-transition: restart falls out of matching both directions, same as a declared residency', () => {
+		const pinger = machine({
+			initial: 'idle',
+			inputs: type<{ type: 'ping' }>(),
+			states: type<{ name: 'idle' }>(),
+			transitions: { 'idle -ping> idle': () => {} },
+		})
+		const host = pinger.start()
+		const log: string[] = []
+
+		host.observe('idle', () => {
+			log.push('setup')
+			return () => log.push('teardown')
+		})
+
+		expect(log).toEqual(['setup'])
+		host.send({ type: 'ping' })
+		expect(log).toEqual(['setup', 'teardown', 'setup'])
+	})
+
 	test('observe(state, { run, restart: false }) survives a self-transition: no teardown, no second setup', () => {
 		const pinger = machine({
 			initial: 'idle',
@@ -283,6 +303,40 @@ describe('observing', () => {
 		host.send({ type: 'set', id: 0 }) // same id: no restart
 		host.send({ type: 'set', id: 1 }) // different id: restarts
 		expect(log).toEqual(['setup:0', 'teardown:0', 'setup:1'])
+	})
+
+	test('a declared residency and an observe-attached one on the same state: actions before listeners, entry and exit alike', () => {
+		const log: string[] = []
+		const doc = machine({
+			initial: 'off',
+			inputs: type<{ type: 'toggle' }>(),
+			states: type<{ name: 'off' } | { name: 'on' }>(),
+			transitions: {
+				'off -toggle> on': () => {},
+				'on -toggle> off': () => {},
+			},
+			actions: {
+				on: () => {
+					log.push('action:setup')
+					return () => log.push('action:teardown')
+				},
+			},
+		}).start()
+
+		doc.observe('on', () => {
+			log.push('observe:setup')
+			return () => log.push('observe:teardown')
+		})
+
+		doc.send({ type: 'toggle' }) // off -> on: both enter
+		doc.send({ type: 'toggle' }) // on -> off: both leave
+
+		expect(log).toEqual([
+			'action:setup',
+			'observe:setup',
+			'action:teardown',
+			'observe:teardown',
+		])
 	})
 
 	test('a self-transition matches both the exit pattern and the entry pattern', () => {

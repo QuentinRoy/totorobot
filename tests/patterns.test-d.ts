@@ -68,6 +68,19 @@ test('a bare key means residency, typed as the same record `actions` takes (#76)
 	host.observe('nope', () => {})
 })
 
+test('a block-bodied restart predicate on observe does not reopen the host as an inference site (I28)', () => {
+	const host = doc.start()
+
+	host.observe('draft', {
+		run: () => {},
+		restart: (from, to) => {
+			expectTypeOf(from).toEqualTypeOf<{ name: 'draft'; text: string }>()
+			expectTypeOf(to).toEqualTypeOf<{ name: 'draft'; text: string }>()
+			return true
+		},
+	})
+})
+
 test('the record form is only for a bare state key: an edge pattern still takes a plain listener', () => {
 	const host = doc.start()
 
