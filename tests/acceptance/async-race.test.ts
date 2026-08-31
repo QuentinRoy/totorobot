@@ -1,16 +1,39 @@
 /**
- * Case 3: asynchronous request race (docs/acceptance-cases.md). Settlement is
- * an ordinary `send` — there is no library-owned request lifecycle, so these
- * tests use no timers, no fake clock and have no wall-clock dependence.
+ * Case 3: asynchronous request race (docs/acceptance-cases.md). `loading`
+ * holds an `AbortController` as a residency: entering starts the request and
+ * returns a teardown that aborts it. Tests settle requests themselves, by
+ * resolving or rejecting a deferred directly — no timers, no fake clock, no
+ * wall-clock dependence.
  *
- * Live-runtime trace 2 — disposing this machine while `loading` and asserting
- * its work can no longer affect later evolution — is deliberately not
- * implemented here. It assumes disposal, and v1 has no `stop()`.
+ * `requestId` stays, unlike Case 1's token. `clearTimeout` retracts a pending
+ * callback outright; `abort()` does not retract a promise that has already
+ * settled, so a stale `succeed` for a cancelled request can still arrive.
+ * `requestId` is what makes that arrival free (the required race, below).
+ *
+ * Live-runtime trace 2 (disposing while `loading`) needs no separate test:
+ * departing `loading` for any reason — cancel, success, failure — already
+ * tears the residency down and aborts its work, which is exactly what the
+ * required race exercises.
  */
 
 import { describe, expect, test } from 'vitest'
 
 import { machine, type } from 'totorobot'
+
+/** Settled directly by a test — no timers, no wall clock. */
+function deferred<T>(): {
+	promise: Promise<T>
+	resolve: (value: T) => void
+	reject: (reason: unknown) => void
+} {
+	let resolve!: (value: T) => void
+	let reject!: (reason: unknown) => void
+	const promise = new Promise<T>((res, rej) => {
+		resolve = res
+		reject = rej
+	})
+	return { promise, resolve, reject }
+}
 
 type AsyncInputs =
 	| { type: 'start' }
@@ -29,6 +52,9 @@ type AsyncStates =
 	  }
 	| { name: 'success'; result: string; nextRequestId: number }
 	| { name: 'failure'; error: string; nextRequestId: number }
+
+/** One deferred per request, set by the residency, settled by a test. */
+const requests = new Map<number, ReturnType<typeof deferred<string>>>()
 
 const asyncRequest = machine({
 	initial: 'idle',
@@ -63,10 +89,34 @@ const asyncRequest = machine({
 			nextRequestId: state.nextRequestId,
 		}),
 	},
+	actions: {
+		loading: {
+			run: ({ to, send }) => {
+				const ctrl = new AbortController()
+				const work = deferred<string>()
+				requests.set(to.requestId, work)
+				work.promise.then(
+					(result) =>
+						send({ type: 'succeed', requestId: to.requestId, result }),
+					(error) =>
+						send({
+							type: 'fail',
+							requestId: to.requestId,
+							error: String(error),
+						}),
+				)
+				return () => ctrl.abort()
+			},
+			// A same-state progress update is a self-transition; the request
+			// already in flight must not be aborted and restarted by it.
+			restart: false,
+		},
+	},
 })
 
 describe('acceptance: asynchronous request race', () => {
-	test('a matching progress commits a same-state update; a matching failure enters failure and can reset to idle', () => {
+	test('a matching progress commits a same-state update; a matching failure enters failure and can reset to idle', async () => {
+		requests.clear()
 		const doc = asyncRequest.start({ nextRequestId: 0 })
 
 		doc.send({ type: 'start' })
@@ -78,7 +128,8 @@ describe('acceptance: asynchronous request race', () => {
 			progress: 0.5,
 		})
 
-		doc.send({ type: 'fail', requestId: 0, error: 'boom' })
+		requests.get(0)!.reject('boom')
+		await requests.get(0)!.promise.catch(() => {})
 		expect(doc.current).toEqual({
 			name: 'failure',
 			error: 'boom',
@@ -89,7 +140,8 @@ describe('acceptance: asynchronous request race', () => {
 		expect(doc.current).toEqual({ name: 'idle', nextRequestId: 1 })
 	})
 
-	test('the required race: a stale success for a cancelled request is free, and the live request still succeeds', () => {
+	test('the required race: a stale success for a cancelled request is free, and the live request still succeeds', async () => {
+		requests.clear()
 		const doc = asyncRequest.start({ nextRequestId: 0 })
 
 		doc.send({ type: 'start' }) // 1. start request 0
@@ -99,8 +151,9 @@ describe('acceptance: asynchronous request race', () => {
 			nextRequestId: 1,
 			progress: 0,
 		})
+		const request0 = requests.get(0)!
 
-		doc.send({ type: 'cancel' }) // 2. cancel request 0
+		doc.send({ type: 'cancel' }) // 2. cancel request 0: teardown aborts it
 		expect(doc.current).toEqual({ name: 'idle', nextRequestId: 1 })
 
 		doc.send({ type: 'start' }) // 3. start request 1
@@ -111,9 +164,11 @@ describe('acceptance: asynchronous request race', () => {
 			progress: 0,
 		})
 
-		// 4. receive success for request 0: matches no row for the current
-		// requestId, so it produces no transition — the stale result is free
-		doc.send({ type: 'succeed', requestId: 0, result: 'stale' })
+		// 4. request 0 still settles after cancellation — `abort()` does not
+		// retract it — but it matches no row for the current requestId, so it
+		// produces no transition: the stale result is free
+		request0.resolve('stale')
+		await request0.promise
 		expect(doc.current).toEqual({
 			name: 'loading',
 			requestId: 1,
@@ -122,7 +177,8 @@ describe('acceptance: asynchronous request race', () => {
 		})
 
 		// 5. receive success for request 1: enters success with its result
-		doc.send({ type: 'succeed', requestId: 1, result: 'fresh' })
+		requests.get(1)!.resolve('fresh')
+		await requests.get(1)!.promise
 		expect(doc.current).toEqual({
 			name: 'success',
 			result: 'fresh',
