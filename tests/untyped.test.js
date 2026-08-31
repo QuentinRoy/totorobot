@@ -18,8 +18,8 @@ describe('the untyped path', () => {
 		})
 
 		const host = untyped.start()
-		const log = []
-		host.observe('* -> *', (e) => log.push(`${e.from.name}->${e.to.name}`))
+		const log = vi.fn()
+		host.observe('* -> *', (e) => log(`${e.from.name}->${e.to.name}`))
 
 		expect(host.current).toEqual({ name: 'off' })
 
@@ -29,7 +29,9 @@ describe('the untyped path', () => {
 		host.send({ type: 'toggle' })
 		expect(host.current).toEqual({ name: 'off' })
 
-		expect(log).toEqual(['off->on', 'on->off'])
+		expect(log).toHaveBeenCalledTimes(2)
+		expect(log).toHaveBeenNthCalledWith(1, 'off->on')
+		expect(log).toHaveBeenNthCalledWith(2, 'on->off')
 	})
 
 	test('an input name outside the vocabulary changes nothing', () => {
