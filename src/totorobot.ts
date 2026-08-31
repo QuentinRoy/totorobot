@@ -475,7 +475,8 @@ let dispatch = (work: () => void): void => {
  * parse identically (§11). A bare key is one with no separator anywhere in it,
  * which is the same test as splitting it and counting one piece, spelled as the
  * match it already is, and `item.run ?? item` reads both item shapes at once —
- * a plain function has no `run`. An arrow row stops at its handler: `key` and
+ * a plain function has no `run`, and a value carrying one is a record that
+ * happens to be callable rather than the reverse. An arrow row stops at its handler: `key` and
  * `restart` mean nothing on one, and a row that simply ends is as good as a row
  * padded with the blanks nothing reads (I16).
  */

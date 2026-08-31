@@ -305,6 +305,22 @@ describe('observing', () => {
 		expect(log).toEqual(['setup:0', 'teardown:0', 'setup:1'])
 	})
 
+	test('observe takes an item that is callable *and* carries `run` the same way an actions block does: `run` wins', () => {
+		const log: string[] = []
+		const host = toggle.start()
+		// The same precedence on the public path, since `observe` and the actions
+		// block share one parser: `run` is read first, so this is a record that
+		// happens to be callable, not the other way round.
+		const both = Object.assign(() => void log.push('callable'), {
+			run: () => void log.push('run'),
+		})
+
+		host.observe('on', both)
+		host.send({ type: 'toggle' })
+
+		expect(log).toEqual(['run'])
+	})
+
 	test('a declared residency and an observe-attached one on the same state: actions before listeners, entry and exit alike', () => {
 		const log: string[] = []
 		const doc = machine({
