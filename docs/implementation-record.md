@@ -252,7 +252,10 @@ figures from the shipped build.
   scanning loops: 49 B larger.
 - **`dispatch(work?)`, not a required parameter.** The optional call is one cheap
   token; a required parameter pushes `send` into allocating a closure per call
-  just to hand its `queue.push` over.
+  just to hand its `queue.push` over. Re-measured against the golfed bundle,
+  where the closure would have been the only argument at that call site: the
+  required form is 8 B larger (775 vs 767), so it loses on size as well as on
+  allocation, and the optional parameter stays.
 - **The departure loop over `[acts, listeners]`, not a `leave` helper called
   twice.** The two-element array literal plus one nested loop measures smaller
   than factoring the row scan into a named function and calling it once per row

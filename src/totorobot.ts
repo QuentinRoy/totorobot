@@ -447,17 +447,18 @@ let draining = 0
 /**
  * Run `work`, and everything it queues, as one dispatch: the window rule 4 is
  * stated in terms of. Named for that window rather than for the `draining` flag.
- * `start` passes the chain it settles inline; `send` passes a `work` that only
- * pushes. One shape serves both, either side of the flag: inside a window the
- * outermost call drains what was pushed, outside one this call does.
+ * `start` passes the chain it settles inline; `send` has queued its work already
+ * and passes nothing, which is why `work` is optional (I16). One shape serves
+ * both, either side of the flag: inside a window the outermost call drains what
+ * was pushed, outside one this call does.
  */
-let dispatch = (work: () => void): void => {
+let dispatch = (work?: () => void): void => {
 	// Already inside a dispatch: the outermost call owns the drain. Raising the
 	// flag is the same expression that tests it — only the outermost call reads
 	// a zero — and the `finally` below puts it back down.
-	if (draining++) return work()
+	if (draining++) return work?.()
 	try {
-		work()
+		work?.()
 		// Live iteration, not a shift loop: the array iterator re-reads `length`
 		// every step, so work queued by work already running is picked up in the
 		// same pass, and the `finally` below is what empties the queue either way.
@@ -695,24 +696,21 @@ export let machine: <
 				// Declared before the first `step` runs, because every transition record
 				// carries it; the host below re-exports this one binding. The work is
 				// queued rather than run, whether the call came from this host's listener,
-				// another host's, or a hop `start` is settling. A block body, not an
-				// expression one: `send` returns nothing, while `dispatch` inside a window
-				// hands back whatever `work` returned.
+				// another host's, or a hop `start` is settling — and pushing it before
+				// `dispatch` rather than from inside a `work` closure is what keeps
+				// `dispatch`'s parameter optional, which measures smaller (I16).
 				let send = (input: InputVocab): void => {
-					dispatch(() =>
-						queue.push(() => {
-							// Read at drain time, so a queued send may correctly find no row.
-							if (
-								step(
-									index[
-										current.name.length + '\0' + current.name + input?.type
-									],
-									input,
-								)
+					queue.push(() => {
+						// Read at drain time, so a queued send may correctly find no row.
+						if (
+							step(
+								index[current.name.length + '\0' + current.name + input?.type],
+								input,
 							)
-								settle()
-						}),
-					)
+						)
+							settle()
+					})
+					dispatch()
 				}
 
 				// Under the drain `send` takes, so a send from one of these hops — the
