@@ -530,6 +530,29 @@ describe('actions', () => {
 		expect(log).toEqual(['setup', 'edge'])
 	})
 
+	test('an item that is callable *and* carries `run` runs its `run`, deliberately: the record shape wins over the callable', () => {
+		const log: string[] = []
+		// Both item shapes in one value. `run` wins by decision, not by accident:
+		// this is a record that happens to be callable, not the reverse.
+		const both = Object.assign(() => void log.push('callable'), {
+			run: () => void log.push('run'),
+		})
+
+		const doc = machine({
+			initial: 'off',
+			inputs: type<{ type: 'toggle' }>(),
+			states: type<{ name: 'off' } | { name: 'on' }>(),
+			transitions: {
+				'off -toggle> on': () => {},
+				'on -toggle> off': () => {},
+			},
+			actions: { on: both, 'off -toggle> on': both },
+		}).start()
+
+		doc.send({ type: 'toggle' })
+		expect(log).toEqual(['run', 'run'])
+	})
+
 	test('an undeclared trigger is silently unreachable at runtime, matching the rest of the library: naming something absent is a no-op', () => {
 		expect(() =>
 			machine({
