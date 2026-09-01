@@ -1,0 +1,12 @@
+{
+	"extends": "../../../tsconfig.json",
+	"compilerOptions": {
+		/* Imports the library by package name, like a consumer, mapped to the
+		   source it is measured against — the same redirect
+		   `tests/tsconfig.json` uses. */
+		"paths": {
+			"totorobot": ["../../../src/totorobot.ts"]
+		}
+	},
+	"include": ["*.ts"]
+}

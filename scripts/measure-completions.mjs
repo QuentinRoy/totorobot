@@ -1,19 +1,23 @@
-// Measures editor completion behaviour for two surfaces: the string-key
-// transition table, and `observe()`'s pattern argument (#116).
+// Measures editor completion behaviour for three surfaces: the string-key
+// transition table, `observe()`'s pattern argument (#116), and `actions`'s own
+// key (#117).
 //
 // This exists because acceptance-cases.md lists "language-server completion and
 // diagnostic latency" among the 20-state measurements. The transition-table
 // layout is one whose key type is a cross-product — |inputs| x |states|^2 — and
 // so, before #116, was `observe()`'s pattern argument: the same cross-product,
 // filtered against the declared table only at the point of rejecting an
-// unreachable one, never at the point of offering completions.
+// unreachable one, never at the point of offering completions. `actions` never
+// had that problem — `A` defaults to `never`, so its contextual type has no
+// known members and completion offers nothing either way (#117).
 //
 //   node scripts/measure-completions.mjs [projectDir]
 //
-// With no argument, measures both surfaces: the transition table against
+// With no argument, measures all three surfaces: the transition table against
 // explorations/candidates/n1-transition-table (an 80-member and a
-// 4 000-member machine in playground.ts) and `observe()` against
-// scripts/completion-fixtures/observe-machine (the 20-state, 44-row
+// 4 000-member machine in playground.ts), `observe()` against
+// scripts/completion-fixtures/observe-machine, and `actions` against
+// scripts/completion-fixtures/actions-machine (both the 20-state, 44-row
 // acceptance machine, imported through the real library). Passing a
 // directory measures the transition-table surface against it alone, the
 // original single-project form.
@@ -85,6 +89,22 @@ const OBSERVE_CASES = [
 	['observe', '', "20 states, 44 rows, observe(''), nothing typed"],
 	['observe', 's0', '20/44, `s0`'],
 	['observe', 's00 -', '20/44, `s00 -`'],
+]
+
+/**
+ * Where to insert a new `actions` key: right inside the empty `actions: {}`
+ * object — Prettier collapses an empty literal onto one line, so the anchor
+ * stops short of the closing brace rather than expecting a line of its own —
+ * in the same 20-state acceptance machine (#117).
+ */
+const ACTIONS_ANCHORS = {
+	actions: `\tactions: {`,
+}
+
+const ACTIONS_CASES = [
+	['actions', '', "20 states, 44 rows, actions: {''}, nothing typed"],
+	['actions', 's0', '20/44, `s0`'],
+	['actions', 's00 -', '20/44, `s00 -`'],
 ]
 
 /**
@@ -258,6 +278,9 @@ const insertTableRow = (typed) => `\t\t'${typed}`
 /** A new `observe()` call, inserted as its own statement after `start()`. */
 const insertObserveCall = (typed) => `\nhost.observe('${typed}`
 
+/** A new `actions` key, inserted right after the block's opening brace. */
+const insertActionsKey = (typed) => `\t\t'${typed}`
+
 const explicitDir = process.argv[2]
 const targets = explicitDir
 	? [
@@ -280,6 +303,12 @@ const targets = explicitDir
 				anchors: OBSERVE_ANCHORS,
 				cases: OBSERVE_CASES,
 				insert: insertObserveCall,
+			},
+			{
+				dir: join(repoRoot, 'scripts/completion-fixtures/actions-machine'),
+				anchors: ACTIONS_ANCHORS,
+				cases: ACTIONS_CASES,
+				insert: insertActionsKey,
 			},
 		]
 
