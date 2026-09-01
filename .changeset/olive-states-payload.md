@@ -10,11 +10,11 @@ it, in a record and in `host.current` alike.
 Change `type States = { name: 'empty' } | { name: 'draft'; text: string }` to
 `type States = { empty: undefined; draft: { text: string } }`. Read
 `host.current.data` rather than fields on `host.current`, and `fromData` rather
-than `state` in a handler. A handler returns the destination's payload alone,
-which the row's own target name can no longer be confused with; a restart
+than `state` in a handler. A handler returns only the destination's payload,
+so it can no longer be confused with the row's own target name; a restart
 predicate takes one record of the same six facts instead of two states.
 
-Payloads are stored as supplied, so any value works — including a primitive, a
-function, or an object with its own `name` or `type` field — and mutating one is
-visible through older snapshots. A destination that carries nothing takes a
+Payloads are stored as supplied, so any value works (including a primitive, a
+function, or an object with its own `name` or `type` field), and mutating one
+is visible through older snapshots. A destination that carries nothing takes a
 handler with an empty body; `{}` is no longer accepted for one.
