@@ -31,6 +31,7 @@
 		"build": "vite build",
 		"prepack": "pnpm build",
 		"size": "pnpm build && node scripts/size.ts",
+		"version": "changeset version && node scripts/size-changelog.ts && pnpm format",
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
 		"test": "vitest run",
