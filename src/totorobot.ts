@@ -140,12 +140,10 @@ type Pattern<I extends Vocab = AnyVocab, S extends Vocab = AnyVocab> =
  * is the destination's payload, resolved inline rather than behind an alias over
  * `S`, so a wrong-shaped return names the one state the row targets (I18); the
  * row stays the authority for the name, which no return can redirect (§5 The
- * declared vocabulary). The `void` arm is what accepts an empty body where the
- * destination carries nothing, and it is added only where the payload already
- * admits `undefined`, so a destination that carries something still rejects a
- * handler that returns nothing (I27). `NoInfer` on the parameters is insurance
- * rather than load-bearing since payloads moved behind an indexed access, which
- * is not a position TypeScript infers from (I14).
+ * declared vocabulary). The `void` arm accepts an empty body, and only where the
+ * payload already admits `undefined`, so a destination that carries something
+ * still rejects a handler that returns nothing (I27). `NoInfer` guards the
+ * parameters (I14).
  */
 type Table<I extends Vocab, S extends Vocab, K extends string> = {
 	readonly [P in K]: P extends Key<I, S>
@@ -206,10 +204,10 @@ type Send<I extends Vocab> = (
  * Three names and their three payloads, narrowed by the listener's own pattern.
  * One member per source, destination and input the pattern admits, because that
  * product is what lets a check on any one name narrow the payload beside it
- * (I31); #99 filters it against the table. The immediate hop is a separate arm
- * because the innermost mapped type is indexed by input name; a labelled pattern
- * drops it. `X` is what the record carries beyond the facts — `send` for a
- * committed transition, nothing for a restart decision (§9 Actions).
+ * (I31). The immediate hop is a separate arm because the innermost mapped type
+ * is indexed by input name; a labelled pattern drops it. `X` is what the record
+ * carries beyond the facts — `send` for a committed transition, nothing for a
+ * restart decision (§9 Actions).
  */
 type Transition<
 	I extends Vocab = AnyVocab,
@@ -321,9 +319,8 @@ type Action<Run, Extra extends object = {}> =
  * `restart` is consulted only on a self-transition, so its facts are that hop's:
  * the same six a committed record carries, minus `send`, which is what keeps the
  * decision pure in the types and at runtime alike (§9 Actions). The default is to
- * restart. `NoInfer` on the predicate's parameter is load-bearing here, unlike on
- * a handler's: the record is a mapped type over `keyof S`, so an unguarded
- * block-bodied predicate reopens `S` and the whole table collapses (I28).
+ * restart. Without `NoInfer` the predicate reopens `S` and the table collapses
+ * (I28).
  */
 type Restart<I extends Vocab, S extends Vocab, N extends string> = {
 	readonly restart?:
@@ -627,10 +624,8 @@ export let machine: <
 				let fire = (list: Registration[], facts: UncheckedFacts): void => {
 					// The facts plus the one capability a committed record carries: the
 					// same `send` the host exposes, so a reaction drives the machine
-					// without closing over the host it was registered on. Attached here
-					// rather than by each caller, which measures smaller, and once per
-					// call rather than per matching row, which keeps the allocation off
-					// the path that runs most (I16).
+					// without closing over the host it was registered on. Once per call,
+					// so the allocation stays off the path that runs most (I16).
 					let e: Arrival = { ...facts, send }
 					for (let row of list) {
 						let [f, l, t, run, key] = row
@@ -673,8 +668,7 @@ export let machine: <
 							// The hop's own facts, built before the commit so a restart
 							// predicate sees what it is deciding about, and carrying no `send`:
 							// a pure decision is one at runtime too, not only in the types (§9
-							// Actions). `fire` adds the capability for the callbacks that do
-							// get one.
+							// Actions).
 							let facts: UncheckedFacts = {
 								input,
 								inputData,
