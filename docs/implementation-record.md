@@ -216,6 +216,15 @@ change to the shapes in [I16](#i16), and treat a non-zero delta on a
 comments-and-names-only change as a bug rather than as noise: an internal property
 name survives minification when it is accessed dynamically.
 
+The same measurement is recorded per release. `scripts/size-changelog.ts` runs
+inside the `version` script, right after `changeset version` opens the new
+CHANGELOG section, and writes a `### Size` line into it: brotli, gzip and raw,
+with the brotli delta measured against the _published_ tarball of the previous
+version rather than against a rebuild of an old commit. The same line reaches
+the release notes, because `changesets/action` builds the release body by
+slicing that section out of the file. A version whose tarball cannot be fetched costs the delta, not the
+release.
+
 ### <a id="i16"></a>I16 — The measured shapes, and what each alternative cost
 
 The ledger that [I15](#i15) exists to protect. Each line is an alternative that
