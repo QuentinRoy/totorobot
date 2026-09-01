@@ -714,11 +714,15 @@ way, and the context member is `input` rather than `event`.
 
 ### Revision: the shape of a named thing
 
-> **Superseded for inputs by #97.** Inputs are again a name-to-payload map. Sending
-> takes `send(name, payload?)`; handlers and transition records expose the name as
-> `input` and its unchanged value as `inputData`. Omission follows whether the
-> payload type admits `undefined`. States remain tagged by `name`. The historical
-> tagged-input argument below stays as the decision this revision replaced.
+> **Superseded for inputs by #97.** Inputs are again a name-to-payload map, and
+> sending takes `send(name, payload?)`. The tagged form reserved `type` and forced
+> every payload into an object. Separate arguments leave payloads unchanged, so
+> primitives, functions, maps, and objects with their own `type` field all work.
+> A tuple union keeps each name paired with its payload type. Handlers and
+> transition records expose the name as `input` and the value as `inputData`.
+> Omission follows whether the payload type admits `undefined`. States remain
+> tagged by `name`. The tagged-input argument below records the decision this
+> revision replaced.
 
 > **A late revision, merged here from what was §17 of the chronological record.**
 > Decided alongside [§10's composition boundary](#revision-the-composition-boundary),
@@ -2828,12 +2832,10 @@ hang capabilities on it; the stale question disappears; and `capabilities`, `fro
 arguments type more cleanly (merging them is how robot3's `[key: string]: any`
 hole appeared), and it makes a `void` input just `send('cancel')`.
 
-> **Reversed; see [§5's revision](#revision-the-shape-of-a-named-thing).** Once an
-> input is a tagged union member rather than a name plus a payload, the two arguments
-> have nothing to separate: `send` takes the input whole, `send({ type: 'submit', … })`,
-> and a payload-free input is `send({ type: 'cancel' })` rather than `send('cancel')`.
-> What made the separate arguments type cleanly, the payload never merging with the
-> discriminant, is what the tag gives for free, so the reason survives its spelling.
+> **Restored by #97; see
+> [§5's revision](#revision-the-shape-of-a-named-thing).** The separate call shape
+> above is again current. A tuple union keeps the two arguments correlated without
+> reserving a field inside the payload.
 
 ### If it comes back, it comes back as S12
 
