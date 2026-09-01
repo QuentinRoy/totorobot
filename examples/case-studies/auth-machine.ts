@@ -80,7 +80,7 @@ export async function signIn(
 	host: ReturnType<typeof authMachine.start>,
 	credentials: Credentials,
 ): Promise<void> {
-	host.send('login', { ...credentials })
+	host.send('login', credentials)
 	if (host.current.name !== 'authenticating') return
 	try {
 		host.send('succeed', { ...(await fakeLogin(credentials)) })
