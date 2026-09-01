@@ -83,7 +83,7 @@ export async function signIn(
 	host.send('login', credentials)
 	if (host.current.name !== 'authenticating') return
 	try {
-		host.send('succeed', { ...(await fakeLogin(credentials)) })
+		host.send('succeed', await fakeLogin(credentials))
 	} catch (error) {
 		host.send('fail', {
 			reason: error instanceof Error ? error.message : String(error),
