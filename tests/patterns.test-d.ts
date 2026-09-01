@@ -161,6 +161,38 @@ test('the transition record carries each name beside its payload, and a check on
 		if (e.to === 'empty') {
 			expectTypeOf(e.toData).toEqualTypeOf<undefined>()
 		}
+		if (e.to === 'published') {
+			expectTypeOf(e.toData).toEqualTypeOf<{ text: string }>()
+		}
+
+		// "empty" only ever reaches "draft": a check against a state it cannot
+		// reach is a comparison between two literals with no overlap, caught at
+		// compile time rather than merely failing to narrow (#99).
+		if (e.from === 'empty') {
+			// @ts-expect-error - "review" is not among the destinations "empty" reaches
+			if (e.to === 'review') {
+			}
+		}
+	})
+})
+
+test('a guard on one row does not collapse its declared alternative: both "review" and "published" stay live from the same source and input, distinguished by destination (#99)', () => {
+	const host = doc.start()
+
+	// "draft -submit>" has two declared rows, "review" and "published", picked
+	// between at runtime by `skip()`. Typing is off the declared rows, not off
+	// which one the guard actually takes, so both remain, and the destination
+	// name still correlates with its own payload shape.
+	host.observe('draft -submit> *', (e) => {
+		expectTypeOf(e.to).toEqualTypeOf<'review' | 'published'>()
+		if (e.to === 'review') {
+			expectTypeOf(e.toData).toEqualTypeOf<{ text: string; reviewer: string }>()
+		}
+		if (e.to === 'published') {
+			expectTypeOf(e.toData).toEqualTypeOf<{ text: string }>()
+			// @ts-expect-error - "published" carries no "reviewer"
+			e.toData.reviewer
+		}
 	})
 })
 
@@ -230,6 +262,18 @@ test('an incoming wildcard narrows the source to what actually reaches the input
 	host.observe('empty -> *', (e) => {
 		expectTypeOf(e.to).toEqualTypeOf<'draft'>()
 		expectTypeOf(e.toData).toEqualTypeOf<{ text: string }>()
+	})
+})
+
+test('an edge listener needs no narrowing to read `from`: no synthetic arrival member, unlike a residency (#99)', () => {
+	const host = doc.start()
+
+	host.observe('* -> *', (e) => {
+		// Not a compile error, unlike the same read on a residency's arrival
+		// (tests/actions.test-d.ts, "reading `from` without narrowing"): an edge
+		// record never carries the arrival member, so `from` is always one of
+		// the declared source names, never `undefined`.
+		e.from.length
 	})
 })
 

@@ -87,6 +87,68 @@ test("an edge trigger's argument narrows the transition exactly the way a listen
 	})
 })
 
+test('an action and a listener for the same edge pattern narrow to the same facts and sending capability (#99)', () => {
+	const doc = machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: {
+			'off -toggle> on': () => ({ count: 0 }),
+			'on -toggle> off': () => {},
+		},
+		actions: {
+			'off -toggle> on': (transition) => {
+				expectTypeOf(transition.from).toEqualTypeOf<'off'>()
+				expectTypeOf(transition.fromData).toEqualTypeOf<undefined>()
+				expectTypeOf(transition.to).toEqualTypeOf<'on'>()
+				expectTypeOf(transition.toData).toEqualTypeOf<{ count: number }>()
+				expectTypeOf(transition.send).toEqualTypeOf<Send>()
+			},
+		},
+	})
+	const host = doc.start()
+
+	// Same pattern, same table: an observer narrows to the exact same fields —
+	// not a second, independently-derived bag.
+	host.observe('off -toggle> on', (transition) => {
+		expectTypeOf(transition.from).toEqualTypeOf<'off'>()
+		expectTypeOf(transition.fromData).toEqualTypeOf<undefined>()
+		expectTypeOf(transition.to).toEqualTypeOf<'on'>()
+		expectTypeOf(transition.toData).toEqualTypeOf<{ count: number }>()
+		expectTypeOf(transition.send).toEqualTypeOf<Send>()
+	})
+})
+
+test('a residency action and a residency observer for the same bare state share the same arrival-narrowed facts (#99)', () => {
+	const doc = machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: {
+			'off -toggle> on': () => ({ count: 0 }),
+			'on -toggle> off': () => {},
+		},
+		actions: {
+			on: ({ from, fromData, to, toData }) => {
+				expectTypeOf(from).toEqualTypeOf<'off' | undefined>()
+				expectTypeOf(fromData).toEqualTypeOf<undefined>()
+				expectTypeOf(to).toEqualTypeOf<'on'>()
+				expectTypeOf(toData).toEqualTypeOf<{ count: number }>()
+			},
+		},
+	})
+	const host = doc.start()
+
+	// Same bare state, same table: `observe`'s residency form narrows to the
+	// exact same arrival-capable facts as the declared action above.
+	host.observe('on', ({ from, fromData, to, toData }) => {
+		expectTypeOf(from).toEqualTypeOf<'off' | undefined>()
+		expectTypeOf(fromData).toEqualTypeOf<undefined>()
+		expectTypeOf(to).toEqualTypeOf<'on'>()
+		expectTypeOf(toData).toEqualTypeOf<{ count: number }>()
+	})
+})
+
 test('an undeclared state named by a bare trigger is rejected', () => {
 	machine({
 		initial: 'off',
