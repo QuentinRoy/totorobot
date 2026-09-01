@@ -72,10 +72,10 @@ test("an edge trigger's argument narrows the transition exactly the way a listen
 		actions: {
 			'off -toggle> on': (transition) => {
 				expectTypeOf(transition.from).toEqualTypeOf<{ name: 'off' }>()
-					expectTypeOf(transition.to).toEqualTypeOf<{
-						name: 'on'
-						count: number
-					}>()
+				expectTypeOf(transition.to).toEqualTypeOf<{
+					name: 'on'
+					count: number
+				}>()
 				expectTypeOf(transition.input).toEqualTypeOf<'toggle'>()
 				expectTypeOf(transition.inputData).toEqualTypeOf<undefined>()
 				expectTypeOf(transition.send).toEqualTypeOf<Send>()
