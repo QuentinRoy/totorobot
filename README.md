@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/totorobot"><img src="https://img.shields.io/npm/v/totorobot?label=version" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/totorobot"><img src="https://img.shields.io/npm/v/totorobot?label=" alt="npm version"></a>
   <a href="https://bundlejs.com/?q=totorobot"><img src="https://deno.bundlejs.com/?q=totorobot&badge" alt="Bundle size"></a>
 </p>
 
