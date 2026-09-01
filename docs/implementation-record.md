@@ -613,3 +613,35 @@ replaces. `scripts/measure-completions.mjs` exercises the table's own
 key-completion candidates, a different surface than `Transition`/`Actions`; no
 completion or hover instrument covers this one, so no new number is recorded
 for it.
+
+### <a id="i33"></a>I33 — A residency action's arrival member is live only on the initial state
+
+[I32](#i32)'s `Residency<I, S, K, N>` — every declared row landing on `N`,
+plus the arrival no transition caused — was shared unchanged between a
+residency action and a residency observer for the same bare state, `N`
+noninitial included. That shared type is broader than what an action can ever
+actually receive: `enter` hands the synthetic arrival to `actions` exactly
+once, at startup, gated on `to === initial` (`src/totorobot.ts`, the
+`dispatch` call in `machine`'s `start`) — no other call reaches a declared
+action with it. A residency observer has no such restriction, since a caller
+can `observe()` a bare key at any point in a running host's life and find
+that state already occupied, `initial` or not (the immediate-registration
+case in `Host.observe`).
+
+`ActionArrival<I, S, K, Init, N>` narrows this per key: `Residency<I, S, K,
+N>` where `N` is exactly `Init`, and a plain `Transition<I, S, K, '* -> N'>`
+— real rows only, no arrival — everywhere else. `Actions` now takes `Init` as
+a fifth parameter to make this comparison, consumed rather than inferred a
+second time, the same guard [I20](#i20) already holds `K` to; `ObserveAction`
+is untouched, since `observe`'s own arrival is not conditioned on `Init` at
+all. A noninitial residency action's `from` therefore excludes `undefined`
+outright, needing no narrowing to read, where before it carried the member
+unconditionally; `tests/actions.test-d.ts` pins both the noninitial exclusion
+and the initial-state case where `actions` and `observe` still agree.
+
+This narrows past what #99's own acceptance criteria asked for — "retain the
+shared type for noninitial actions as well" — on the grounds that a member no
+declared action can ever receive is exactly the kind of impossible
+combination the rest of that ticket exists to reject; keeping it here for
+uniformity's sake would have been the one place the row-correlation work left
+a synthetic case in, unchecked.

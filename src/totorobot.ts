@@ -262,10 +262,13 @@ type Listener<
 // Every action takes the same one argument, whichever kind of trigger fired it:
 // the transition record, `send` included, exactly what a matching listener
 // receives (§9 Actions). A residency trigger is an arrival, so its `to` is the
-// resident state; an edge trigger's is whatever its pattern targets. One shape
-// across both kinds and `observe`, rather than a bag per
-// kind that would carry `send` twice. Only the return types differ, and only to
-// keep a teardown from being stranded on an edge.
+// resident state; an edge trigger's is whatever its pattern targets. Edge and
+// residency share this shape with `observe` too, except that a residency
+// action's own arrival member is live only on the initial state, the one
+// state `enter` can ever hand it to; `observe`'s is live everywhere, since a
+// late registration can find any state already occupied (I32, I33). Only the
+// return types otherwise differ, and only to keep a teardown from being
+// stranded on an edge.
 // ---------------------------------------------------------------------------
 
 /** What a residency action may return, to release what it opened on exit. */
@@ -303,20 +306,39 @@ type Residency<
 > = Transition<I, S, K, `* -> ${N}`> | Arrived<I, S, N>
 
 /**
- * Fires on arrival at its state, by any route `* -> N` covers; the teardown it
- * returns runs on exit (§9 Actions). The trailing `| void` is not the
- * bivariance hole it looks like — that only opens when a signature's return
- * type *is* `void`, not when `void` is one arm of a union, where an explicit
- * wrong-shaped or `async` return is still rejected (I27). It is what lets a
- * setup with nothing to tear down end in a plain statement rather than an
- * explicit `return undefined`.
+ * What a declared action sees on its own bare state, as opposed to what
+ * `observe` always sees: the arrival member only where it can actually fire.
+ * `enter` runs once, at startup, gated on `to === initial` — the only place a
+ * declared action, fixed before the host starts, is ever handed the
+ * synthetic arrival. Every other residency action is reachable only by a real
+ * transition, so its argument is a plain `Transition`, real rows alone. This
+ * is `observe`'s own late-registration case with no equivalent here (I32).
  */
-type ResidencyAction<
+type ActionArrival<
 	I extends Vocab,
 	S extends Vocab,
 	K extends string,
+	Init extends string,
 	N extends string,
-> = (arrival: NoInfer<Residency<I, S, K, N>>) => undefined | Teardown | void
+> = [N] extends [Init]
+	? Residency<I, S, K, N>
+	: Transition<I, S, K, `* -> ${N}`>
+
+/**
+ * Fires on arrival at its state, by any route `* -> N` covers; the teardown it
+ * returns runs on exit (§9 Actions). Generic in the argument itself, rather
+ * than in `I, S, K, N`, so `Actions` and `ObserveAction` can each hand it a
+ * differently-scoped arrival (`ActionArrival`, `Residency`) without a second
+ * signature. The trailing `| void` is not the bivariance hole it looks like —
+ * that only opens when a signature's return type *is* `void`, not when
+ * `void` is one arm of a union, where an explicit wrong-shaped or `async`
+ * return is still rejected (I27). It is what lets a setup with nothing to
+ * tear down end in a plain statement rather than an explicit
+ * `return undefined`.
+ */
+type ResidencyAction<Arrival> = (
+	arrival: NoInfer<Arrival>,
+) => undefined | Teardown | void
 
 /**
  * Not bare `void`: that alone lets a function return anything, `Teardown`
@@ -374,6 +396,7 @@ type Actions<
 	I extends Vocab,
 	S extends Vocab,
 	K extends string,
+	Init extends string,
 	A extends string,
 > = {
 	readonly [P in A]: P extends `${string} -${string}> ${string}`
@@ -381,15 +404,19 @@ type Actions<
 			? Action<EdgeAction<I, S, K, P>>
 			: `not a trigger: '${P}'`
 		: P extends Name<S>
-			? Action<ResidencyAction<I, S, K, P>, Restart<I, S, K, P>>
+			? Action<
+					ResidencyAction<ActionArrival<I, S, K, Init, P>>,
+					Restart<I, S, K, P>
+				>
 			: `not a trigger: '${P}'`
 }
 
 /**
  * What `observe` takes for a bare state key: a residency action alone or in a
  * `{ run, restart }` record, the same two shapes `Actions` allows for one —
- * everything but the array, which a caller gets by calling `observe` twice (§11
- * The host).
+ * everything but the array, which a caller gets by calling `observe` twice
+ * (§11 The host). Always arrival-capable, whichever state: a late
+ * registration can find any state already occupied, `initial` or not (I32).
  */
 type ObserveAction<
 	I extends Vocab,
@@ -397,8 +424,13 @@ type ObserveAction<
 	K extends string,
 	N extends string,
 > =
-	| ResidencyAction<I, S, K, N>
-	| ({ readonly run: ResidencyAction<I, S, K, N> } & Restart<I, S, K, N>)
+	| ResidencyAction<Residency<I, S, K, N>>
+	| ({ readonly run: ResidencyAction<Residency<I, S, K, N>> } & Restart<
+			I,
+			S,
+			K,
+			N
+	  >)
 
 /** The initial payload, omitted exactly when `send` would omit one (§5). */
 type Start<S extends Vocab, Init extends string> =
@@ -607,7 +639,7 @@ export let machine: <
 	readonly inputs?: (RawI & VocabMap<Exclude<RawI, undefined>>) | undefined
 	readonly states?: (RawS & VocabMap<Exclude<RawS, undefined>>) | undefined
 	readonly transitions: Table<I, S, K>
-	readonly actions?: Actions<I, S, K, A> | undefined
+	readonly actions?: Actions<I, S, K, Init, A> | undefined
 }) => Machine<I, S, K, Init> =
 	// The implementation, never seen by a caller through the annotation above.
 	// `unknown` because a row's value can be the poison string literal, which no
