@@ -173,14 +173,6 @@ type Inputs = { open: { text: string }; cancel: undefined }
 host.send('open', { text: 'hello' })
 ```
 
-`send` requires data unless its type includes `undefined`; `null` remains
-explicit data. A union-valued name and a separate union-valued payload are
-rejected because they may mismatch. Narrow the name before forwarding them.
-
-```ts
-if (event.input === 'open') event.send(event.input, event.inputData)
-```
-
 ## `initial`: where a host starts
 
 `initial` names the state a new host begins in, and it has to be one of the
@@ -449,7 +441,18 @@ if (now.name === 'draft') {
 
 `send` takes an input name followed by its data. Omit the second argument when
 the declared data type includes `undefined`: `doc.send('cancel')`. It returns
-nothing; what happened is `doc.current`.
+nothing; what happened is `doc.current`. `null` is data like any other and must
+be passed.
+
+A union-valued name cannot be paired with a separate union-valued payload: the
+values may not belong together. Narrow the name before forwarding a transition
+record:
+
+```ts
+doc.observe('* -> *', (e) => {
+	if (e.input === 'open') e.send(e.input, e.inputData)
+})
+```
 
 **Sending is broad: every declared input is accepted from every state.** One the
 current state does not handle changes nothing; it does not throw, corrupt, or
