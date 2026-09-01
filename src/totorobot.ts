@@ -220,13 +220,57 @@ type MatchingRows<K extends string, P extends string> = K extends unknown
 		: never
 	: never
 
+/** The wildcard rules of the runtime's own comparison, at the type level. */
+type Select<Coordinate extends string, All extends string> = [
+	Coordinate,
+] extends ['*' | '']
+	? All
+	: Coordinate & All
+
 /**
- * Three names and their three payloads, narrowed by the listener's own pattern.
- * One member per declared row `K` the pattern admits, filtered against the
- * table rather than built from the pattern's own wildcards, so a source, an
- * input or a destination this table never pairs cannot appear together in one
- * record — a check on any one name narrows the payload beside it, and also
- * narrows the other two, to only what that name actually reaches (I31, I32).
+ * The pattern-only construction `Transition` built before #99 (I31): the
+ * fallback for a widened `K`, where the exact row keys are unavailable (I34).
+ */
+type PatternFacts<
+	I extends Vocab,
+	S extends Vocab,
+	P extends string,
+	X extends object,
+> = {
+	[F in Select<From<P>, Name<S>>]: {
+		[T in Select<To<P>, Name<S>>]:
+			| {
+					[N in Select<Label<P>, Name<I>>]: X & {
+						readonly input: N
+						readonly inputData: I[N]
+						readonly from: F
+						readonly fromData: S[F]
+						readonly to: T
+						readonly toData: S[T]
+					}
+			  }[Select<Label<P>, Name<I>>]
+			| ([Label<P>] extends ['']
+					? X & {
+							readonly input: undefined
+							readonly inputData: undefined
+							readonly from: F
+							readonly fromData: S[F]
+							readonly to: T
+							readonly toData: S[T]
+						}
+					: never)
+	}[Select<To<P>, Name<S>>]
+}[Select<From<P>, Name<S>>]
+
+/**
+ * Three names and their three payloads, narrowed by the listener's own
+ * pattern. One member per declared row `K` the pattern admits, filtered
+ * against the table rather than built from the pattern's own wildcards, so a
+ * source, an input or a destination this table never pairs cannot appear
+ * together in one record — a check on any one name narrows the payload
+ * beside it, and also narrows the other two, to only what that name actually
+ * reaches (I31, I32). `string extends K` falls back to `PatternFacts` for a
+ * widened `K`, which would otherwise collapse every field to `never` (I34).
  * `X` is what the record carries beyond the facts — `send` for a committed
  * transition, nothing for a restart decision (§9 Actions).
  */
@@ -236,18 +280,20 @@ type Transition<
 	K extends string = string,
 	P extends string = '* -> *',
 	X extends object = { readonly send: Send<I> },
-> = {
-	[R in MatchingRows<K, P>]: X & {
-		readonly input: [Label<R>] extends [''] ? undefined : Label<R>
-		readonly inputData: [Label<R>] extends ['']
-			? undefined
-			: Payload<I, Label<R>>
-		readonly from: From<R>
-		readonly fromData: Payload<S, From<R>>
-		readonly to: To<R>
-		readonly toData: Payload<S, To<R>>
-	}
-}[MatchingRows<K, P>]
+> = string extends K
+	? PatternFacts<I, S, P, X>
+	: {
+			[R in MatchingRows<K, P>]: X & {
+				readonly input: [Label<R>] extends [''] ? undefined : Label<R>
+				readonly inputData: [Label<R>] extends ['']
+					? undefined
+					: Payload<I, Label<R>>
+				readonly from: From<R>
+				readonly fromData: Payload<S, From<R>>
+				readonly to: To<R>
+				readonly toData: Payload<S, To<R>>
+			}
+		}[MatchingRows<K, P>]
 
 type Listener<
 	I extends Vocab = AnyVocab,

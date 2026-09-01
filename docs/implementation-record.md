@@ -645,3 +645,37 @@ declared action can ever receive is exactly the kind of impossible
 combination the rest of that ticket exists to reject; keeping it here for
 uniformity's sake would have been the one place the row-correlation work left
 a synthetic case in, unchecked.
+
+### <a id="i34"></a>I34 — `Transition`'s default `K` collapses every field to `never`, not to conservative facts
+
+`Transition<I, S, K, P>`'s row filtering (`MatchingRows<K, P>`, [I32](#i32))
+is unsound at `K`'s own default. Widen `K` to plain `string` and
+`MatchingRows<string, P>` still evaluates to `string`: `From<string>`,
+`Label<string>` and `To<string>` are all `never`, and `never extends
+anything` is true, so every coordinate check in `Matches` trivially passes.
+But indexing the row-mapped type by the bare `string` key produces an index
+signature evaluated once at `R = string`, not distributed per literal, so
+`From<R>` and its siblings resolve to `never` there too — a record with
+`from`, `to` and named inputs all `never`, in place of the conservative,
+pattern-only facts [I31](#i31) built before #99 narrowed `Transition` against
+declared rows.
+
+The fix reintroduces that pre-#99 construction as `PatternFacts<I, S, P, X>`
+and gates `Transition` on `string extends K`: true only when `K` is the bare
+`string` default, false for any literal row-key union, however large
+(`tests/scale.test-d.ts`'s forty-four rows included) — so an exact machine
+keeps full row-correlated precision and only a genuinely widened `K` falls
+back.
+
+**No known public call site reaches this today.** `Host`, `Transition` and
+their siblings are module-local, so a caller cannot name them to construct
+one with `K` left at its default; `machine()`'s own `transitions` parameter
+is typed `Table<I, S, K>`, which requires literal row keys to check each row
+and rejects a `Record<string, …>`-shaped argument outright — confirmed by
+casting one through `machine(definition as Table<I, S, string>)`, which
+`Table` refuses independently of this finding. The only reproduction found
+casts around that refusal entirely (`machine(definition as any)`), which is
+a deliberate opt-out rather than a scenario an unwitting caller reaches. The
+fix stands regardless: `K`'s own declared default is `string`
+(`K extends string = string`), and a type should not collapse to `never` at
+its own default, reachable or not.
