@@ -64,7 +64,7 @@ test('a residency action reading `from` without narrowing away the initial arriv
 	})
 })
 
-test("a noninitial residency action shares observe's arrival-capable record type: `from` stays optional-`undefined` even though only a late `observe` registration can ever produce that member for a noninitial state — eligibility is checked at declaration (#100), not by narrowing what the callback describes", () => {
+test("a noninitial residency action's `from` excludes `undefined` entirely: the arrival can only ever reach the initial state's own action, so a noninitial one needs no narrowing to read `from` — unlike the initial state's own action, and unlike `observe` for either (I33)", () => {
 	const doc = machine({
 		initial: 'off',
 		inputs: type<Inputs>(),
@@ -74,16 +74,20 @@ test("a noninitial residency action shares observe's arrival-capable record type
 			'on -toggle> off': () => {},
 		},
 		actions: {
+			// "on" is not the initial state: `enter` only ever hands the
+			// synthetic arrival to the residency whose own key matches
+			// `initial`, on startup, so this action is reachable only through
+			// the real "off -toggle> on" row.
 			on: ({ from }) => {
-				expectTypeOf(from).toEqualTypeOf<'off' | undefined>()
-				// @ts-expect-error - `from` is `undefined` on the shared arrival member
-				from.length
+				expectTypeOf(from).toEqualTypeOf<'off'>()
+				from.length // not a compile error: `from` is never `undefined` here
 			},
 		},
 	})
 	const host = doc.start()
 
-	// `observe`'s residency form narrows to the exact same union.
+	// `observe`'s residency form admits the arrival regardless: a late
+	// registration can find "on" already occupied too, initial state or not.
 	host.observe('on', ({ from }) => {
 		expectTypeOf(from).toEqualTypeOf<'off' | undefined>()
 		// @ts-expect-error - `from` is `undefined` on the synthetic arrival

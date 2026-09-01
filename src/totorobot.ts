@@ -363,6 +363,25 @@ type Residency<
 > = Transition<I, S, K, `* -> ${N}`> | Arrived<I, S, N>
 
 /**
+ * What a declared action sees on its own bare state, as opposed to what
+ * `observe` always sees: the arrival member only where it can actually fire.
+ * `enter` runs once, at startup, gated on `to === initial` — the only place a
+ * declared action, fixed before the host starts, is ever handed the
+ * synthetic arrival. Every other residency action is reachable only by a real
+ * transition, so its argument is a plain `Transition`, real rows alone. This
+ * is `observe`'s own late-registration case with no equivalent here (I33).
+ */
+type ActionArrival<
+	I extends Vocab,
+	S extends Vocab,
+	K extends string,
+	Init extends string,
+	N extends string,
+> = [N] extends [Init]
+	? Residency<I, S, K, N>
+	: Transition<I, S, K, `* -> ${N}`>
+
+/**
  * Fires on arrival at its state, by any route `* -> N` covers; the teardown it
  * returns runs on exit (§9 Actions). Generic in the argument itself, rather
  * than in `I, S, K, N`, so `Actions` and `ObserveAction` can each hand it a
@@ -430,14 +449,15 @@ type Restart<
  * neighbour. `restart` has no meaning on an edge, so only the residency arm
  * widens with it.
  *
- * A name-valid key naming no declared row (or, for a bare state, no eligible
- * arrival) reports `no row matches '…'` instead: an edge with no matching row
- * can never run, and neither can a noninitial residency with none, since
- * `enter` hands the synthetic arrival only to `initial`'s own action — the
- * one case eligible with no incoming row at all (#100). The record type
- * itself stays the shared, arrival-capable `Residency` throughout; only
- * eligibility is checked per key, here, not by narrowing what the argument
- * describes.
+ * A name-valid key naming no declared row (or, for a noninitial bare state,
+ * no incoming row at all) reports `no row matches '…'` instead: an edge with
+ * no matching row can never run, and neither can a noninitial residency with
+ * none, since `enter` hands the synthetic arrival only to `initial`'s own
+ * action (#100). This is a second, independent check alongside
+ * `ActionArrival`'s own `Init` comparison, not a replacement for it: a
+ * noninitial action's argument still excludes the arrival member it can
+ * never receive, precise as I33 left it, and eligibility is checked on top of
+ * that, not by widening it.
  */
 type Actions<
 	I extends Vocab,
@@ -454,10 +474,16 @@ type Actions<
 			: `not a trigger: '${P}'`
 		: P extends Name<S>
 			? [P] extends [Init]
-				? Action<ResidencyAction<Residency<I, S, K, P>>, Restart<I, S, K, P>>
+				? Action<
+						ResidencyAction<ActionArrival<I, S, K, Init, P>>,
+						Restart<I, S, K, P>
+					>
 				: NoMatch<K, `* -> ${P}`> extends true
 					? `no row matches '${P}'`
-					: Action<ResidencyAction<Residency<I, S, K, P>>, Restart<I, S, K, P>>
+					: Action<
+							ResidencyAction<ActionArrival<I, S, K, Init, P>>,
+							Restart<I, S, K, P>
+						>
 			: `not a trigger: '${P}'`
 }
 

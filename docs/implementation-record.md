@@ -644,12 +644,9 @@ shared type for noninitial actions as well" — on the grounds that a member no
 declared action can ever receive is exactly the kind of impossible
 combination the rest of that ticket exists to reject; keeping it here for
 uniformity's sake would have been the one place the row-correlation work left
-a synthetic case in, unchecked.
-
-**Superseded by [I35](#i35).** #100 checks whether a declaration can ever run
-directly, at the key, rather than by narrowing what its argument describes;
-once that check exists, narrowing the type too is redundant, and costs the
-uniformity #99 asked for. `ActionArrival` is gone.
+a synthetic case in, unchecked. [#100](#i35) adds a second, independent check
+alongside this one rather than replacing it: `from` stays precise here, and
+whether a noninitial action is legal to declare at all is decided separately.
 
 ### <a id="i34"></a>I34 — `Transition`'s default `K` collapses every field to `never`, not to conservative facts
 
@@ -685,27 +682,26 @@ fix stands regardless: `K`'s own declared default is `string`
 (`K extends string = string`), and a type should not collapse to `never` at
 its own default, reachable or not.
 
-### <a id="i35"></a>I35 — Registration eligibility is checked at the key, not folded into the record type
+### <a id="i35"></a>I35 — Registration eligibility is a second check, layered on `ActionArrival`'s own `Init` comparison
 
 #100 needs a noninitial residency action naming a state with no incoming row
 rejected outright: unlike a listener, whose argument merely narrows to
 `never` and stays perfectly legal to declare ([I32](#i32)), a callback
 argument's type cannot itself make the _declaration_ an error — a function
 typed to take `never` still accepts any implementation, by contravariance.
-[I33](#i33) reached for the type anyway, narrowing a noninitial action's
-`Residency` down to a plain `Transition` to make the unreachable arrival
-member disappear; that stopped an impossible read, not an impossible
-declaration, and cost the shared type #99 asked for in the process.
+[I33](#i33)'s narrowing is exactly right about what an action's argument can
+describe, and stays; it says nothing about whether the declaration should
+exist at all, which is the separate question #100 answers.
 
-`Actions<I, S, K, Init, A>` now checks the key `P` directly, the same way it
-already reports `not a trigger: '${P}'` for a malformed one: a bare state
-gets the shared, arrival-capable `Residency<I, S, K, P>` unconditionally
-again, gated on eligibility rather than narrowed by it — `[P] extends
-[Init]` is eligible on the arrival alone, no incoming row required, and
-anything else needs `NoMatch<K, '* -> ${P}'>` to be `false`. `ActionArrival`
-is gone; every residency action reads exactly the union `observe`'s does,
-`from: undefined` included, whether or not this particular declaration could
-ever actually see it.
+`Actions<I, S, K, Init, A>` now checks the key `P` directly for that second
+question, the same way it already reports `not a trigger: '${P}'` for a
+malformed one: `[P] extends [Init]` is eligible on the startup arrival alone,
+no incoming row required, matching `ActionArrival`'s own branch; anything
+else additionally needs `NoMatch<K, '* -> ${P}'>` to be `false`. Both checks
+share the one `[P] extends [Init]` discriminant rather than computing it
+twice under different names. `ActionArrival` is unchanged: a noninitial
+action's `from` still excludes `undefined` outright, and eligibility is
+checked on top of that precision, not instead of it.
 
 ### <a id="i36"></a>I36 — Rejecting a dead pattern is a parameter type, inferred through its own conditional
 
