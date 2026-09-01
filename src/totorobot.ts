@@ -454,8 +454,7 @@ interface UncheckedHost {
 
 /**
  * Every row of the table, in order, under the pair that reaches it; an immediate
- * row's input half is empty, and `send` never builds an empty one, so it stays
- * unreachable from there. One flat map rather than a map of maps, and
+ * row's input half is empty. One flat map rather than a map of maps, and
  * null-prototype, so `send('toString')` finds nothing to call (I16).
  */
 type Index = Record<string, Row[] | undefined>

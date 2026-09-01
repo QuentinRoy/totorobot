@@ -239,7 +239,7 @@ since; treat it as the reason the shape was chosen, not as a current number.
   plus a `Set` allocated per transition. Parsing at registration also shares
   `parse` with the index build, which is part of why it compresses better.
 - **Null-prototype index.** 4 B golfed (17 raw, 15 gzip), the whole cost of an
-  untyped `send({ type: 'toString' })` finding nothing rather than finding
+  untyped `send('toString')` finding nothing rather than finding
   `Object.prototype`'s method and calling it as a handler. Was +10 B over two
   levels pre-golf; the keyspace is flat now, so the prototype is bought once.
 - **`current` as a closure variable behind a getter, not a property `send`
