@@ -4,7 +4,7 @@
 
 import { expectTypeOf, test } from 'vitest'
 
-import { machine, type } from 'totorobot'
+import { machine, type, type Patterns } from 'totorobot'
 
 type Inputs = {
 	open: { text: string }
@@ -333,4 +333,81 @@ test('observe returns an unsubscribe function, not `any`', () => {
 	const off = doc.start().observe('* -> *', () => {})
 	expectTypeOf(off).not.toBeAny()
 	expectTypeOf(off).toEqualTypeOf<() => void>()
+})
+
+test('`Patterns<M>` is the matchable subset of the name-valid cross-product, wildcard generalizations included (#116)', () => {
+	// The three-state, two-input example #115/#116 measure completions
+	// against: 48 name-valid patterns, of which only these 20 admit a
+	// declared row — 11 under each input name, plus 9 more under the
+	// unlabelled, any-input wildcard, which admits a named-input row too
+	// (line 37's own "'' as the label wildcard"). Hand-enumerated, not
+	// reconstructed from `Matches` or `MatchingRows`, so a wrong wildcard
+	// rule cannot pass by agreeing with itself.
+	type Inputs = { coucou: undefined; maybe: undefined }
+	type States = { start: undefined; middle: undefined; end: undefined }
+
+	const three = machine({
+		initial: 'start',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: {
+			'start -coucou> end': () => {},
+			'start -maybe> middle': () => {},
+			'middle -maybe> start': () => {},
+		},
+	})
+
+	expectTypeOf<Patterns<typeof three>>().toEqualTypeOf<
+		| '* -coucou> *'
+		| '* -coucou> end'
+		| 'start -coucou> *'
+		| 'start -coucou> end'
+		| '* -maybe> *'
+		| '* -maybe> middle'
+		| '* -maybe> start'
+		| 'start -maybe> *'
+		| 'start -maybe> middle'
+		| 'middle -maybe> *'
+		| 'middle -maybe> start'
+		| '* -> *'
+		| '* -> start'
+		| '* -> middle'
+		| '* -> end'
+		| 'start -> *'
+		| 'start -> middle'
+		| 'start -> end'
+		| 'middle -> *'
+		| 'middle -> start'
+	>()
+})
+
+test('a pattern the table cannot fire is still rejected by hand, with the same message as before #116 (#100)', () => {
+	const host = doc.start()
+
+	// @ts-expect-error - no row matches 'empty -cancel> draft'
+	host.observe('empty -cancel> draft', () => {})
+})
+
+test('`Patterns<M>` matches what `observe` itself accepts and rejects (#116)', () => {
+	// Named directly, not through a generic forwarding helper: `observe` is
+	// overloaded, and `Parameters<typeof host.observe>` — the only way to
+	// name its parameter type from outside, since neither `Pattern` nor
+	// `Host` is exported — collapses to the last overload's, the bare-state
+	// one, same as any other overloaded method. `Patterns<M>` is the public
+	// type for this precisely because that route is not available.
+	const live: Patterns<typeof doc> = 'draft -submit> review'
+	doc.start().observe(live, () => {})
+
+	// @ts-expect-error - "empty -cancel> draft" is not in `Patterns<typeof doc>`
+	const dead: Patterns<typeof doc> = 'empty -cancel> draft'
+	void dead
+})
+
+test('the listener callback still infers its argument with no parameter annotation (#116)', () => {
+	const host = doc.start()
+
+	host.observe('draft -submit> review', (e) => {
+		expectTypeOf(e.to).toEqualTypeOf<'review'>()
+		expectTypeOf(e.toData).toEqualTypeOf<{ text: string; reviewer: string }>()
+	})
 })

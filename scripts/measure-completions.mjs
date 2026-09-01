@@ -1,15 +1,22 @@
-// Measures editor completion behaviour for the string-key layout: how many
-// entries the language server offers for a partially-typed transition key, how
-// large the response is, and how long it takes.
+// Measures editor completion behaviour for two surfaces: the string-key
+// transition table, and `observe()`'s pattern argument (#116).
 //
 // This exists because acceptance-cases.md lists "language-server completion and
-// diagnostic latency" among the 20-state measurements, and the string-key layout
-// is the one whose key type is a cross-product — |inputs| x |states|^2.
+// diagnostic latency" among the 20-state measurements. The transition-table
+// layout is one whose key type is a cross-product — |inputs| x |states|^2 — and
+// so, before #116, was `observe()`'s pattern argument: the same cross-product,
+// filtered against the declared table only at the point of rejecting an
+// unreachable one, never at the point of offering completions.
 //
 //   node scripts/measure-completions.mjs [projectDir]
 //
-// Defaults to explorations/candidates/n1-transition-table, which holds both an
-// 80-member and a 4 000-member machine in playground.ts.
+// With no argument, measures both surfaces: the transition table against
+// explorations/candidates/n1-transition-table (an 80-member and a
+// 4 000-member machine in playground.ts) and `observe()` against
+// scripts/completion-fixtures/observe-machine (the 20-state, 44-row
+// acceptance machine, imported through the real library). Passing a
+// directory measures the transition-table surface against it alone, the
+// original single-project form.
 //
 // Two notes for anyone extending this:
 //
@@ -46,22 +53,15 @@ function getExePath() {
 }
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
-const projectDir = resolve(
-	process.argv[2] ??
-		join(repoRoot, 'explorations/candidates/n1-transition-table'),
-)
-const probePath = join(projectDir, '_completion-probe.ts')
-const probeUri = pathToFileURL(probePath).href
-const playground = readFileSync(join(projectDir, 'playground.ts'), 'utf8')
 
 /** Where to insert a new key: the last transition of each machine. */
-const ANCHORS = {
+const TABLE_ANCHORS = {
 	small: `\t\t'submit: empty -> published': ({ input, skip }) =>\n\t\t\tinput.route === 'publish' ? { text: '' } : skip(),\n`,
 	big: `\t\t'release: dragging -> dropped': () => {},\n`,
 }
 
 /** Cases: which machine, what has been typed so far, and a label. */
-const CASES = [
+const TABLE_CASES = [
 	['small', '', '64 members, nothing typed'],
 	['small', 'sub', '64, `sub`'],
 	['small', 'submit: dr', '64, `submit: dr`'],
@@ -72,157 +72,222 @@ const CASES = [
 	['big', 'save: editing -> sa', '4 000, `save: editing -> sa`'],
 ]
 
-function build(which, typed) {
-	const anchor = ANCHORS[which]
-	const at = playground.indexOf(anchor)
-	if (at < 0) throw new Error(`anchor not found for ${which} machine`)
-	const insertAt = at + anchor.length
-	const inserted = `\t\t'${typed}`
-	const text =
-		playground.slice(0, insertAt) + inserted + playground.slice(insertAt)
-	const lines = text.slice(0, insertAt + inserted.length).split('\n')
-	return {
-		text,
-		line: lines.length - 1,
-		character: lines[lines.length - 1].length,
-	}
+/**
+ * Where to insert a new `observe()` call: right after `start()`, on its own
+ * line. The 20-state acceptance machine has one anchor, not one per size —
+ * unlike the transition table there is no small/big split to measure here.
+ */
+const OBSERVE_ANCHORS = {
+	observe: `const host = stress.start({ visits: 0, owner: 's00' })\n`,
 }
 
-// --- a minimal LSP client -----------------------------------------------------
+const OBSERVE_CASES = [
+	['observe', '', "20 states, 44 rows, observe(''), nothing typed"],
+	['observe', 's0', '20/44, `s0`'],
+	['observe', 's00 -', '20/44, `s00 -`'],
+]
 
-const proc = spawn(getExePath(), ['--lsp', '--stdio'], {
-	stdio: ['pipe', 'pipe', 'pipe'],
-})
-const stderr = []
-proc.stderr.on('data', (d) => stderr.push(d.toString()))
+/**
+ * Runs one measurement pass: spawns its own `tsc --lsp` (a language server
+ * keeps per-project state, so two projects cannot share a process), builds
+ * each case by inserting `typed` after `anchor` in `playground.ts`, and
+ * prints a table of what `textDocument/completion` returns.
+ */
+async function measure(projectDir, anchors, cases, insert) {
+	const probePath = join(projectDir, '_completion-probe.ts')
+	const probeUri = pathToFileURL(probePath).href
+	const playground = readFileSync(join(projectDir, 'playground.ts'), 'utf8')
 
-let buf = Buffer.alloc(0)
-const pending = new Map()
-let nextId = 1
-
-function send(msg) {
-	const body = JSON.stringify(msg)
-	proc.stdin.write(
-		`Content-Length: ${Buffer.byteLength(body, 'utf8')}\r\n\r\n${body}`,
-	)
-}
-
-proc.stdout.on('data', (chunk) => {
-	buf = Buffer.concat([buf, chunk])
-	for (;;) {
-		const headerEnd = buf.indexOf('\r\n\r\n')
-		if (headerEnd < 0) return
-		const match = /Content-Length: (\d+)/i.exec(
-			buf.subarray(0, headerEnd).toString('utf8'),
-		)
-		if (!match) return
-		const length = Number(match[1])
-		const start = headerEnd + 4
-		if (buf.length < start + length) return
-		const msg = JSON.parse(buf.subarray(start, start + length).toString('utf8'))
-		buf = buf.subarray(start + length)
-
-		if (msg.id !== undefined && msg.method) {
-			send({ jsonrpc: '2.0', id: msg.id, result: null }) // see the header note
-		} else if (msg.id !== undefined && pending.has(msg.id)) {
-			const settle = pending.get(msg.id)
-			pending.delete(msg.id)
-			settle(msg)
+	function build(which, typed) {
+		const anchor = anchors[which]
+		const at = playground.indexOf(anchor)
+		if (at < 0)
+			throw new Error(`anchor not found for ${which} in ${projectDir}`)
+		const insertAt = at + anchor.length
+		const inserted = insert(typed)
+		const text =
+			playground.slice(0, insertAt) + inserted + playground.slice(insertAt)
+		const lines = text.slice(0, insertAt + inserted.length).split('\n')
+		return {
+			text,
+			line: lines.length - 1,
+			character: lines[lines.length - 1].length,
 		}
 	}
-})
 
-function request(method, params, timeoutMs = 60_000) {
-	const id = nextId++
-	return new Promise((res, rej) => {
-		pending.set(id, res)
-		send({ jsonrpc: '2.0', id, method, params })
-		setTimeout(() => {
-			if (pending.delete(id)) rej(new Error(`timeout: ${method}`))
-		}, timeoutMs)
+	const proc = spawn(getExePath(), ['--lsp', '--stdio'], {
+		stdio: ['pipe', 'pipe', 'pipe'],
 	})
+	const stderr = []
+	proc.stderr.on('data', (d) => stderr.push(d.toString()))
+
+	let buf = Buffer.alloc(0)
+	const pending = new Map()
+	let nextId = 1
+
+	function send(msg) {
+		const body = JSON.stringify(msg)
+		proc.stdin.write(
+			`Content-Length: ${Buffer.byteLength(body, 'utf8')}\r\n\r\n${body}`,
+		)
+	}
+
+	proc.stdout.on('data', (chunk) => {
+		buf = Buffer.concat([buf, chunk])
+		for (;;) {
+			const headerEnd = buf.indexOf('\r\n\r\n')
+			if (headerEnd < 0) return
+			const match = /Content-Length: (\d+)/i.exec(
+				buf.subarray(0, headerEnd).toString('utf8'),
+			)
+			if (!match) return
+			const length = Number(match[1])
+			const start = headerEnd + 4
+			if (buf.length < start + length) return
+			const msg = JSON.parse(
+				buf.subarray(start, start + length).toString('utf8'),
+			)
+			buf = buf.subarray(start + length)
+
+			if (msg.id !== undefined && msg.method) {
+				send({ jsonrpc: '2.0', id: msg.id, result: null }) // see the header note
+			} else if (msg.id !== undefined && pending.has(msg.id)) {
+				const settle = pending.get(msg.id)
+				pending.delete(msg.id)
+				settle(msg)
+			}
+		}
+	})
+
+	function request(method, params, timeoutMs = 60_000) {
+		const id = nextId++
+		return new Promise((res, rej) => {
+			pending.set(id, res)
+			send({ jsonrpc: '2.0', id, method, params })
+			setTimeout(() => {
+				if (pending.delete(id)) rej(new Error(`timeout: ${method}`))
+			}, timeoutMs)
+		})
+	}
+
+	try {
+		const init = await request('initialize', {
+			processId: process.pid,
+			rootUri: pathToFileURL(projectDir).href,
+			capabilities: {
+				workspace: {
+					configuration: true,
+					didChangeConfiguration: { dynamicRegistration: true },
+				},
+				textDocument: { completion: { contextSupport: true } },
+			},
+		})
+		if (init.error) throw new Error(`initialize: ${JSON.stringify(init.error)}`)
+		send({ jsonrpc: '2.0', method: 'initialized', params: {} })
+
+		console.log(`${projectDir.replace(repoRoot + '/', '')}\n`)
+		console.log(
+			'| case | entries | response | isIncomplete | cold ms | warm ms |',
+		)
+		console.log('| --- | --- | --- | --- | --- | --- |')
+
+		let version = 0
+		for (const [which, typed, label] of cases) {
+			const { text, line, character } = build(which, typed)
+			writeFileSync(probePath, text)
+
+			const doc = { uri: probeUri, version: ++version }
+			if (version === 1) {
+				send({
+					jsonrpc: '2.0',
+					method: 'textDocument/didOpen',
+					params: { textDocument: { ...doc, languageId: 'typescript', text } },
+				})
+			} else {
+				send({
+					jsonrpc: '2.0',
+					method: 'textDocument/didChange',
+					params: { textDocument: doc, contentChanges: [{ text }] },
+				})
+			}
+
+			const ask = () =>
+				request('textDocument/completion', {
+					textDocument: { uri: probeUri },
+					position: { line, character },
+				})
+
+			const t0 = performance.now()
+			const first = await ask()
+			const cold = performance.now() - t0
+			if (first.error)
+				throw new Error(`completion: ${JSON.stringify(first.error)}`)
+
+			const warm = []
+			for (let i = 0; i < 5; i++) {
+				const t = performance.now()
+				await ask()
+				warm.push(performance.now() - t)
+			}
+			warm.sort((a, b) => a - b)
+
+			const list = first.result
+			const items = Array.isArray(list) ? list : (list?.items ?? [])
+			const incomplete = Array.isArray(list)
+				? 'n/a'
+				: String(list?.isIncomplete)
+			const kb = Buffer.byteLength(JSON.stringify(list), 'utf8') / 1024
+
+			console.log(
+				`| ${label} | ${items.length} | ${kb.toFixed(0)} KB | ${incomplete} | ` +
+					`${cold.toFixed(0)} | ${warm[2].toFixed(0)} |`,
+			)
+		}
+		console.log()
+	} finally {
+		try {
+			rmSync(probePath)
+		} catch {}
+		proc.kill()
+	}
 }
 
-// --- run ----------------------------------------------------------------------
+/** A new transition row, inserted into the object literal right after the anchor. */
+const insertTableRow = (typed) => `\t\t'${typed}`
+
+/** A new `observe()` call, inserted as its own statement after `start()`. */
+const insertObserveCall = (typed) => `\nhost.observe('${typed}`
+
+const explicitDir = process.argv[2]
+const targets = explicitDir
+	? [
+			{
+				dir: resolve(explicitDir),
+				anchors: TABLE_ANCHORS,
+				cases: TABLE_CASES,
+				insert: insertTableRow,
+			},
+		]
+	: [
+			{
+				dir: join(repoRoot, 'explorations/candidates/n1-transition-table'),
+				anchors: TABLE_ANCHORS,
+				cases: TABLE_CASES,
+				insert: insertTableRow,
+			},
+			{
+				dir: join(repoRoot, 'scripts/completion-fixtures/observe-machine'),
+				anchors: OBSERVE_ANCHORS,
+				cases: OBSERVE_CASES,
+				insert: insertObserveCall,
+			},
+		]
 
 try {
-	const init = await request('initialize', {
-		processId: process.pid,
-		rootUri: pathToFileURL(projectDir).href,
-		capabilities: {
-			workspace: {
-				configuration: true,
-				didChangeConfiguration: { dynamicRegistration: true },
-			},
-			textDocument: { completion: { contextSupport: true } },
-		},
-	})
-	if (init.error) throw new Error(`initialize: ${JSON.stringify(init.error)}`)
-	send({ jsonrpc: '2.0', method: 'initialized', params: {} })
-
-	console.log(`${projectDir.replace(repoRoot + '/', '')}\n`)
-	console.log(
-		'| case | entries | response | isIncomplete | cold ms | warm ms |',
-	)
-	console.log('| --- | --- | --- | --- | --- | --- |')
-
-	let version = 0
-	for (const [which, typed, label] of CASES) {
-		const { text, line, character } = build(which, typed)
-		writeFileSync(probePath, text)
-
-		const doc = { uri: probeUri, version: ++version }
-		if (version === 1) {
-			send({
-				jsonrpc: '2.0',
-				method: 'textDocument/didOpen',
-				params: { textDocument: { ...doc, languageId: 'typescript', text } },
-			})
-		} else {
-			send({
-				jsonrpc: '2.0',
-				method: 'textDocument/didChange',
-				params: { textDocument: doc, contentChanges: [{ text }] },
-			})
-		}
-
-		const ask = () =>
-			request('textDocument/completion', {
-				textDocument: { uri: probeUri },
-				position: { line, character },
-			})
-
-		const t0 = performance.now()
-		const first = await ask()
-		const cold = performance.now() - t0
-		if (first.error)
-			throw new Error(`completion: ${JSON.stringify(first.error)}`)
-
-		const warm = []
-		for (let i = 0; i < 5; i++) {
-			const t = performance.now()
-			await ask()
-			warm.push(performance.now() - t)
-		}
-		warm.sort((a, b) => a - b)
-
-		const list = first.result
-		const items = Array.isArray(list) ? list : (list?.items ?? [])
-		const incomplete = Array.isArray(list) ? 'n/a' : String(list?.isIncomplete)
-		const kb = Buffer.byteLength(JSON.stringify(list), 'utf8') / 1024
-
-		console.log(
-			`| ${label} | ${items.length} | ${kb.toFixed(0)} KB | ${incomplete} | ` +
-				`${cold.toFixed(0)} | ${warm[2].toFixed(0)} |`,
-		)
+	for (const { dir, anchors, cases, insert } of targets) {
+		await measure(dir, anchors, cases, insert)
 	}
 } catch (error) {
 	console.error(`FAILED: ${error.message}`)
-	if (stderr.length) console.error(stderr.join('').slice(0, 1000))
 	process.exitCode = 1
-} finally {
-	try {
-		rmSync(probePath)
-	} catch {}
-	proc.kill()
 }
