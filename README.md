@@ -5,6 +5,10 @@
 <h1 align="center">Totorobot</h1>
 
 <p align="center">
+  Dead-simple state machines. Hard-core typing. No bloat.
+</p>
+
+<p align="center">
   <a href="https://bundlejs.com/?q=totorobot"><img src="https://deno.bundlejs.com/?q=totorobot&badge=detailed" alt="Bundle size"></a>
 </p>
 
