@@ -480,7 +480,7 @@ a probe that only writes `restart: (from, to) => from.id !== to.id` would call
 this safe. The fix is the same shape as I14's: wrap both parameters in
 `NoInfer`. Pinned in `tests/actions.test-d.ts`.
 
-### <a id="i29"></a>I29: A tuple union keeps separate send arguments correlated
+### <a id="i29"></a>I29 — A tuple union keeps separate send arguments correlated
 
 `send` maps each input entry to one tuple, then accepts their union as its rest
 parameter. Required data uses `[name, data]`; data that admits `undefined` uses
@@ -488,6 +488,12 @@ parameter. Required data uses `[name, data]`; data that admits `undefined` uses
 union-valued payload. Narrowing the name first selects one tuple and permits
 forwarding. A generic `(name: N, data: I[N])` accepts mismatched unions and is
 therefore too broad.
+
+The full input migration adds 20 raw bytes and 6 brotli bytes: 1,512 to 1,532
+raw, and 767 to 773 brotli. On the public type suite, instantiations move from
+177,239 to 178,970 and check time from 0.195 to 0.229 seconds. Representative
+inferred-table completion probes remain at zero entries and zero response bytes,
+with zero-millisecond warm latency.
 
 ### <a id="i30"></a>I30 — Input maps need a separate shape check
 
