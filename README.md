@@ -1,6 +1,19 @@
-# Totorobot
+<p align="center">
+  <img src="assets/totorobot.svg" alt="Totorobot mascot playing an electric guitar" width="240">
+</p>
 
-[![Bundle size](https://deno.bundlejs.com/?q=totorobot&badge=detailed)](https://bundlejs.com/?q=totorobot)
+<h1 align="center">Totorobot</h1>
+
+<p align="center">
+  Dead-simple state machines. Hard-core typing. No bloat.
+</p>
+
+<br>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/totorobot"><img src="https://img.shields.io/npm/v/totorobot?label=" alt="npm version"></a>
+  <a href="https://bundlejs.com/?q=totorobot"><img src="https://deno.bundlejs.com/?q=totorobot&badge" alt="Bundle size"></a>
+</p>
 
 Totorobot combines clean, readable definitions with precise types. Its API reads
 like a transition graph, and TypeScript checks the details around it.
