@@ -248,6 +248,23 @@ test('an edge trigger naming only declared state/input names, but no declared ro
 	})
 })
 
+test('a broad edge trigger with no matching row is rejected the same way, wildcard source and wildcard target alike (#100)', () => {
+	machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
+		actions: {
+			// "gone" has no outgoing row at all.
+			// @ts-expect-error - no row matches 'gone -> *'
+			'gone -> *': () => {},
+			// no row uses "go", from any source.
+			// @ts-expect-error - no row matches '* -go> gone'
+			'* -go> gone': () => {},
+		},
+	})
+})
+
 test('a malformed trigger key reports on its own row, and does not poison a well-formed neighbour', () => {
 	machine({
 		initial: 'off',
