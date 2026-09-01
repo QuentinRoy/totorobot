@@ -168,13 +168,6 @@ type Table<I extends Vocab, S extends Vocab, K extends string> = {
 // What a running machine is
 // ---------------------------------------------------------------------------
 
-/** The wildcard rules of the runtime's own comparison, at the type level. */
-type Select<Coordinate extends string, All extends string> = [
-	Coordinate,
-] extends ['*' | '']
-	? All
-	: Coordinate & All
-
 /**
  * The name and the payload as one union member, so a name check narrows the data
  * beside it (§5 The declared vocabulary). A state carrying nothing keeps its
@@ -201,19 +194,48 @@ type Send<I extends Vocab> = (
 ) => void
 
 /**
- * Three names and their three payloads, narrowed by the listener's own pattern.
- * One member per source, destination and input the pattern admits, because that
- * product is what lets a check on any one name narrow the payload beside it
- * (I31). The immediate hop is a separate arm because the innermost mapped type
- * is indexed by input name; a labelled pattern drops it. `X` is what the record
- * carries beyond the facts — `send` for a committed transition, nothing for a
- * restart decision (§9 Actions).
+ * A declared row matches a pattern when every coordinate agrees: `*` in a
+ * pattern's state position admits any name; a pattern's label position has no
+ * wildcard spelling (line 127) — the omitted, unlabelled form is the broad one
+ * already, so it admits a row's label, named or absent alike (I31, I32).
  */
-type Transition<
-	I extends Vocab = AnyVocab,
-	S extends Vocab = AnyVocab,
-	P extends string = '* -> *',
-	X extends object = { readonly send: Send<I> },
+type Matches<Row extends string, P extends string> = (
+	From<P> extends '*' ? true : From<Row> extends From<P> ? true : false
+) extends true
+	? (
+			Label<P> extends '' ? true : Label<Row> extends Label<P> ? true : false
+		) extends true
+		? To<P> extends '*'
+			? true
+			: To<Row> extends To<P>
+				? true
+				: false
+		: false
+	: false
+
+/** The declared rows a pattern admits, one member of `K` per match. */
+type MatchingRows<K extends string, P extends string> = K extends unknown
+	? Matches<K, P> extends true
+		? K
+		: never
+	: never
+
+/** The wildcard rules of the runtime's own comparison, at the type level. */
+type Select<Coordinate extends string, All extends string> = [
+	Coordinate,
+] extends ['*' | '']
+	? All
+	: Coordinate & All
+
+/**
+ * The pattern-only construction `Transition` built before #99 (I31): the
+ * fallback for a widened `K`, where the exact row keys are unavailable (I34).
+ */
+type PatternFacts<
+	I extends Vocab,
+	S extends Vocab,
+	P extends string,
+	X extends object,
 > = {
 	[F in Select<From<P>, Name<S>>]: {
 		[T in Select<To<P>, Name<S>>]:
@@ -240,11 +262,45 @@ type Transition<
 	}[Select<To<P>, Name<S>>]
 }[Select<From<P>, Name<S>>]
 
+/**
+ * Three names and their three payloads, narrowed by the listener's own
+ * pattern. One member per declared row `K` the pattern admits, filtered
+ * against the table rather than built from the pattern's own wildcards, so a
+ * source, an input or a destination this table never pairs cannot appear
+ * together in one record — a check on any one name narrows the payload
+ * beside it, and also narrows the other two, to only what that name actually
+ * reaches (I31, I32). `string extends K` falls back to `PatternFacts` for a
+ * widened `K`, which would otherwise collapse every field to `never` (I34).
+ * `X` is what the record carries beyond the facts — `send` for a committed
+ * transition, nothing for a restart decision (§9 Actions).
+ */
+type Transition<
+	I extends Vocab = AnyVocab,
+	S extends Vocab = AnyVocab,
+	K extends string = string,
+	P extends string = '* -> *',
+	X extends object = { readonly send: Send<I> },
+> = string extends K
+	? PatternFacts<I, S, P, X>
+	: {
+			[R in MatchingRows<K, P>]: X & {
+				readonly input: [Label<R>] extends [''] ? undefined : Label<R>
+				readonly inputData: [Label<R>] extends ['']
+					? undefined
+					: Payload<I, Label<R>>
+				readonly from: From<R>
+				readonly fromData: Payload<S, From<R>>
+				readonly to: To<R>
+				readonly toData: Payload<S, To<R>>
+			}
+		}[MatchingRows<K, P>]
+
 type Listener<
 	I extends Vocab = AnyVocab,
 	S extends Vocab = AnyVocab,
+	K extends string = string,
 	P extends string = '* -> *',
-> = (transition: Transition<I, S, P>) => void
+> = (transition: Transition<I, S, K, P>) => void
 
 // ---------------------------------------------------------------------------
 // Actions
@@ -252,10 +308,13 @@ type Listener<
 // Every action takes the same one argument, whichever kind of trigger fired it:
 // the transition record, `send` included, exactly what a matching listener
 // receives (§9 Actions). A residency trigger is an arrival, so its `to` is the
-// resident state; an edge trigger's is whatever its pattern targets. One shape
-// across both kinds and `observe`, rather than a bag per
-// kind that would carry `send` twice. Only the return types differ, and only to
-// keep a teardown from being stranded on an edge.
+// resident state; an edge trigger's is whatever its pattern targets. Edge and
+// residency share this shape with `observe` too, except that a residency
+// action's own arrival member is live only on the initial state, the one
+// state `enter` can ever hand it to; `observe`'s is live everywhere, since a
+// late registration can find any state already occupied (I32, I33). Only the
+// return types otherwise differ, and only to keep a teardown from being
+// stranded on an edge.
 // ---------------------------------------------------------------------------
 
 /** What a residency action may return, to release what it opened on exit. */
@@ -281,16 +340,50 @@ type Arrived<I extends Vocab, S extends Vocab, N extends string> = {
 }
 
 /**
- * Fires on arrival at its state, by any route `* -> N` covers; the teardown it
- * returns runs on exit (§9 Actions). The trailing `| void` is not the
- * bivariance hole it looks like — that only opens when a signature's return
- * type *is* `void`, not when `void` is one arm of a union, where an explicit
- * wrong-shaped or `async` return is still rejected (I27). It is what lets a
- * setup with nothing to tear down end in a plain statement rather than an
- * explicit `return undefined`.
+ * What a residency action and a residency observer for the same bare state
+ * share: every declared row landing on `N`, correlated per row like any other
+ * `Transition`, plus the arrival no transition caused (I31, I32).
  */
-type ResidencyAction<I extends Vocab, S extends Vocab, N extends string> = (
-	arrival: NoInfer<Transition<I, S, `* -> ${N}`>> | Arrived<I, S, N>,
+type Residency<
+	I extends Vocab,
+	S extends Vocab,
+	K extends string,
+	N extends string,
+> = Transition<I, S, K, `* -> ${N}`> | Arrived<I, S, N>
+
+/**
+ * What a declared action sees on its own bare state, as opposed to what
+ * `observe` always sees: the arrival member only where it can actually fire.
+ * `enter` runs once, at startup, gated on `to === initial` — the only place a
+ * declared action, fixed before the host starts, is ever handed the
+ * synthetic arrival. Every other residency action is reachable only by a real
+ * transition, so its argument is a plain `Transition`, real rows alone. This
+ * is `observe`'s own late-registration case with no equivalent here (I32).
+ */
+type ActionArrival<
+	I extends Vocab,
+	S extends Vocab,
+	K extends string,
+	Init extends string,
+	N extends string,
+> = [N] extends [Init]
+	? Residency<I, S, K, N>
+	: Transition<I, S, K, `* -> ${N}`>
+
+/**
+ * Fires on arrival at its state, by any route `* -> N` covers; the teardown it
+ * returns runs on exit (§9 Actions). Generic in the argument itself, rather
+ * than in `I, S, K, N`, so `Actions` and `ObserveAction` can each hand it a
+ * differently-scoped arrival (`ActionArrival`, `Residency`) without a second
+ * signature. The trailing `| void` is not the bivariance hole it looks like —
+ * that only opens when a signature's return type *is* `void`, not when
+ * `void` is one arm of a union, where an explicit wrong-shaped or `async`
+ * return is still rejected (I27). It is what lets a setup with nothing to
+ * tear down end in a plain statement rather than an explicit
+ * `return undefined`.
+ */
+type ResidencyAction<Arrival> = (
+	arrival: NoInfer<Arrival>,
 ) => undefined | Teardown | void
 
 /**
@@ -300,9 +393,12 @@ type ResidencyAction<I extends Vocab, S extends Vocab, N extends string> = (
  * rejected (I27) — while still taking a plain block body with nothing to
  * return.
  */
-type EdgeAction<I extends Vocab, S extends Vocab, P extends string> = (
-	transition: NoInfer<Transition<I, S, P>>,
-) => undefined | void
+type EdgeAction<
+	I extends Vocab,
+	S extends Vocab,
+	K extends string,
+	P extends string,
+> = (transition: NoInfer<Transition<I, S, K, P>>) => undefined | void
 
 /**
  * An action is its run function alone, a record with `run`, or an array of
@@ -318,14 +414,20 @@ type Action<Run, Extra extends object = {}> =
 /**
  * `restart` is consulted only on a self-transition, so its facts are that hop's:
  * the same six a committed record carries, minus `send`, which is what keeps the
- * decision pure in the types and at runtime alike (§9 Actions). The default is to
+ * decision pure in the types and at runtime alike (§9 Actions). No arrival
+ * member: a predicate is never invoked for one (I31, I32). The default is to
  * restart. Without `NoInfer` the predicate reopens `S` and the table collapses
  * (I28).
  */
-type Restart<I extends Vocab, S extends Vocab, N extends string> = {
+type Restart<
+	I extends Vocab,
+	S extends Vocab,
+	K extends string,
+	N extends string,
+> = {
 	readonly restart?:
 		| boolean
-		| ((facts: NoInfer<Transition<I, S, `${N} -> ${N}`, {}>>) => boolean)
+		| ((facts: NoInfer<Transition<I, S, K, `${N} -> ${N}`, {}>>) => boolean)
 }
 
 /**
@@ -336,25 +438,45 @@ type Restart<I extends Vocab, S extends Vocab, N extends string> = {
  * neighbour. `restart` has no meaning on an edge, so only the residency arm
  * widens with it.
  */
-type Actions<I extends Vocab, S extends Vocab, A extends string> = {
+type Actions<
+	I extends Vocab,
+	S extends Vocab,
+	K extends string,
+	Init extends string,
+	A extends string,
+> = {
 	readonly [P in A]: P extends `${string} -${string}> ${string}`
 		? P extends Pattern<I, S>
-			? Action<EdgeAction<I, S, P>>
+			? Action<EdgeAction<I, S, K, P>>
 			: `not a trigger: '${P}'`
 		: P extends Name<S>
-			? Action<ResidencyAction<I, S, P>, Restart<I, S, P>>
+			? Action<
+					ResidencyAction<ActionArrival<I, S, K, Init, P>>,
+					Restart<I, S, K, P>
+				>
 			: `not a trigger: '${P}'`
 }
 
 /**
  * What `observe` takes for a bare state key: a residency action alone or in a
  * `{ run, restart }` record, the same two shapes `Actions` allows for one —
- * everything but the array, which a caller gets by calling `observe` twice (§11
- * The host).
+ * everything but the array, which a caller gets by calling `observe` twice
+ * (§11 The host). Always arrival-capable, whichever state: a late
+ * registration can find any state already occupied, `initial` or not (I32).
  */
-type ObserveAction<I extends Vocab, S extends Vocab, N extends string> =
-	| ResidencyAction<I, S, N>
-	| ({ readonly run: ResidencyAction<I, S, N> } & Restart<I, S, N>)
+type ObserveAction<
+	I extends Vocab,
+	S extends Vocab,
+	K extends string,
+	N extends string,
+> =
+	| ResidencyAction<Residency<I, S, K, N>>
+	| ({ readonly run: ResidencyAction<Residency<I, S, K, N>> } & Restart<
+			I,
+			S,
+			K,
+			N
+	  >)
 
 /** The initial payload, omitted exactly when `send` would omit one (§5). */
 type Start<S extends Vocab, Init extends string> =
@@ -363,7 +485,11 @@ type Start<S extends Vocab, Init extends string> =
 		: [data: Payload<S, Init>]
 
 /** A running machine: the only mutable thing in the design. */
-interface Host<I extends Vocab = AnyVocab, S extends Vocab = AnyVocab> {
+interface Host<
+	I extends Vocab = AnyVocab,
+	S extends Vocab = AnyVocab,
+	K extends string = string,
+> {
 	readonly current: Current<S>
 	readonly send: Send<I>
 	// Generic in the pattern, so a listener's record is narrowed by it. A bare
@@ -374,9 +500,12 @@ interface Host<I extends Vocab = AnyVocab, S extends Vocab = AnyVocab> {
 	readonly observe: {
 		<P extends Pattern<I, S>>(
 			pattern: P,
-			listener: Listener<I, S, P>,
+			listener: Listener<I, S, K, P>,
 		): () => void
-		<N extends Name<S>>(pattern: N, action: ObserveAction<I, S, N>): () => void
+		<N extends Name<S>>(
+			pattern: N,
+			action: ObserveAction<I, S, K, N>,
+		): () => void
 	}
 }
 
@@ -393,7 +522,7 @@ interface Machine<
 	K extends string = string,
 	Init extends string = string,
 > extends Vocabulary<I, S, K> {
-	readonly start: (...data: Start<S, Init>) => Host<I, S>
+	readonly start: (...data: Start<S, Init>) => Host<I, S, K>
 }
 
 // ---------------------------------------------------------------------------
@@ -556,7 +685,7 @@ export let machine: <
 	readonly inputs?: (RawI & VocabMap<Exclude<RawI, undefined>>) | undefined
 	readonly states?: (RawS & VocabMap<Exclude<RawS, undefined>>) | undefined
 	readonly transitions: Table<I, S, K>
-	readonly actions?: Actions<I, S, A> | undefined
+	readonly actions?: Actions<I, S, K, Init, A> | undefined
 }) => Machine<I, S, K, Init> =
 	// The implementation, never seen by a caller through the annotation above.
 	// `unknown` because a row's value can be the poison string literal, which no

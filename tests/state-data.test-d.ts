@@ -189,7 +189,9 @@ test('a restart predicate sees the same transition facts, and neither send nor s
 					expectTypeOf(facts.fromData).toEqualTypeOf<{ text: string }>()
 					expectTypeOf(facts.to).toEqualTypeOf<'draft'>()
 					expectTypeOf(facts.toData).toEqualTypeOf<{ text: string }>()
-					expectTypeOf(facts.input).toEqualTypeOf<'revise' | undefined>()
+					// No immediate self-loop is declared, only the named one: `input`
+					// is not widened with a synthetic `undefined` member (#99).
+					expectTypeOf(facts.input).toEqualTypeOf<'revise'>()
 					// @ts-expect-error - a restart decision is pure
 					facts.send
 					// @ts-expect-error - and it cannot decline the hop either

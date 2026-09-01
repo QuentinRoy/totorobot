@@ -572,5 +572,110 @@ sources, destinations and inputs its pattern admits — the same |states|² ×
 narrows all six fields. Intersecting the shared half onto each member (`X &
 { … }`, where `X` is `{ send }` or `{}`) keeps that narrowing intact, which is
 what lets one type serve a committed record and a restart predicate's facts.
-#99 filters the product against the table; until then it carries pairings no row
-declares.
+[#99](#i32) filters the product against the table, which this entry described
+before that filtering existed.
+
+### <a id="i32"></a>I32 — Filtering the product against the table is a mapped type over the row union
+
+[I31](#i31) built `Transition` as the product of a _pattern's_ own wildcards —
+every source, destination and input the pattern admits, whether or not the
+_table_ declares that pairing. #99 filters it: `Transition<I, S, K, P>` maps
+over the declared rows `K`, keeping only those a pattern's `From`, `Label` and
+`To` each individually admit (`MatchingRows`), then builds one record per
+surviving row from that row's own three coordinates — never from the
+pattern's. A mapped type distributes over a union of string-literal keys, so
+each surviving row keeps its coordinates correlated for free; the per-coordinate
+`Select` machinery I31 described, which independently widened each position to
+"every declared name," is gone with it.
+
+An omitted pattern label matches any row's label, named or absent alike — the
+same rule the runtime's own comparison already used (`l === '' || l ===
+e.input`, in `fire`); a specific label matches only its own name. Residency and
+restart facts reuse `Transition` rather than widening their own coordinates
+(`Residency<I, S, K, N>`, unioned with the arrival `Transition` never carries).
+
+**A hop no declared row supports resolves to `never`, not to a widened guess.**
+A `restart` predicate for a state with no self-transition row, or a residency
+read against a table with no row reaching it, now takes `never`: every field
+read off it is then a type error, rather than silently admitting the whole
+vocabulary. Existing tests that attached such a predicate, or read such a
+residency's `from`, had exploited I31's over-permissiveness; they now either
+declare the missing row or expect the narrower union
+(`tests/patterns.test-d.ts`, `tests/actions.test-d.ts`,
+`tests/state-data.test-d.ts`).
+
+Measured: the emitted bundle is byte-identical (`pnpm size`, before and after —
+types are erased). The suite's combined runtime-plus-type check stays in the
+same tens-to-few-hundred-millisecond range, the twenty-state/forty-four-row
+fixture (`tests/scale.test-d.ts`) included — expected, since a union of
+forty-four declared rows is smaller than the |states|² × |inputs| product it
+replaces. `scripts/measure-completions.mjs` exercises the table's own
+key-completion candidates, a different surface than `Transition`/`Actions`; no
+completion or hover instrument covers this one, so no new number is recorded
+for it.
+
+### <a id="i33"></a>I33 — A residency action's arrival member is live only on the initial state
+
+[I32](#i32)'s `Residency<I, S, K, N>` — every declared row landing on `N`,
+plus the arrival no transition caused — was shared unchanged between a
+residency action and a residency observer for the same bare state, `N`
+noninitial included. That shared type is broader than what an action can ever
+actually receive: `enter` hands the synthetic arrival to `actions` exactly
+once, at startup, gated on `to === initial` (`src/totorobot.ts`, the
+`dispatch` call in `machine`'s `start`) — no other call reaches a declared
+action with it. A residency observer has no such restriction, since a caller
+can `observe()` a bare key at any point in a running host's life and find
+that state already occupied, `initial` or not (the immediate-registration
+case in `Host.observe`).
+
+`ActionArrival<I, S, K, Init, N>` narrows this per key: `Residency<I, S, K,
+N>` where `N` is exactly `Init`, and a plain `Transition<I, S, K, '* -> N'>`
+— real rows only, no arrival — everywhere else. `Actions` now takes `Init` as
+a fifth parameter to make this comparison, consumed rather than inferred a
+second time, the same guard [I20](#i20) already holds `K` to; `ObserveAction`
+is untouched, since `observe`'s own arrival is not conditioned on `Init` at
+all. A noninitial residency action's `from` therefore excludes `undefined`
+outright, needing no narrowing to read, where before it carried the member
+unconditionally; `tests/actions.test-d.ts` pins both the noninitial exclusion
+and the initial-state case where `actions` and `observe` still agree.
+
+This narrows past what #99's own acceptance criteria asked for — "retain the
+shared type for noninitial actions as well" — on the grounds that a member no
+declared action can ever receive is exactly the kind of impossible
+combination the rest of that ticket exists to reject; keeping it here for
+uniformity's sake would have been the one place the row-correlation work left
+a synthetic case in, unchecked.
+
+### <a id="i34"></a>I34 — `Transition`'s default `K` collapses every field to `never`, not to conservative facts
+
+`Transition<I, S, K, P>`'s row filtering (`MatchingRows<K, P>`, [I32](#i32))
+is unsound at `K`'s own default. Widen `K` to plain `string` and
+`MatchingRows<string, P>` still evaluates to `string`: `From<string>`,
+`Label<string>` and `To<string>` are all `never`, and `never extends
+anything` is true, so every coordinate check in `Matches` trivially passes.
+But indexing the row-mapped type by the bare `string` key produces an index
+signature evaluated once at `R = string`, not distributed per literal, so
+`From<R>` and its siblings resolve to `never` there too — a record with
+`from`, `to` and named inputs all `never`, in place of the conservative,
+pattern-only facts [I31](#i31) built before #99 narrowed `Transition` against
+declared rows.
+
+The fix reintroduces that pre-#99 construction as `PatternFacts<I, S, P, X>`
+and gates `Transition` on `string extends K`: true only when `K` is the bare
+`string` default, false for any literal row-key union, however large
+(`tests/scale.test-d.ts`'s forty-four rows included) — so an exact machine
+keeps full row-correlated precision and only a genuinely widened `K` falls
+back.
+
+**No known public call site reaches this today.** `Host`, `Transition` and
+their siblings are module-local, so a caller cannot name them to construct
+one with `K` left at its default; `machine()`'s own `transitions` parameter
+is typed `Table<I, S, K>`, which requires literal row keys to check each row
+and rejects a `Record<string, …>`-shaped argument outright — confirmed by
+casting one through `machine(definition as Table<I, S, string>)`, which
+`Table` refuses independently of this finding. The only reproduction found
+casts around that refusal entirely (`machine(definition as any)`), which is
+a deliberate opt-out rather than a scenario an unwitting caller reaches. The
+fix stands regardless: `K`'s own declared default is `string`
+(`K extends string = string`), and a type should not collapse to `never` at
+its own default, reachable or not.

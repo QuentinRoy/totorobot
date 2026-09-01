@@ -37,6 +37,7 @@ const doc = machine({
 		'draft -submit> published': ({ fromData, inputData, skip }) =>
 			inputData.route === 'publish' ? fromData : skip(),
 		'draft -cancel> empty': () => {},
+		'draft -> draft': ({ fromData }) => fromData,
 	},
 })
 
@@ -79,15 +80,19 @@ test('a bare key means residency, typed as the same record `actions` takes (#76)
 	host.observe('nope', () => {})
 })
 
-test("observe's residency shares actions' arrival-capable type: `from` is `undefined` on registration's synthetic arrival (#92)", () => {
+test("observe's residency shares actions' arrival-capable type: `from` is `undefined` on registration's synthetic arrival, and narrowed to only the sources the table declares otherwise (#92, #99)", () => {
 	const host = doc.start()
 
 	host.observe('draft', ({ from, fromData }) => {
-		expectTypeOf(from).toEqualTypeOf<keyof States | undefined>()
+		// "empty" reaches "draft" by `open`, "draft" reaches itself by the
+		// self-loop above; "review" and "published" never do, so they are
+		// excluded even though they too are declared states.
+		expectTypeOf(from).toEqualTypeOf<'empty' | 'draft' | undefined>()
 		// @ts-expect-error - `from` is `undefined` on the synthetic arrival
 		from.length
-		// and so is its data, whatever the states either side carry
-		expectTypeOf(fromData).toEqualTypeOf<States[keyof States] | undefined>()
+		// A name check narrows the data beside it, "empty"'s own `undefined`
+		// included, rather than every state's payload.
+		expectTypeOf(fromData).toEqualTypeOf<{ text: string } | undefined>()
 	})
 })
 
@@ -156,6 +161,38 @@ test('the transition record carries each name beside its payload, and a check on
 		if (e.to === 'empty') {
 			expectTypeOf(e.toData).toEqualTypeOf<undefined>()
 		}
+		if (e.to === 'published') {
+			expectTypeOf(e.toData).toEqualTypeOf<{ text: string }>()
+		}
+
+		// "empty" only ever reaches "draft": a check against a state it cannot
+		// reach is a comparison between two literals with no overlap, caught at
+		// compile time rather than merely failing to narrow (#99).
+		if (e.from === 'empty') {
+			// @ts-expect-error - "review" is not among the destinations "empty" reaches
+			if (e.to === 'review') {
+			}
+		}
+	})
+})
+
+test('a guard on one row does not collapse its declared alternative: both "review" and "published" stay live from the same source and input, distinguished by destination (#99)', () => {
+	const host = doc.start()
+
+	// "draft -submit>" has two declared rows, "review" and "published", picked
+	// between at runtime by `skip()`. Typing is off the declared rows, not off
+	// which one the guard actually takes, so both remain, and the destination
+	// name still correlates with its own payload shape.
+	host.observe('draft -submit> *', (e) => {
+		expectTypeOf(e.to).toEqualTypeOf<'review' | 'published'>()
+		if (e.to === 'review') {
+			expectTypeOf(e.toData).toEqualTypeOf<{ text: string; reviewer: string }>()
+		}
+		if (e.to === 'published') {
+			expectTypeOf(e.toData).toEqualTypeOf<{ text: string }>()
+			// @ts-expect-error - "published" carries no "reviewer"
+			e.toData.reviewer
+		}
 	})
 })
 
@@ -207,6 +244,36 @@ test('an immediate transition is distinguished from a payload-free input by inpu
 	host.observe('* -open> *', (e) => {
 		expectTypeOf(e.inputData).not.toBeAny()
 		expectTypeOf(e.inputData).toEqualTypeOf<{ text: string }>()
+	})
+})
+
+test('an incoming wildcard narrows the source to what actually reaches the input, and an outgoing wildcard narrows the destination to what the source actually reaches (#99)', () => {
+	const host = doc.start()
+
+	// "open" only ever fires from "empty", to "draft": narrowed to those alone,
+	// not every declared state either side.
+	host.observe('* -open> *', (e) => {
+		expectTypeOf(e.from).toEqualTypeOf<'empty'>()
+		expectTypeOf(e.to).toEqualTypeOf<'draft'>()
+	})
+
+	// "empty" only ever reaches "draft": narrowed there, not to "review" or
+	// "published", which "empty" cannot reach directly.
+	host.observe('empty -> *', (e) => {
+		expectTypeOf(e.to).toEqualTypeOf<'draft'>()
+		expectTypeOf(e.toData).toEqualTypeOf<{ text: string }>()
+	})
+})
+
+test('an edge listener needs no narrowing to read `from`: no synthetic arrival member, unlike a residency (#99)', () => {
+	const host = doc.start()
+
+	host.observe('* -> *', (e) => {
+		// Not a compile error, unlike the same read on a residency's arrival
+		// (tests/actions.test-d.ts, "reading `from` without narrowing"): an edge
+		// record never carries the arrival member, so `from` is always one of
+		// the declared source names, never `undefined`.
+		e.from.length
 	})
 })
 

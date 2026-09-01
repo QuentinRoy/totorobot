@@ -29,7 +29,7 @@ test("a residency trigger's arrival narrows `to` to that trigger's own state, an
 	})
 })
 
-test("a residency trigger's `from` covers every state that can reach it, plus `undefined` for the initial arrival no transition caused", () => {
+test("a residency trigger's `from` covers only the states declared to reach it, plus `undefined` for the initial arrival no transition caused", () => {
 	machine({
 		initial: 'off',
 		inputs: type<Inputs>(),
@@ -39,9 +39,11 @@ test("a residency trigger's `from` covers every state that can reach it, plus `u
 			'on -toggle> off': () => {},
 		},
 		actions: {
-			on: ({ from, fromData }) => {
-				expectTypeOf(from).toEqualTypeOf<keyof States | undefined>()
-				expectTypeOf(fromData).toEqualTypeOf<States[keyof States] | undefined>()
+			// Narrowed to the states this table's own rows declare reaching "off"
+			// ("on" alone), not to every name `States` declares.
+			off: ({ from, fromData }) => {
+				expectTypeOf(from).toEqualTypeOf<'on' | undefined>()
+				expectTypeOf(fromData).toEqualTypeOf<{ count: number } | undefined>()
 			},
 		},
 	})
@@ -54,11 +56,42 @@ test('a residency action reading `from` without narrowing away the initial arriv
 		states: type<States>(),
 		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
 		actions: {
-			on: ({ from }) => {
+			off: ({ from }) => {
 				// @ts-expect-error - `from` is `undefined` on the initial arrival
 				from.length
 			},
 		},
+	})
+})
+
+test("a noninitial residency action's `from` excludes `undefined` entirely: the arrival can only ever reach the initial state's own action, so a noninitial one needs no narrowing to read `from` — unlike the initial state's own action, and unlike `observe` for either (#99)", () => {
+	const doc = machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: {
+			'off -toggle> on': () => ({ count: 0 }),
+			'on -toggle> off': () => {},
+		},
+		actions: {
+			// "on" is not the initial state: `enter` only ever hands the
+			// synthetic arrival to the residency whose own key matches
+			// `initial`, on startup, so this action is reachable only through
+			// the real "off -toggle> on" row.
+			on: ({ from }) => {
+				expectTypeOf(from).toEqualTypeOf<'off'>()
+				from.length // not a compile error: `from` is never `undefined` here
+			},
+		},
+	})
+	const host = doc.start()
+
+	// `observe`'s residency form admits the arrival regardless: a late
+	// registration can find "on" already occupied too, initial state or not.
+	host.observe('on', ({ from }) => {
+		expectTypeOf(from).toEqualTypeOf<'off' | undefined>()
+		// @ts-expect-error - `from` is `undefined` on the synthetic arrival
+		from.length
 	})
 })
 
@@ -82,6 +115,69 @@ test("an edge trigger's argument narrows the transition exactly the way a listen
 				expectTypeOf(transition.send).toEqualTypeOf<Send>()
 			},
 		},
+	})
+})
+
+test('an action and a listener for the same edge pattern narrow to the same facts and sending capability (#99)', () => {
+	const doc = machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: {
+			'off -toggle> on': () => ({ count: 0 }),
+			'on -toggle> off': () => {},
+		},
+		actions: {
+			'off -toggle> on': (transition) => {
+				expectTypeOf(transition.from).toEqualTypeOf<'off'>()
+				expectTypeOf(transition.fromData).toEqualTypeOf<undefined>()
+				expectTypeOf(transition.to).toEqualTypeOf<'on'>()
+				expectTypeOf(transition.toData).toEqualTypeOf<{ count: number }>()
+				expectTypeOf(transition.send).toEqualTypeOf<Send>()
+			},
+		},
+	})
+	const host = doc.start()
+
+	// Same pattern, same table: an observer narrows to the exact same fields —
+	// not a second, independently-derived bag.
+	host.observe('off -toggle> on', (transition) => {
+		expectTypeOf(transition.from).toEqualTypeOf<'off'>()
+		expectTypeOf(transition.fromData).toEqualTypeOf<undefined>()
+		expectTypeOf(transition.to).toEqualTypeOf<'on'>()
+		expectTypeOf(transition.toData).toEqualTypeOf<{ count: number }>()
+		expectTypeOf(transition.send).toEqualTypeOf<Send>()
+	})
+})
+
+test('a residency action and a residency observer for the initial state share the same arrival-narrowed facts — the one bare state where both are reachable through `actions` (#99)', () => {
+	const doc = machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: {
+			'off -toggle> on': () => ({ count: 0 }),
+			'on -toggle> off': () => {},
+		},
+		actions: {
+			off: ({ from, fromData, to, toData }) => {
+				expectTypeOf(from).toEqualTypeOf<'on' | undefined>()
+				expectTypeOf(fromData).toEqualTypeOf<{ count: number } | undefined>()
+				expectTypeOf(to).toEqualTypeOf<'off'>()
+				expectTypeOf(toData).toEqualTypeOf<undefined>()
+			},
+		},
+	})
+	const host = doc.start()
+
+	// Same bare state, same table: `observe`'s residency form narrows to the
+	// exact same facts as the declared action above — reachable there too, by
+	// registering while the host is already resident on "off".
+	host.observe('off', ({ from, fromData, to, toData }) => {
+		expectTypeOf(from).toEqualTypeOf<'on' | undefined>()
+		expectTypeOf(fromData).toEqualTypeOf<{ count: number } | undefined>()
+		expectTypeOf(to).toEqualTypeOf<'off'>()
+		expectTypeOf(toData).toEqualTypeOf<undefined>()
 	})
 })
 
@@ -244,7 +340,12 @@ test('a residency record accepts `restart` as a boolean or a predicate over the 
 		initial: 'off',
 		inputs: type<Inputs>(),
 		states: type<States>(),
-		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
+		transitions: {
+			'off -toggle> on': () => ({ count: 0 }),
+			// A self-transition is what `restart`'s facts describe (#99): without
+			// one declared for "gone", the predicate below would take `never`.
+			'gone -> gone': () => {},
+		},
 		actions: {
 			on: { run: () => {}, restart: false },
 			gone: {
