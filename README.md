@@ -1,10 +1,12 @@
-# Totorobot
-
 <p align="center">
   <img src="assets/totorobot-mascot-lozenge-portrait.png" alt="Totorobot mascot playing an electric guitar" width="240">
 </p>
 
-[![Bundle size](https://deno.bundlejs.com/?q=totorobot&badge=detailed)](https://bundlejs.com/?q=totorobot)
+<h1 align="center">Totorobot</h1>
+
+<p align="center">
+  <a href="https://bundlejs.com/?q=totorobot"><img src="https://deno.bundlejs.com/?q=totorobot&badge=detailed" alt="Bundle size"></a>
+</p>
 
 Totorobot combines clean, readable definitions with precise types. Its API reads
 like a transition graph, and TypeScript checks the details around it.
