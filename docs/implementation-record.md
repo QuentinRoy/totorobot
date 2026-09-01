@@ -296,12 +296,18 @@ since; treat it as the reason the shape was chosen, not as a current number.
   where the closure would have been the only argument at that call site: the
   required form is 8 B larger (775 vs 767), so it loses on size as well as on
   allocation, and the optional parameter stays.
-- **The committed record respelled, not spread from the facts it extends.** A
-  restart predicate must not be handed `send`, so a hop builds the six facts
-  first and the record after. Spreading (`{ ...facts, send }`) is 47 B smaller
-  raw and 6 B larger brotli, which arbitrates ([I15](#i15)): a repeated object
-  shape is what the compressor already knows. Splitting the two objects at all
-  costs 12 B brotli against reusing one, and buys a predicate that cannot send.
+- **`send` attached by `fire`, once per call.** A restart predicate must not be
+  handed `send`, so a hop builds the six facts and `fire` spreads the capability
+  onto them for the callbacks that get one. Five shapes were measured against the
+  787 B brotli bundle that reused a single record and leaked `send` to the
+  predicate: building both objects in `step` costs 12 B (respelled) or 18 B
+  (spread from the facts); deriving the facts back out of the record with a rest
+  pattern, 15 B; a shared module-level helper doing the same, 26 B; attaching
+  `send` inside `fire` costs 10 B, and 1 B if it is attached per matching row
+  instead of per call. The per-row form is not taken: it moves an allocation onto
+  the notify path, which is the same trade the listener list is copy-on-write to
+  avoid. Attaching lazily, so nothing is allocated when no row matches, spends the
+  saving again on reading the coordinates off the other object (16 B).
 - **The departure loop over `[acts, listeners]`, not a `leave` helper called
   twice.** The two-element array literal plus one nested loop measures smaller
   than factoring the row scan into a named function and calling it once per row

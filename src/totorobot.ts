@@ -624,7 +624,14 @@ export let machine: <
 				// what it returns, and gates setup on a self-transition by `row[7]`, the
 				// decision `step` already made below: one call to `restart` serves both
 				// halves of the same residency's hop (§9 Actions).
-				let fire = (list: Registration[], e: Arrival): void => {
+				let fire = (list: Registration[], facts: UncheckedFacts): void => {
+					// The facts plus the one capability a committed record carries: the
+					// same `send` the host exposes, so a reaction drives the machine
+					// without closing over the host it was registered on. Attached here
+					// rather than by each caller, which measures smaller, and once per
+					// call rather than per matching row, which keeps the allocation off
+					// the path that runs most (I16).
+					let e: Arrival = { ...facts, send }
 					for (let row of list) {
 						let [f, l, t, run, key] = row
 						if (
@@ -646,8 +653,7 @@ export let machine: <
 					fire(list, {
 						to: current.name,
 						toData: current.data,
-						send,
-					} as Arrival)
+					} as UncheckedFacts)
 
 				// One scanning path for both kinds of transition: commit the first row
 				// that does not decline, report whether the machine moved. Fusing it with
@@ -667,7 +673,8 @@ export let machine: <
 							// The hop's own facts, built before the commit so a restart
 							// predicate sees what it is deciding about, and carrying no `send`:
 							// a pure decision is one at runtime too, not only in the types (§9
-							// Actions).
+							// Actions). `fire` adds the capability for the callbacks that do
+							// get one.
 							let facts: UncheckedFacts = {
 								input,
 								inputData,
@@ -704,24 +711,9 @@ export let machine: <
 							// with the record. The payload is stored exactly as returned (§5).
 							current = { name: to, data: toData }
 
-							// The facts again, plus the one capability a committed record
-							// carries: the same `send` the host exposes, so a reaction drives
-							// the machine without closing over the host it was registered on.
-							// Respelled rather than spread from `facts`, which measures smaller
-							// (I16).
-							let record: Arrival = {
-								input,
-								inputData,
-								from,
-								fromData,
-								to,
-								toData,
-								send,
-							}
-
 							// Actions in declaration order, then listeners (§9 Actions).
-							fire(acts, record)
-							fire(listeners, record)
+							fire(acts, facts)
+							fire(listeners, facts)
 							// One input yields at most one transition.
 							return true
 						}
