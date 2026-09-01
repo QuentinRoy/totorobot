@@ -1,5 +1,9 @@
 # Totorobot
 
+<p align="center">
+  <img src="assets/totorobot-mascot-lozenge-portrait.png" alt="Totorobot mascot playing an electric guitar" width="240">
+</p>
+
 [![Bundle size](https://deno.bundlejs.com/?q=totorobot&badge=detailed)](https://bundlejs.com/?q=totorobot)
 
 Totorobot combines clean, readable definitions with precise types. Its API reads
