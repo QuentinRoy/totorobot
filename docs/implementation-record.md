@@ -377,10 +377,10 @@ after which each derived type indexes the result rather than repeating the match
 The runtime was written against `type Unchecked = any`, on the sound argument that
 the type layer above had already checked those positions. But an alias does not
 narrow `any`; what the name bought was that `any` stopped answering to a search for
-it. Nothing there needs it — `current` and a handler's `state` are read for `.name`
-alone, an input for `.type` alone, and a payload is only ever spread — so
-`StateVocab`, `InputVocab | undefined` and `object` type the whole runtime with no
-cast added and a byte-identical bundle.
+it. Nothing there needs it: `current` and a handler's `state` are read for
+`.name`, the input name is a string, `inputData` passes through unchanged, and a
+handler result is only spread. `StateVocab`, `string | undefined`, `unknown`, and
+`object` type the whole runtime with no cast added and a byte-identical bundle.
 
 The golfed runtime reintroduced three, and none of them survived either, at a
 byte-identical bundle: an item that is read for both `run` and a call is an
