@@ -465,10 +465,10 @@ when no dispatch is running anywhere; otherwise it waits for the one in progress
 to settle, and `current` read right after such a send still shows the earlier
 state. [Commit ordering](#commit-ordering) has the mechanics.
 
-**There is no typed send site.** `doc.send('publish')` compiles in
-`draft` and does nothing at runtime, so per-state capabilities go unchecked. That
-is a deliberate drop: the narrow-then-send shape is unsound in TypeScript, and a
-sound variant stays addable later without breaking anything
+**There is no typed send site.** `doc.send('publish')` compiles in `draft` and
+does nothing at runtime, so per-state capabilities go unchecked. That is a
+deliberate drop: the narrow-then-send shape is unsound in TypeScript, and a sound
+variant stays addable later without breaking anything
 ([rationale §12](docs/design-record.md#12-sending-inputs)).
 
 ### Observing
