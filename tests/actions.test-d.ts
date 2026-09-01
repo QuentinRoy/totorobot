@@ -40,7 +40,11 @@ test("a residency trigger's `from` covers only the states declared to reach it, 
 		},
 		actions: {
 			// "gone" is declared but no row reaches "on": excluded from `from`,
-			// unlike every name the table's own rows admit.
+			// unlike every name the table's own rows admit. "on" is not the
+			// initial state, so this action can in fact never see the arrival at
+			// runtime — only "off"'s own action can, on startup — but the type
+			// carries `undefined` regardless: `actions` and `observe` share one
+			// type per bare state rather than one computed per key (#99).
 			on: ({ from, fromData }) => {
 				expectTypeOf(from).toEqualTypeOf<'off' | undefined>()
 				expectTypeOf(fromData).toEqualTypeOf<undefined>()
@@ -120,6 +124,10 @@ test('an action and a listener for the same edge pattern narrow to the same fact
 })
 
 test('a residency action and a residency observer for the same bare state share the same arrival-narrowed facts (#99)', () => {
+	// "off" is the initial state, so its own action genuinely sees the
+	// synthetic arrival on startup — unlike a noninitial residency (see the
+	// "gone" is declared but no row reaches "on" case above), where the same
+	// member is present only because the type is shared, never actually fired.
 	const doc = machine({
 		initial: 'off',
 		inputs: type<Inputs>(),
@@ -129,23 +137,24 @@ test('a residency action and a residency observer for the same bare state share 
 			'on -toggle> off': () => {},
 		},
 		actions: {
-			on: ({ from, fromData, to, toData }) => {
-				expectTypeOf(from).toEqualTypeOf<'off' | undefined>()
-				expectTypeOf(fromData).toEqualTypeOf<undefined>()
-				expectTypeOf(to).toEqualTypeOf<'on'>()
-				expectTypeOf(toData).toEqualTypeOf<{ count: number }>()
+			off: ({ from, fromData, to, toData }) => {
+				expectTypeOf(from).toEqualTypeOf<'on' | undefined>()
+				expectTypeOf(fromData).toEqualTypeOf<{ count: number } | undefined>()
+				expectTypeOf(to).toEqualTypeOf<'off'>()
+				expectTypeOf(toData).toEqualTypeOf<undefined>()
 			},
 		},
 	})
 	const host = doc.start()
 
 	// Same bare state, same table: `observe`'s residency form narrows to the
-	// exact same arrival-capable facts as the declared action above.
-	host.observe('on', ({ from, fromData, to, toData }) => {
-		expectTypeOf(from).toEqualTypeOf<'off' | undefined>()
-		expectTypeOf(fromData).toEqualTypeOf<undefined>()
-		expectTypeOf(to).toEqualTypeOf<'on'>()
-		expectTypeOf(toData).toEqualTypeOf<{ count: number }>()
+	// exact same facts as the declared action above — reachable there too, by
+	// registering while the host is already resident on "off".
+	host.observe('off', ({ from, fromData, to, toData }) => {
+		expectTypeOf(from).toEqualTypeOf<'on' | undefined>()
+		expectTypeOf(fromData).toEqualTypeOf<{ count: number } | undefined>()
+		expectTypeOf(to).toEqualTypeOf<'off'>()
+		expectTypeOf(toData).toEqualTypeOf<undefined>()
 	})
 })
 
