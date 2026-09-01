@@ -359,8 +359,9 @@ entry, and the function it returns runs on exit. With `->` it is an edge, firing
 once per matching transition, in the same [pattern language](#observing) —
 wildcards included.
 
-**Every action receives the transition record**, `{ input, inputData, from, to, send }`,
-whichever kind of trigger fired it and identical to what a matching
+**Every action receives the transition record**,
+`{ input, inputData, from, to, send }`, whichever kind of trigger fired it and
+identical to what a matching
 [listener](#observing) gets. A residency is an arrival, so its `to` is the
 resident state. On the initial state, which no transition caused, `from` and
 `input` and `inputData` are `undefined`, so reading `from` needs a narrowing
@@ -481,11 +482,12 @@ doc.observe('draft -cancel> *', () => track('cancelled'))
 Listeners go on the host, never on the definition, which is inert. `observe()`
 returns an unsubscribe function.
 
-**The listener receives the transition record**, `{ input, inputData, from, to, send }`,
-discriminated by `input`; its correlated payload is `inputData`. `e.from` and `e.to` are the
-states at each end, tags included, so narrowing on `e.from.name` or `e.to.name`
-narrows their fields the way `current` does. An immediate transition carries
-`input: undefined` and `inputData: undefined`.
+**The listener receives the transition record**,
+`{ input, inputData, from, to, send }`, discriminated by `input`; its correlated
+payload is `inputData`. `e.from` and `e.to` are the states at each end, tags
+included, so narrowing on `e.from.name` or `e.to.name` narrows their fields the
+way `current` does. An immediate transition carries `input: undefined` and
+`inputData: undefined`.
 
 **`e.send` is the host's own `send`**, so a reaction drives the machine without
 closing over the host it was registered on:
