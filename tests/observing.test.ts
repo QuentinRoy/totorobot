@@ -282,7 +282,14 @@ describe('observing', () => {
 		const setup = vi.fn()
 		host.observe('on', setup)
 
-		expect(setup).toHaveBeenCalledOnce()
+		expect(setup).toHaveBeenCalledExactlyOnceWith({
+			input: undefined,
+			inputData: undefined,
+			from: undefined,
+			to: { name: 'on' },
+			send: expect.any(Function),
+		})
+		expect(setup.mock.calls[0]?.[0].send).toBe(host.send)
 	})
 
 	test('a residency attached while resident receives an arrival with no source or input, the same as machine startup', () => {
