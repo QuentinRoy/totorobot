@@ -47,12 +47,19 @@ jobs:
       # and `push-git-tags` both default to true). `dist/` is gitignored, so the
       # tarball is built by the `prepack` script rather than by a step here.
       #
+      # `version:` replaces the action's default `changeset version` with the
+      # `version` script, which also builds the bundle and writes its size, and
+      # its delta against the previously published tarball, into the new
+      # CHANGELOG.md section. That one edit lands in the GitHub release too: the
+      # action builds the release body by slicing that section out of the file.
+      #
       # GITHUB_TOKEN is not for the action itself — its `github-token` input
       # already defaults to the job token. It is what `@changesets/changelog-github`
       # reads while `changeset version` writes CHANGELOG.md, to resolve each
       # changeset back to the pull request that carried it.
       - uses: changesets/action@v2
         with:
+          version: pnpm run version
           publish-script: pnpm changeset publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
