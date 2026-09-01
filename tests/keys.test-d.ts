@@ -7,14 +7,15 @@ import { expect, expectTypeOf, test } from 'vitest'
 
 import { machine, type, type Skip } from 'totorobot'
 
-type Inputs =
-	| { type: 'open'; text: string }
-	| { type: 'revise'; text: string }
-	| { type: 'cancel' }
+type Inputs = {
+	open: { text: string }
+	revise: { text: string }
+	cancel: undefined
+}
 type States =
 	{ name: 'empty' } | { name: 'draft'; text: string; revision: number }
 
-type SkipInputs = { type: 'revise'; text: string } | { type: 'cancel' }
+type SkipInputs = { revise: { text: string }; cancel: undefined }
 type SkipStates = { name: 'draft'; text: string } | { name: 'empty' }
 
 test('a handler returning the wrong shape for its target state is rejected', () => {
@@ -23,12 +24,12 @@ test('a handler returning the wrong shape for its target state is rejected', () 
 		inputs: type<Inputs>(),
 		states: type<States>(),
 		transitions: {
-			'empty -open> draft': ({ input }) => ({
-				text: input.text,
+			'empty -open> draft': ({ inputData }) => ({
+				text: inputData.text,
 				revision: 0,
 			}),
 			// @ts-expect-error - draft's data needs a `revision`, not just `text`
-			'draft -revise> draft': ({ input }) => ({ text: input.text }),
+			'draft -revise> draft': ({ inputData }) => ({ text: inputData.text }),
 			'draft -cancel> empty': () => {},
 		},
 	})
@@ -40,13 +41,13 @@ test('reading source data the source state does not have is rejected', () => {
 		inputs: type<Inputs>(),
 		states: type<States>(),
 		transitions: {
-			'empty -open> draft': ({ state, input }) => ({
-				text: input.text,
+			'empty -open> draft': ({ state, inputData }) => ({
+				text: inputData.text,
 				// @ts-expect-error - empty carries no payload; there is no `.revision` to read
 				revision: state.revision,
 			}),
-			'draft -revise> draft': ({ state, input }) => ({
-				text: input.text,
+			'draft -revise> draft': ({ state, inputData }) => ({
+				text: inputData.text,
 				revision: state.revision + 1,
 			}),
 			'draft -cancel> empty': () => {},
@@ -61,12 +62,12 @@ test('unknown state or input names in a transition key are rejected', () => {
 		states: type<States>(),
 		transitions: {
 			// @ts-expect-error - "nope" is not a declared state
-			'nope -open> draft': ({ input }) => ({
-				text: input.text,
+			'nope -open> draft': ({ inputData }) => ({
+				text: inputData.text,
 				revision: 0,
 			}),
-			'empty -open> draft': ({ input }) => ({
-				text: input.text,
+			'empty -open> draft': ({ inputData }) => ({
+				text: inputData.text,
 				revision: 0,
 			}),
 			// @ts-expect-error - "nope" is not a declared state
@@ -112,8 +113,8 @@ test('an unlabelled arrow is accepted as an immediate transition', () => {
 		inputs: type<Inputs>(),
 		states: type<States>(),
 		transitions: {
-			'empty -open> draft': ({ input }) => ({
-				text: input.text,
+			'empty -open> draft': ({ inputData }) => ({
+				text: inputData.text,
 				revision: 0,
 			}),
 			'draft -> draft': ({ state }) => ({ ...state }),
@@ -127,15 +128,15 @@ test("an immediate row's handler receives no input, and a wrong-shaped return is
 		inputs: type<Inputs>(),
 		states: type<States>(),
 		transitions: {
-			'empty -open> draft': ({ input }) => ({
-				text: input.text,
+			'empty -open> draft': ({ inputData }) => ({
+				text: inputData.text,
 				revision: 0,
 			}),
 			'draft -cancel> empty': () => {},
-			'empty -> draft': ({ state, input }) => {
+			'empty -> draft': ({ state, inputData }) => {
 				// @ts-expect-error - empty carries no payload; there is no `.anything` to read
 				state.anything
-				expectTypeOf(input).toEqualTypeOf<undefined>()
+				expectTypeOf(inputData).toEqualTypeOf<undefined>()
 				return { text: '', revision: 0 }
 			},
 			// @ts-expect-error - draft's data needs a `revision`, not just `text`
@@ -153,8 +154,8 @@ test('a bare key names a state and is rejected in the transitions table', () => 
 			inputs: type<Inputs>(),
 			states: type<States>(),
 			transitions: {
-				'empty -open> draft': ({ input }) => ({
-					text: input.text,
+				'empty -open> draft': ({ inputData }) => ({
+					text: inputData.text,
 					revision: 0,
 				}),
 				// @ts-expect-error - a bare key names a state; every transitions row is an edge
@@ -170,8 +171,8 @@ test('skip() is returnable from a handler for every target shape, including a pa
 		inputs: type<SkipInputs>(),
 		states: type<SkipStates>(),
 		transitions: {
-			'draft -revise> draft': ({ state, input, skip }) =>
-				input.text === state.text ? skip() : { text: input.text },
+			'draft -revise> draft': ({ state, inputData, skip }) =>
+				inputData.text === state.text ? skip() : { text: inputData.text },
 			'draft -cancel> empty': ({ skip }) =>
 				Math.random() > 0.5 ? skip() : undefined,
 		},
@@ -188,7 +189,7 @@ test('a declared vocabulary may still name `*` or a padded name explicitly (#22)
 	// or '*' by hand is deliberate in a way a doubled space in a key never is
 	// — so neither is filtered here.
 	type OddStates = { name: 'off' } | { name: '*' } | { name: ' padded' }
-	type OddInputs = { type: 'go' }
+	type OddInputs = { go: undefined }
 
 	machine({
 		initial: 'off',
@@ -207,9 +208,9 @@ test('a wrong-shaped return is still rejected on a row that could also skip()', 
 		inputs: type<SkipInputs>(),
 		states: type<SkipStates>(),
 		transitions: {
-			'draft -revise> draft': ({ state, input, skip }) =>
+			'draft -revise> draft': ({ state, inputData, skip }) =>
 				// @ts-expect-error - draft's data needs `text`; the skip() channel does not excuse a wrong shape
-				input.text === state.text ? skip() : { wrong: true },
+				inputData.text === state.text ? skip() : { wrong: true },
 			'draft -cancel> empty': ({ skip }) =>
 				// @ts-expect-error - empty carries no payload; a handler may return skip() or nothing, not data
 				Math.random() > 0.5 ? skip() : { text: 'x' },

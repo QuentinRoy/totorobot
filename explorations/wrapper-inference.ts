@@ -48,7 +48,7 @@
 import { machine, type, type Skip } from '../src/totorobot.ts'
 import { assertType, type Equal } from './config-object-kit.ts'
 
-type InputVocab = { readonly type: string }
+type InputVocab = Record<string, unknown>
 type StateVocab = { readonly name: string }
 type From<K> = K extends `${infer F} -${string}> ${string}` ? F : never
 type Label<K> = K extends `${string} -${infer L}> ${string}` ? L : never
@@ -59,7 +59,7 @@ type To<K> = K extends `${string} -${string}> ${infer T}` ? T : never
  * ([I17](../docs/implementation-record.md#i17)) never comes up and a row type can
  * be written out below without reaching for its tag.
  */
-type In = { type: 'open'; text: string } | { type: 'submit'; reviewer: string }
+type In = { open: { text: string }; submit: { reviewer: string } }
 type St =
 	| { name: 'draft'; text: string }
 	| { name: 'review'; text: string; reviewer: string }
@@ -76,9 +76,9 @@ machine({
 	states,
 	initial: 'draft',
 	transitions: {
-		'draft -submit> review': ({ state, input }) => {
+		'draft -submit> review': ({ state, inputData }) => {
 			assertType<Equal<typeof state, { name: 'draft'; text: string }>>()
-			return { text: state.text, reviewer: input.reviewer }
+			return { text: state.text, reviewer: inputData.reviewer }
 		},
 	},
 })
@@ -97,9 +97,9 @@ machine({
 	transitions: {
 		// @ts-expect-error - `F` infers from the arrow, so the row's own type is
 		// never the contextual type and the parameters go implicitly `any`
-		'draft -submit> review': identity(({ input }) => ({
+		'draft -submit> review': identity(({ inputData }) => ({
 			text: '',
-			reviewer: input.reviewer,
+			reviewer: inputData.reviewer,
 		})),
 	},
 })
@@ -112,12 +112,14 @@ declare function kit<I extends InputVocab, S extends StateVocab>(): {
 	transition: <P extends string>(
 		fn: (args: {
 			readonly state: NoInfer<Extract<S, { name: From<P> }>>
-			readonly input: NoInfer<Extract<I, { type: Label<P> }>>
+			readonly input: NoInfer<Label<P> & string>
+			readonly inputData: NoInfer<I[Label<P> & keyof I]>
 			readonly skip: () => Skip
 		}) => Omit<Extract<S, { name: To<P> }>, 'name'> | Skip,
 	) => (args: {
 		readonly state: NoInfer<Extract<S, { name: From<P> }>>
-		readonly input: NoInfer<Extract<I, { type: Label<P> }>>
+		readonly input: NoInfer<Label<P> & string>
+		readonly inputData: NoInfer<I[Label<P> & keyof I]>
 		readonly skip: () => Skip
 	}) => Omit<Extract<S, { name: To<P> }>, 'name'> | Skip
 }
@@ -145,13 +147,14 @@ machine({
 
 type MiniHandler<I extends InputVocab, S extends StateVocab, P> = (args: {
 	readonly state: NoInfer<Extract<S, { name: From<P> }>>
-	readonly input: NoInfer<Extract<I, { type: Label<P> }>>
+	readonly input: NoInfer<Label<P> & string>
+	readonly inputData: NoInfer<I[Label<P> & keyof I]>
 }) => Omit<Extract<S, { name: To<P> }>, 'name'> | void
 
 type MiniKey<
 	I extends InputVocab,
 	S extends StateVocab,
-> = `${S['name']} -${I['type']}> ${S['name']}`
+> = `${S['name']} -${keyof I & string}> ${S['name']}`
 
 type MiniTable<I extends InputVocab, S extends StateVocab, K extends string> = {
 	readonly [P in K]: P extends MiniKey<I, S>
@@ -164,8 +167,8 @@ type StatesFromKeys<K extends string> = {
 	[N in From<K> | To<K>]: { readonly name: N }
 }[From<K> | To<K>]
 type InputsFromKeys<K extends string> = {
-	[N in Label<K>]: { readonly type: N }
-}[Label<K>]
+	[N in Label<K>]: unknown
+}
 
 declare function oneTier<
 	I extends InputVocab,
@@ -220,10 +223,10 @@ oneTier({
 	inputs,
 	states,
 	transitions: {
-		'draft -submit> review': mini(({ state, input }) => {
+		'draft -submit> review': mini(({ state, inputData }) => {
 			assertType<Equal<typeof state, { name: 'draft'; text: string }>>()
-			assertType<Equal<typeof input, { type: 'submit'; reviewer: string }>>()
-			return { text: state.text, reviewer: input.reviewer }
+			assertType<Equal<typeof inputData, { reviewer: string }>>()
+			return { text: state.text, reviewer: inputData.reviewer }
 		}),
 		// @ts-expect-error - no space after '>', so this is not a transition
 		'draft -submit>review': mini(() => ({ text: '', reviewer: '' })),
@@ -249,11 +252,13 @@ declare function longhandKit<I extends InputVocab, S extends StateVocab>(): {
 	transition: <P extends string>(
 		fn: (args: {
 			readonly state: NoInfer<Extract<S, { name: From<P> }>>
-			readonly input: NoInfer<Extract<I, { type: Label<P> }>>
+			readonly input: NoInfer<Label<P> & string>
+			readonly inputData: NoInfer<I[Label<P> & keyof I]>
 		}) => Omit<Extract<S, { name: To<P> }>, 'name'> | void,
 	) => (args: {
 		readonly state: NoInfer<Extract<S, { name: From<P> }>>
-		readonly input: NoInfer<Extract<I, { type: Label<P> }>>
+		readonly input: NoInfer<Label<P> & string>
+		readonly inputData: NoInfer<I[Label<P> & keyof I]>
 	}) => Omit<Extract<S, { name: To<P> }>, 'name'> | void
 }
 
@@ -327,9 +332,9 @@ twoTier({
 	inputs,
 	states,
 	transitions: {
-		'draft -submit> review': ({ state, input }) => ({
+		'draft -submit> review': ({ state, inputData }) => ({
 			text: state.text,
-			reviewer: input.reviewer,
+			reviewer: inputData.reviewer,
 		}),
 	},
 	actions: {
@@ -349,9 +354,9 @@ twoTier({
 	inputs,
 	states,
 	transitions: {
-		'draft -submit> review': ({ state, input }) => ({
+		'draft -submit> review': ({ state, inputData }) => ({
 			text: state.text,
-			reviewer: input.reviewer,
+			reviewer: inputData.reviewer,
 		}),
 	},
 	actions: {
@@ -376,9 +381,9 @@ twoTier({
 	inputs,
 	states,
 	transitions: {
-		'draft -submit> review': ({ state, input }) => ({
+		'draft -submit> review': ({ state, inputData }) => ({
 			text: state.text,
-			reviewer: input.reviewer,
+			reviewer: inputData.reviewer,
 		}),
 	},
 	actions: {

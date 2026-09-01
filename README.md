@@ -40,14 +40,14 @@ It is ESM and ships its own type declarations.
 import { machine, type } from 'totorobot'
 
 export const publication = machine({
-	inputs: type<
-		| { type: 'open'; text: string }
-		| { type: 'revise'; text: string }
-		| { type: 'submit'; reviewer: string }
-		| { type: 'publish' }
-		| { type: 'expireReview' }
-		| { type: 'cancel' }
-	>(),
+	inputs: type<{
+		open: { text: string }
+		revise: { text: string }
+		submit: { reviewer: string }
+		publish: undefined
+		expireReview: undefined
+		cancel: undefined
+	}>(),
 
 	states: type<
 		| { name: 'empty' }
@@ -59,10 +59,13 @@ export const publication = machine({
 	initial: 'empty',
 
 	transitions: {
-		'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
-		'draft -submit> review': ({ state, input }) => ({
+		'empty -open> draft': ({ inputData }) => ({
+			text: inputData.text,
+			revision: 0,
+		}),
+		'draft -submit> review': ({ state, inputData }) => ({
 			...state,
-			reviewer: input.reviewer,
+			reviewer: inputData.reviewer,
 		}),
 		'review -publish> published': ({ state }) => ({
 			text: state.text,
@@ -77,7 +80,7 @@ export const publication = machine({
 
 	actions: {
 		review: ({ send }) => {
-			const timer = setTimeout(() => send({ type: 'expireReview' }), 30_000)
+			const timer = setTimeout(() => send('expireReview'), 30_000)
 			return () => clearTimeout(timer)
 		},
 	},
@@ -85,8 +88,8 @@ export const publication = machine({
 
 const doc = publication.start()
 doc.observe('* -> published', (e) => notify(e.to))
-doc.send({ type: 'open', text: 'hello' })
-doc.send({ type: 'submit', reviewer: 'Quentin' })
+doc.send('open', { text: 'hello' })
+doc.send('submit', { reviewer: 'Quentin' })
 ```
 
 `reviewer` exists on `review` alone: `draft` does not have it yet, `published`
@@ -101,6 +104,7 @@ with the caller, attached through `observe`.
 - [Example](#example)
 - [The surface](#the-surface)
 - [`inputs` and `states`: the vocabulary](#inputs-and-states-the-vocabulary)
+  - [Migrating inputs](#migrating-inputs)
 - [`initial`: where a host starts](#initial-where-a-host-starts)
 - [`transitions`: the table](#transitions-the-table)
   - [The key language](#the-key-language)
@@ -140,32 +144,34 @@ Everything the package exports:
 ## `inputs` and `states`: the vocabulary
 
 ```ts
-inputs: type<{ type: 'submit'; reviewer: string } | { type: 'cancel' }>(),
+inputs: type<{ submit: { reviewer: string }; cancel: undefined }>(),
 states: type<{ name: 'empty' } | { name: 'draft'; text: string; revision: number }>(),
 ```
 
-Both are tagged unions: `inputs` is discriminated by `type`, `states` by `name`.
-A member with no payload carries nothing but its tag, as `{ type: 'cancel' }` and
-`{ name: 'empty' }` do. There is no `void` sentinel on either side.
+Inputs are a name-to-payload map. States remain a `name`-tagged union. Use
+`undefined` for an input with no data. A payload can be any value, including an
+object with `name` or `type` properties; Totorobot preserves it unchanged.
 
-`type<T>()` exists only to carry `T`. It returns `undefined`, and nothing reads
-it.
+`type<T>()` only carries `T`. It returns `undefined`, and nothing reads it.
+Either vocabulary can be named, exported, imported, generated, or declared
+inline. `InputsOf<typeof publication>` extracts the input map;
+`StatesOf<typeof publication>` extracts the state union. Omitting either key
+infers its names from `transitions`, with `unknown` payloads.
 
-**Inline is fine; naming scales better.** Each is an ordinary type, so either
-union can be pulled out, exported, imported, generated, made generic, or built
-with `Omit`/`&`/`|`. Past a handful of members, writing `type<Inputs>()` keeps
-the whole literal out of hover text and error messages. Either way, extraction
-goes through the named helpers: `InputsOf<typeof publication>`,
-`StatesOf<typeof publication>`.
+### Migrating inputs
 
-**`data` is a convention rather than a rule.** A payload that is not a record, or
-that wants a field called `type` or `name`, nests it under one:
-`{ type: 'tick', data: 5 }`. Nothing in the library requires or inspects `data`,
-and any other name works
-([rationale §5](docs/design-record.md#data-is-a-convention-not-a-rule)).
+Replace a tagged input union with a map, pass the name and payload separately,
+and read callback data from `inputData`:
 
-Both keys are optional. Omitting them reads the names off `transitions` and
-gives you the [untyped path](#the-untyped-path).
+```ts
+// before
+type Inputs = { type: 'open'; text: string } | { type: 'cancel' }
+host.send({ type: 'open', text: 'hello' })
+
+// after
+type Inputs = { open: { text: string }; cancel: undefined }
+host.send('open', { text: 'hello' })
+```
 
 ## `initial`: where a host starts
 
@@ -217,12 +223,12 @@ JavaScript, where nothing else checks what was written.
 
 ### The handler decides and projects
 
-A handler receives the source state whole, tag included, under `state`, plus the
-input, and returns the target state's payload with its tag left off. The library
-adds the tag back:
+A handler receives the source state whole under `state`, plus the input name and
+its `inputData`. It returns the target state's payload with its tag left off. The
+library adds the tag back:
 
 ```ts
-'empty -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
+'empty -open> draft': ({ inputData }) => ({ text: inputData.text, revision: 0 }),
 ```
 
 The tag lets a handler shared across several rows tell which state it is leaving:
@@ -238,8 +244,8 @@ input is tried. **Declaration order is priority order.** That is how one input
 reaches two states:
 
 ```ts
-'draft -submit> review': ({ state, input, skip }) =>
-	input.reviewer ? { ...state, reviewer: input.reviewer } : skip(),
+'draft -submit> review': ({ state, inputData, skip }) =>
+	inputData.reviewer ? { ...state, reviewer: inputData.reviewer } : skip(),
 'draft -submit> published': ({ state }) => ({
 	text: state.text,
 	revision: state.revision,
@@ -258,10 +264,10 @@ A row that always declines under some condition is an ordinary way to express
 "this input does not apply right now":
 
 ```ts
-'draft -revise> draft': ({ state, input, skip }) =>
-	input.text === state.text
+'draft -revise> draft': ({ state, inputData, skip }) =>
+	inputData.text === state.text
 		? skip()
-		: { text: input.text, revision: state.revision + 1 },
+		: { text: inputData.text, revision: state.revision + 1 },
 ```
 
 That row is also a **self-transition**, a row whose target is its source. It
@@ -274,7 +280,7 @@ in declaration order alongside every other immediate row declared for that
 state:
 
 ```ts
-'draft -submit> checking': ({ input }) => ({ quota: input.quota }),
+'draft -submit> checking': ({ inputData }) => ({ quota: inputData.quota }),
 'checking -> allowed': ({ state, skip }) =>
 	state.quota > 0 ? { quota: state.quota } : skip(),
 'checking -> denied': ({ state }) => ({ quota: state.quota }),
@@ -295,8 +301,8 @@ Only then is the next queued input taken; see
 
 **The handler receives no input.** `input` is `undefined`, typed that way rather
 than absent, so reading it is as ordinary as on any other row. The transition
-record carries `input: undefined` too, which is the discriminant that tells an
-immediate apart from a payload-free input, whose record carries its tag.
+record carries `input: undefined` too. A payload-free named input keeps its name
+and carries `inputData: undefined`.
 
 **A chain that never settles throws.** After 1e5 consecutive hops the machine
 raises `RangeError`, naming a state inside the cycle. There is no rollback:
@@ -336,8 +342,8 @@ const profile = machine({
 			run: ({ to, send }) => {
 				const ctrl = new AbortController()
 				fetchUser(to.id, ctrl.signal).then(
-					(user) => send({ type: 'loaded', user }),
-					(reason) => send({ type: 'failed', reason }),
+					(user) => send('loaded', { user }),
+					(reason) => send('failed', { reason }),
 				)
 				return () => ctrl.abort()
 			},
@@ -353,11 +359,13 @@ entry, and the function it returns runs on exit. With `->` it is an edge, firing
 once per matching transition, in the same [pattern language](#observing) —
 wildcards included.
 
-**Every action receives the transition record**, `{ input, from, to, send }`,
-whichever kind of trigger fired it and identical to what a matching
+**Every action receives the transition record**,
+`{ input, inputData, from, to, send }`, whichever kind of trigger fired it and
+identical to what a matching
 [listener](#observing) gets. A residency is an arrival, so its `to` is the
 resident state. On the initial state, which no transition caused, `from` and
-`input` are `undefined`, so reading `from` needs a narrowing first.
+`input` and `inputData` are `undefined`, so reading `from` needs a narrowing
+first.
 
 **Starting a host runs a declared residency on the initial state, never an
 edge action.** Entering the initial state is not a transition, so no edge
@@ -402,12 +410,12 @@ definition share no state and no listeners, and neither mutates the definition.
 | --------------------------------- | ------------------------------------------------------------------- |
 | `definition.start(data?)`         | creates a host; `data` follows the declared initial state's payload |
 | `host.current`                    | the current state, tag included                                     |
-| `host.send(input)`                | a dispatch; returns nothing                                         |
+| `host.send(input, inputData?)`    | a dispatch; returns nothing                                         |
 | `host.observe(pattern, listener)` | a subscription; returns an unsubscribe function                     |
 
 ```ts
 const doc = publication.start() // `empty` carries no payload, so no argument
-doc.send({ type: 'open', text: 'hello' })
+doc.send('open', { text: 'hello' })
 
 doc.current // { name: 'draft', text: 'hello', revision: 0 }
 ```
@@ -432,9 +440,20 @@ if (now.name === 'draft') {
 
 ### Sending
 
-`send` takes the input as a single argument, an ordinary tagged object, so a
-payload-free input is `doc.send({ type: 'cancel' })`. It returns nothing; what
-happened is `doc.current`.
+`send` takes an input name followed by its data. Omit the second argument when
+the declared data type includes `undefined`: `doc.send('cancel')`. It returns
+nothing; what happened is `doc.current`. `null` is data like any other and must
+be passed.
+
+A union-valued name cannot be paired with a separate union-valued payload: the
+values may not belong together. Narrow the name before forwarding a transition
+record:
+
+```ts
+doc.observe('* -> *', (e) => {
+	if (e.input === 'open') e.send(e.input, e.inputData)
+})
+```
 
 **Sending is broad: every declared input is accepted from every state.** One the
 current state does not handle changes nothing; it does not throw, corrupt, or
@@ -447,10 +466,10 @@ when no dispatch is running anywhere; otherwise it waits for the one in progress
 to settle, and `current` read right after such a send still shows the earlier
 state. [Commit ordering](#commit-ordering) has the mechanics.
 
-**There is no typed send site.** `doc.send({ type: 'publish' })` compiles in
-`draft` and does nothing at runtime, so per-state capabilities go unchecked. That
-is a deliberate drop: the narrow-then-send shape is unsound in TypeScript, and a
-sound variant stays addable later without breaking anything
+**There is no typed send site.** `doc.send('publish')` compiles in `draft` and
+does nothing at runtime, so per-state capabilities go unchecked. That is a
+deliberate drop: the narrow-then-send shape is unsound in TypeScript, and a sound
+variant stays addable later without breaking anything
 ([rationale §12](docs/design-record.md#12-sending-inputs)).
 
 ### Observing
@@ -463,17 +482,18 @@ doc.observe('draft -cancel> *', () => track('cancelled'))
 Listeners go on the host, never on the definition, which is inert. `observe()`
 returns an unsubscribe function.
 
-**The listener receives the transition record**, `{ input, from, to, send }`,
-discriminated by `input?.type` or by `if (e.input)`. `e.from` and `e.to` are the
-states at each end, tags included, so narrowing on `e.from.name` or `e.to.name`
-narrows their fields the way `current` does. An immediate transition carries
-`input: undefined`.
+**The listener receives the transition record**,
+`{ input, inputData, from, to, send }`, discriminated by `input`; its correlated
+payload is `inputData`. `e.from` and `e.to` are the states at each end, tags
+included, so narrowing on `e.from.name` or `e.to.name` narrows their fields the
+way `current` does. An immediate transition carries `input: undefined` and
+`inputData: undefined`.
 
 **`e.send` is the host's own `send`**, so a reaction drives the machine without
 closing over the host it was registered on:
 
 ```ts
-doc.observe('* -> review', (e) => e.send({ type: 'publish' }))
+doc.observe('* -> review', (e) => e.send('publish'))
 ```
 
 It takes the whole declared input vocabulary, however narrow the pattern is —
@@ -572,12 +592,12 @@ declare const api: {
 }
 
 const search = machine({
-	inputs: type<
-		| { type: 'run'; query: string }
-		| { type: 'resolved'; id: number; hits: string[] }
-		| { type: 'rejected'; id: number; reason: string }
-		| { type: 'clear' }
-	>(),
+	inputs: type<{
+		run: { query: string }
+		resolved: { id: number; hits: string[] }
+		rejected: { id: number; reason: string }
+		clear: undefined
+	}>(),
 
 	states: type<
 		| { name: 'idle'; nextId: number }
@@ -589,23 +609,23 @@ const search = machine({
 	initial: 'idle',
 
 	transitions: {
-		'idle -run> running': ({ state, input }) => ({
+		'idle -run> running': ({ state, inputData }) => ({
 			id: state.nextId,
-			query: input.query,
+			query: inputData.query,
 			nextId: state.nextId + 1,
 		}),
-		'running -run> running': ({ state, input }) => ({
+		'running -run> running': ({ state, inputData }) => ({
 			id: state.nextId,
-			query: input.query,
+			query: inputData.query,
 			nextId: state.nextId + 1,
 		}),
-		'running -resolved> done': ({ state, input, skip }) =>
-			input.id === state.id
-				? { hits: input.hits, nextId: state.nextId }
+		'running -resolved> done': ({ state, inputData, skip }) =>
+			inputData.id === state.id
+				? { hits: inputData.hits, nextId: state.nextId }
 				: skip(),
-		'running -rejected> failed': ({ state, input, skip }) =>
-			input.id === state.id
-				? { reason: input.reason, nextId: state.nextId }
+		'running -rejected> failed': ({ state, inputData, skip }) =>
+			inputData.id === state.id
+				? { reason: inputData.reason, nextId: state.nextId }
 				: skip(),
 		'done -clear> idle': ({ state }) => ({ nextId: state.nextId }),
 		'failed -clear> idle': ({ state }) => ({ nextId: state.nextId }),
@@ -616,9 +636,8 @@ const search = machine({
 			const controller = new AbortController()
 
 			void api.search(to.query, controller.signal).then(
-				(hits) => send({ type: 'resolved', id: to.id, hits }),
-				(reason) =>
-					send({ type: 'rejected', id: to.id, reason: String(reason) }),
+				(hits) => send('resolved', { id: to.id, hits }),
+				(reason) => send('rejected', { id: to.id, reason: String(reason) }),
 			)
 
 			return () => controller.abort()
@@ -628,7 +647,7 @@ const search = machine({
 
 const box = search.start({ nextId: 0 })
 box.observe('* -> failed', (e) => console.error(e.to.reason))
-box.send({ type: 'run', query: 'totoro' })
+box.send('run', { query: 'totoro' })
 ```
 
 The `running` action starts the request and returns its teardown. Sending another
@@ -701,11 +720,11 @@ const toggle = machine({
 })
 ```
 
-Omitting a vocabulary infers **names** from `transitions`, never data. The state
-and input names become exactly the ones the table mentions rather than widening
-to `string`, while every field beyond a tag reads as `unknown` and accepts
-anything written back, since nothing declares it. Declaring one vocabulary and
-omitting the other checks that half and reads the other's names off the table.
+Omitting a vocabulary infers **names** from `transitions`, never data. The names
+become exactly the ones the table mentions rather than widening to `string`.
+Inferred input data is `unknown`; inferred state fields are `unknown`. Declaring
+one vocabulary and omitting the other checks that half and reads the other's
+names off the table.
 
 **The key grammar is enforced either way**, and a malformed key still lands on
 its own row. What inference will not accept is a name a key cannot round-trip.

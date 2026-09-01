@@ -20,10 +20,11 @@ import { machine, type } from '../../src/totorobot.ts'
  * that a request is in flight, and its cancellation is exactly this state's
  * exit, so the residency owns it.
  */
-type Inputs =
-	| { type: 'type'; text: string }
-	| { type: 'debounceElapsed' }
-	| { type: 'results'; items: readonly string[] }
+type Inputs = {
+	type: { text: string }
+	debounceElapsed: undefined
+	results: { items: readonly string[] }
+}
 
 type States =
 	| { name: 'idle' }
@@ -46,20 +47,20 @@ export const searchBox = machine({
 	initial: 'idle',
 
 	transitions: {
-		'idle -type> typing': ({ input }) => ({ query: input.text }),
-		'typing -type> typing': ({ input }) => ({ query: input.text }),
-		'results -type> typing': ({ input }) => ({ query: input.text }),
+		'idle -type> typing': ({ inputData }) => ({ query: inputData.text }),
+		'typing -type> typing': ({ inputData }) => ({ query: inputData.text }),
+		'results -type> typing': ({ inputData }) => ({ query: inputData.text }),
 		// A keystroke during the request abandons it: the `loading` residency
 		// tears down on the way out, so the reply that is already in flight is
 		// dropped rather than racing the next one.
-		'loading -type> typing': ({ input }) => ({ query: input.text }),
+		'loading -type> typing': ({ inputData }) => ({ query: inputData.text }),
 
 		'typing -debounceElapsed> loading': ({ state }) => ({
 			query: state.query,
 		}),
-		'loading -results> results': ({ state, input }) => ({
+		'loading -results> results': ({ state, inputData }) => ({
 			query: state.query,
-			items: input.items,
+			items: inputData.items,
 		}),
 	},
 
@@ -67,17 +68,14 @@ export const searchBox = machine({
 		// The debounce: a timer whose only purpose is to send this machine its
 		// own input. A `send` from an action is queued like any other.
 		typing: ({ send }) => {
-			const timer = setTimeout(
-				() => send({ type: 'debounceElapsed' }),
-				DEBOUNCE_MS,
-			)
+			const timer = setTimeout(() => send('debounceElapsed'), DEBOUNCE_MS)
 			return () => clearTimeout(timer)
 		},
 
 		loading: ({ to, send }) => {
 			let live = true
 			void fakeSearch(to.query).then((items) => {
-				if (live) send({ type: 'results', items })
+				if (live) send('results', { items })
 			})
 			return () => {
 				live = false

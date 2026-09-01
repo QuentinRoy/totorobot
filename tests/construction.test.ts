@@ -8,7 +8,7 @@ describe('construction', () => {
 	test('start(data) yields a host whose current is the initial state, tag included', () => {
 		const counter = machine({
 			initial: 'ready',
-			inputs: type<{ type: 'increment' }>(),
+			inputs: type<{ increment: undefined }>(),
 			states: type<{ name: 'ready'; count: number }>(),
 			transitions: {
 				'ready -increment> ready': ({ state }) => ({
@@ -61,7 +61,7 @@ describe('construction', () => {
 	test('a chain from the initial state settles fully, not one hop', () => {
 		const relay = machine({
 			initial: 'a',
-			inputs: type<{ type: 'go' }>(),
+			inputs: type<{ go: undefined }>(),
 			states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
 			transitions: {
 				'a -> b': () => {},
@@ -77,7 +77,7 @@ describe('construction', () => {
 	test("the initial state's immediates all skipping leaves the host in the declared initial state", () => {
 		const stalled = machine({
 			initial: 'checking',
-			inputs: type<{ type: 'submit' }>(),
+			inputs: type<{ submit: undefined }>(),
 			states: type<{ name: 'checking' } | { name: 'allowed' }>(),
 			transitions: {
 				'checking -> allowed': ({ skip }) => skip(),
@@ -107,7 +107,7 @@ describe('construction', () => {
 	test('the hop budget spent settling the initial state does not carry over into the first send', () => {
 		const twice = machine({
 			initial: 'a',
-			inputs: type<{ type: 'go' }>(),
+			inputs: type<{ go: undefined }>(),
 			states: type<
 				{ name: 'a'; count: number } | { name: 'b'; count: number }
 			>(),
@@ -126,7 +126,7 @@ describe('construction', () => {
 		const host = twice.start({ count: 0 })
 		expect(host.current).toEqual({ name: 'a', count: 60_000 })
 
-		host.send({ type: 'go' })
+		host.send('go')
 		expect(host.current).toEqual({ name: 'b', count: 60_000 })
 	})
 
@@ -148,7 +148,7 @@ describe('construction', () => {
 		const hostA = toggle.start()
 		const hostB = toggle.start()
 
-		hostA.send({ type: 'toggle' })
+		hostA.send('toggle')
 
 		expect(hostA.current).toEqual({ name: 'on' })
 		expect(hostB.current).toEqual({ name: 'off' })
@@ -161,7 +161,7 @@ describe('construction', () => {
 		const observer = vi.fn()
 		hostA.observe('* -> *', observer)
 
-		hostB.send({ type: 'toggle' })
+		hostB.send('toggle')
 
 		expect(observer).not.toHaveBeenCalled()
 	})
@@ -171,8 +171,8 @@ describe('construction', () => {
 
 		const host = toggle.start()
 		host.observe('* -> *', () => {})
-		host.send({ type: 'toggle' })
-		host.send({ type: 'toggle' })
+		host.send('toggle')
+		host.send('toggle')
 
 		expect(toggle).toStrictEqual(before)
 	})

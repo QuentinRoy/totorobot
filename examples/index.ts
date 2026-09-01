@@ -9,13 +9,13 @@ const traffic = trafficLight.start({ changes: 0 })
 // Observation is on the host, never the definition: an imported definition
 // stays inert. `*` matches any state, and the unlabelled arrow any input.
 traffic.observe('* -> *', (e) => {
-	console.log(`  ${e.from.name} -${e.input?.type}> ${e.to.name}`, e.to)
+	console.log(`  ${e.from.name} -${e.input}> ${e.to.name}`, e.to)
 })
 traffic.observe('* -> yellow', () => console.log('    (blinking)'))
 
-traffic.send({ type: 'next' })
-traffic.send({ type: 'next' })
-traffic.send({ type: 'next' })
+traffic.send('next')
+traffic.send('next')
+traffic.send('next')
 
 console.log('\n--- Auth machine (declining rows + an asynchronous result) ---')
 
@@ -54,8 +54,8 @@ search.observe('loading -results> results', (e) =>
 
 // Three keystrokes inside the debounce window: the timer restarts each time,
 // the one-per-session ping does not.
-search.send({ type: 'type', text: 't' })
-search.send({ type: 'type', text: 'to' })
-search.send({ type: 'type', text: 'tot' })
+search.send('type', { text: 't' })
+search.send('type', { text: 'to' })
+search.send('type', { text: 'tot' })
 
 console.log('  results:', await nextResults(search))

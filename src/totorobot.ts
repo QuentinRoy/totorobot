@@ -50,8 +50,25 @@ let parse = (
 // The vocabulary
 // ---------------------------------------------------------------------------
 
-type InputVocab = { readonly type: string }
+type InputVocab = object
+type AnyInputs = Record<string, unknown>
 type StateVocab = { readonly name: string }
+
+type IsUnion<T, Whole = T> = T extends Whole
+	? [Whole] extends [T]
+		? false
+		: true
+	: never
+
+/** `object` admits interfaces; this check rejects non-map shapes (I30). */
+type InputMap<I extends InputVocab> =
+	true extends IsUnion<I>
+		? never
+		: I extends readonly unknown[] | Function
+			? never
+			: Exclude<keyof I, string> extends never
+				? unknown
+				: never
 
 /**
  * Lands an omitted property and an explicit `undefined` on the same type;
@@ -60,7 +77,7 @@ type StateVocab = { readonly name: string }
  */
 type Declared<Raw, Default> = Raw extends undefined ? Default : Raw
 
-type InputType<I extends InputVocab> = I['type']
+type InputName<I extends InputVocab> = keyof I & string
 type StateName<S extends StateVocab> = S['name']
 
 // ---------------------------------------------------------------------------
@@ -73,7 +90,7 @@ type StateName<S extends StateVocab> = S['name']
  * inputs.
  */
 type Key<I extends InputVocab, S extends StateVocab> =
-	| `${StateName<S>} -${InputType<I>}> ${StateName<S>}`
+	| `${StateName<S>} -${InputName<I>}> ${StateName<S>}`
 	| `${StateName<S>} -> ${StateName<S>}`
 
 /** A leading `infer` stops at the first separator, so these agree with `parse`. */
@@ -95,13 +112,10 @@ type RoundTrips<N extends string> = N extends '*' | ` ${string}` | `${string} `
  * parameter already inferred. Only inferred names are filtered, never declared.
  */
 type InputsFromKeys<K extends string> = {
-	[N in RoundTrips<Exclude<Label<K>, ''>>]: { readonly type: N } & Record<
-		string,
-		unknown
-	>
-}[RoundTrips<Exclude<Label<K>, ''>>]
+	[N in RoundTrips<Exclude<Label<K>, ''>>]: unknown
+}
 
-/** The same for state names: map, then immediately index. */
+/** State inference maps names to tagged states, then indexes to their union. */
 type StatesFromKeys<K extends string> = {
 	[N in RoundTrips<From<K> | To<K>>]: { readonly name: N } & Record<
 		string,
@@ -112,10 +126,10 @@ type StatesFromKeys<K extends string> = {
 /** No `-*>`: the unlabelled arrow is the broad form, and a bare key is not one. */
 type Wildcard<S extends StateVocab> = StateName<S> | '*'
 type Pattern<
-	I extends InputVocab = InputVocab,
+	I extends InputVocab = AnyInputs,
 	S extends StateVocab = StateVocab,
 > =
-	| `${Wildcard<S>} -${InputType<I>}> ${Wildcard<S>}`
+	| `${Wildcard<S>} -${InputName<I>}> ${Wildcard<S>}`
 	| `${Wildcard<S>} -> ${Wildcard<S>}`
 
 // ---------------------------------------------------------------------------
@@ -140,8 +154,9 @@ type Table<I extends InputVocab, S extends StateVocab, K extends string> = {
 	readonly [P in K]: P extends Key<I, S>
 		? (args: {
 				readonly state: NoInfer<Extract<S, { name: From<P> }>>
-				readonly input: NoInfer<
-					[Label<P>] extends [''] ? undefined : Extract<I, { type: Label<P> }>
+				readonly input: NoInfer<[Label<P>] extends [''] ? undefined : Label<P>>
+				readonly inputData: NoInfer<
+					[Label<P>] extends [''] ? undefined : I[Label<P> & keyof I]
 				>
 				readonly skip: () => Skip
 			}) =>
@@ -174,32 +189,40 @@ type Select<Coordinate extends string, All extends string> = [
  * `send` is the whole declared vocabulary from every state, never narrowed to
  * what `from` or `to` handles: a queued input is read at drain time, by which
  * point the machine has moved, so the normal reaction sends something the state
- * it was notified about does not handle (§12 Sending inputs). Spelled into both
- * arms rather than intersected onto the union, so a discriminant still narrows
- * the record.
+ * it was notified about does not handle (§12 Sending inputs). A tuple union
+ * keeps each input name paired with its data when callers hold unions of both
+ * fields (I29).
  */
-type Send<I extends InputVocab> = (input: I) => void
+type Send<I extends InputVocab> = (
+	...args: {
+		[N in InputName<I>]: undefined extends I[N]
+			? [input: N, inputData?: I[N]]
+			: [input: N, inputData: I[N]]
+	}[InputName<I>]
+) => void
 
 /**
  * Narrowed by the listener's own pattern. The immediate hop is a separate arm
- * because the mapped type is indexed by input type; a labelled pattern drops it.
+ * because the mapped type is indexed by input name; a labelled pattern drops it.
  */
 type Transition<
-	I extends InputVocab = InputVocab,
+	I extends InputVocab = AnyInputs,
 	S extends StateVocab = StateVocab,
 	P extends string = '* -> *',
 > =
 	| {
-			[N in Select<Label<P>, InputType<I>>]: {
-				readonly input: Extract<I, { type: N }>
+			[N in Select<Label<P>, InputName<I>>]: {
+				readonly input: N
+				readonly inputData: I[N]
 				readonly from: StateNamed<S, Select<From<P>, StateName<S>>>
 				readonly to: StateNamed<S, Select<To<P>, StateName<S>>>
 				readonly send: Send<I>
 			}
-	  }[Select<Label<P>, InputType<I>>]
+	  }[Select<Label<P>, InputName<I>>]
 	| ([Label<P>] extends ['']
 			? {
 					readonly input: undefined
+					readonly inputData: undefined
 					readonly from: StateNamed<S, Select<From<P>, StateName<S>>>
 					readonly to: StateNamed<S, Select<To<P>, StateName<S>>>
 					readonly send: Send<I>
@@ -207,7 +230,7 @@ type Transition<
 			: never)
 
 type Listener<
-	I extends InputVocab = InputVocab,
+	I extends InputVocab = AnyInputs,
 	S extends StateVocab = StateVocab,
 	P extends string = '* -> *',
 > = (transition: Transition<I, S, P>) => void
@@ -236,6 +259,7 @@ type Teardown = () => void
  */
 type Initial<I extends InputVocab, S extends StateVocab, N extends string> = {
 	readonly input: undefined
+	readonly inputData: undefined
 	readonly from: undefined
 	readonly to: NoInfer<StateNamed<S, N>>
 	readonly send: Send<I>
@@ -337,7 +361,7 @@ type Start<S extends StateVocab, Init extends string> = keyof Omit<
 
 /** A running machine: the only mutable thing in the design. */
 interface Host<
-	I extends InputVocab = InputVocab,
+	I extends InputVocab = AnyInputs,
 	S extends StateVocab = StateVocab,
 > {
 	readonly current: S
@@ -371,7 +395,7 @@ interface Vocabulary<
 
 /** A declared machine. Inert, shareable, and never mutated by running one. */
 interface Machine<
-	I extends InputVocab = InputVocab,
+	I extends InputVocab = AnyInputs,
 	S extends StateVocab = StateVocab,
 	K extends string = string,
 	Init extends string = string,
@@ -410,18 +434,28 @@ export type Sources<M, S extends string> = From<
 // The definition
 // ---------------------------------------------------------------------------
 
-/** One shape for every handler: dispatch reads `.name` and `.type`, nothing else (I23). */
-type UncheckedHandler = (args: {
-	readonly state: StateVocab
-	readonly input: InputVocab | undefined
-	readonly skip: () => Skip
-}) => object | undefined | Skip
+type UncheckedInput = {
+	readonly input: string | undefined
+	readonly inputData: unknown
+}
+type UncheckedSend = (
+	input: Exclude<UncheckedInput['input'], undefined>,
+	inputData?: UncheckedInput['inputData'],
+) => void
+
+/** One shape for every handler; input data is opaque to dispatch (I23). */
+type UncheckedHandler = (
+	args: UncheckedInput & {
+		readonly state: StateVocab
+		readonly skip: () => Skip
+	},
+) => object | undefined | Skip
 
 type Row = readonly [to: string, handler: UncheckedHandler]
 
 interface UncheckedHost {
 	readonly current: StateVocab
-	readonly send: (input: InputVocab) => void
+	readonly send: UncheckedSend
 	readonly observe: (
 		pattern: string,
 		action: Listener | ActionItem,
@@ -429,10 +463,9 @@ interface UncheckedHost {
 }
 
 /**
- * Every row of the table, in order, under the pair that reaches it; an immediate
- * row's input half is empty, and `send` never builds an empty one, so it stays
- * unreachable from there. One flat map rather than a map of maps, and
- * null-prototype, so `send({ type: 'toString' })` finds nothing to call (I16).
+ * Every row of the table, in order, under the pair that reaches it. A marker
+ * separates named inputs from immediate rows. One flat, null-prototype map, so
+ * `send('toString')` finds nothing to call (I16).
  */
 type Index = Record<string, Row[] | undefined>
 
@@ -518,7 +551,7 @@ export let machine: <
 	readonly initial: Init & StateName<NoInfer<S>>
 	// `| undefined` is what `type()` returns, and inference subtracts it. Spelled
 	// out because `exactOptionalPropertyTypes` makes `?:` a different thing.
-	readonly inputs?: RawI | undefined
+	readonly inputs?: (RawI & InputMap<Exclude<RawI, undefined>>) | undefined
 	readonly states?: RawS | undefined
 	readonly transitions: Table<I, S, K>
 	readonly actions?: Actions<I, S, A> | undefined
@@ -536,13 +569,13 @@ export let machine: <
 		}
 		let index: Index = Object.create(null)
 
-		// One flat keyspace for both kinds of row, keyed by the `from`/`input` pair
-		// with the length of `from` in front. Names are arbitrary strings, so no
-		// character is free to be a separator; a length is (I16). Spelled out at all
-		// three sites rather than shared, which measures smaller (I16).
+		// One flat keyspace for both kinds of row. The source length separates the
+		// source from its input; a marker distinguishes a named input from no input.
+		// Spelled out at all three sites rather than shared, which measures smaller
+		// (I16).
 		for (let key in transitions) {
 			let [from, input, to] = parse(key)
-			;(index[from.length + '\0' + from + input] ??= []).push([
+			;(index[from.length + '\0' + from + (input && 1 + input)] ??= []).push([
 				to,
 				transitions[key]!,
 			])
@@ -590,7 +623,7 @@ export let machine: <
 						let [f, l, t, run, key] = row
 						if (
 							(f === '*' || f === e.from?.name) &&
-							(l === '' || l === e.input?.type) &&
+							(l === '' || l === e.input) &&
 							(t === '*' || t === e.to.name) &&
 							(!key || e.to.name !== e.from?.name || row[7])
 						) {
@@ -609,9 +642,13 @@ export let machine: <
 				// One scanning path for both kinds of transition: commit the first row
 				// that does not decline, report whether the machine moved. Fusing it with
 				// the chain below, or splitting a `commit` out of it, measured larger (I16).
-				let step = (rows: Row[] = [], input?: InputVocab): boolean => {
+				let step = (
+					rows: Row[] = [],
+					input?: UncheckedInput['input'],
+					inputData?: UncheckedInput['inputData'],
+				): boolean => {
 					for (let [to, handler] of rows) {
-						let payload = handler({ state: current, input, skip })
+						let payload = handler({ state: current, input, inputData, skip })
 						// Declining is ordinary and silent: try the next row for this pair.
 						if (payload !== SKIP) {
 							let from = current
@@ -646,7 +683,13 @@ export let machine: <
 							current = next
 							// The same `send` the host exposes: a reaction drives the machine
 							// without closing over the host it was registered on.
-							let record: Transition = { input, from, to: current, send }
+							let record: Arrival = {
+								input,
+								inputData,
+								from,
+								to: current,
+								send,
+							}
 
 							// Actions in declaration order, then listeners (§9 Actions).
 							fire(acts, record)
@@ -676,13 +719,14 @@ export let machine: <
 				// carries it; the host below re-exports this binding. The work is queued
 				// rather than run, wherever the call came from. Pushed before `dispatch`
 				// rather than inside a `work` closure, which measures smaller (I16).
-				let send = (input: InputVocab): void => {
+				let send: UncheckedSend = (input, inputData) => {
 					queue.push(() => {
 						// Read at drain time, so a queued send may correctly find no row.
 						if (
 							step(
-								index[current.name.length + '\0' + current.name + input?.type],
+								index[current.name.length + '\0' + current.name + 1 + input],
 								input,
+								inputData,
 							)
 						)
 							settle()
@@ -740,11 +784,10 @@ export let machine: <
  * only an action can see that one, since a missing `from` matches no edge (§9
  * Actions).
  */
-type Arrival = {
-	readonly input: InputVocab | undefined
+type Arrival = UncheckedInput & {
 	readonly from: StateVocab | undefined
 	readonly to: StateVocab
-	readonly send: (input: InputVocab) => void
+	readonly send: UncheckedSend
 }
 
 /**

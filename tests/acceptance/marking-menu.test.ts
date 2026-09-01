@@ -31,12 +31,13 @@ type Menu = {
 type Point = { x: number; y: number }
 type Stroke = readonly Point[]
 
-type MarkingMenuInputs =
-	| { type: 'down'; point: Point }
-	| { type: 'move'; point: Point }
-	| { type: 'dwellElapsed' }
-	| { type: 'up'; point: Point }
-	| { type: 'cancel'; point: Point }
+type MarkingMenuInputs = {
+	down: { point: Point }
+	move: { point: Point }
+	dwellElapsed: undefined
+	up: { point: Point }
+	cancel: { point: Point }
+}
 type MarkingMenuStates =
 	| { name: 'idle' }
 	| { name: 'startup'; origin: Point; stroke: Stroke }
@@ -64,30 +65,30 @@ const markingMenu = machine({
 	inputs: type<MarkingMenuInputs>(),
 	states: type<MarkingMenuStates>(),
 	transitions: {
-		'idle -down> startup': ({ input }) => ({
-			origin: input.point,
-			stroke: [input.point],
+		'idle -down> startup': ({ inputData }) => ({
+			origin: inputData.point,
+			stroke: [inputData.point],
 		}),
-		'startup -move> startup': ({ state, input, skip }) =>
-			distance(state.origin, input.point) < DWELL_DISTANCE_THRESHOLD
-				? { ...state, stroke: appendStroke(state.stroke, input.point) }
+		'startup -move> startup': ({ state, inputData, skip }) =>
+			distance(state.origin, inputData.point) < DWELL_DISTANCE_THRESHOLD
+				? { ...state, stroke: appendStroke(state.stroke, inputData.point) }
 				: skip(),
-		'startup -move> expert': ({ state, input, skip }) =>
-			distance(state.origin, input.point) < DWELL_DISTANCE_THRESHOLD
+		'startup -move> expert': ({ state, inputData, skip }) =>
+			distance(state.origin, inputData.point) < DWELL_DISTANCE_THRESHOLD
 				? skip()
-				: { stroke: appendStroke(state.stroke, input.point) },
+				: { stroke: appendStroke(state.stroke, inputData.point) },
 		'startup -dwellElapsed> novice': ({ state }) => ({
 			menu: rootMenu,
 			center: state.origin,
 			stroke: state.stroke,
 		}),
-		'expert -move> expert': ({ state, input }) => ({
+		'expert -move> expert': ({ state, inputData }) => ({
 			...state,
-			stroke: appendStroke(state.stroke, input.point),
+			stroke: appendStroke(state.stroke, inputData.point),
 		}),
-		'novice -move> novice': ({ state, input }) => ({
+		'novice -move> novice': ({ state, inputData }) => ({
 			...state,
-			stroke: appendStroke(state.stroke, input.point),
+			stroke: appendStroke(state.stroke, inputData.point),
 		}),
 		'startup -up> idle': () => ({}),
 		'expert -up> idle': () => ({}),
@@ -103,10 +104,7 @@ const markingMenu = machine({
 		// not a guard against one that does.
 		startup: {
 			run: ({ send }) => {
-				let timer = setTimeout(
-					() => send({ type: 'dwellElapsed' }),
-					DWELL_DELAY,
-				)
+				let timer = setTimeout(() => send('dwellElapsed'), DWELL_DELAY)
 				return () => clearTimeout(timer)
 			},
 			// A wiggle within the threshold is a self-transition; `restart: false`
@@ -127,7 +125,7 @@ describe('acceptance: Reduced Marking Menu', () => {
 		const reportedStart = vi.fn()
 		doc.observe('idle -down> startup', reportedStart)
 
-		doc.send({ type: 'down', point: p0 })
+		doc.send('down', { point: p0 })
 
 		expect(doc.current).toEqual({
 			name: 'startup',
@@ -141,9 +139,9 @@ describe('acceptance: Reduced Marking Menu', () => {
 	test('trace 2: a nearby move commits a same-state stroke update, then the dwell elapsing enters novice and reports open', () => {
 		using _timers = fakeTimers()
 		const doc = markingMenu.start()
-		doc.send({ type: 'down', point: p0 }) // -> startup(origin: p0, stroke: [p0])
+		doc.send('down', { point: p0 }) // -> startup(origin: p0, stroke: [p0])
 
-		doc.send({ type: 'move', point: p1Near })
+		doc.send('move', { point: p1Near })
 		expect(doc.current).toEqual({
 			name: 'startup',
 			origin: p0,
@@ -167,9 +165,9 @@ describe('acceptance: Reduced Marking Menu', () => {
 	test("trace 3 (fresh execution): a far move enters expert, and the startup residency's teardown cancels the dwell so no stale dwellElapsed can arrive", () => {
 		using _timers = fakeTimers()
 		const doc = markingMenu.start()
-		doc.send({ type: 'down', point: p0 }) // -> startup(origin: p0, stroke: [p0])
+		doc.send('down', { point: p0 }) // -> startup(origin: p0, stroke: [p0])
 
-		doc.send({ type: 'move', point: p2Far })
+		doc.send('move', { point: p2Far })
 		expect(doc.current).toEqual({
 			name: 'expert',
 			stroke: [p0, p2Far],
@@ -186,12 +184,12 @@ describe('acceptance: Reduced Marking Menu', () => {
 	test('trace 4: cancel from startup returns to idle, cancels the dwell, and reports cancellation', () => {
 		using _timers = fakeTimers()
 		const doc = markingMenu.start()
-		doc.send({ type: 'down', point: p0 }) // -> startup(origin: p0, stroke: [p0])
+		doc.send('down', { point: p0 }) // -> startup(origin: p0, stroke: [p0])
 
 		const reportedCancellation = vi.fn()
 		doc.observe('startup -cancel> idle', reportedCancellation)
 
-		doc.send({ type: 'cancel', point: p0 })
+		doc.send('cancel', { point: p0 })
 
 		expect(doc.current).toEqual({ name: 'idle' })
 		expect(reportedCancellation).toHaveBeenCalledOnce()
@@ -204,7 +202,7 @@ describe('acceptance: Reduced Marking Menu', () => {
 		const observer = vi.fn()
 		doc.observe('* -> *', observer)
 
-		doc.send({ type: 'move', point: p1Near }) // idle has no row for move
+		doc.send('move', { point: p1Near }) // idle has no row for move
 
 		expect(doc.current).toEqual(before)
 		expect(observer).not.toHaveBeenCalled()

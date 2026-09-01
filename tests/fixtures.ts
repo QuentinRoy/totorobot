@@ -7,7 +7,7 @@
 
 import { machine, type } from 'totorobot'
 
-type ToggleInputs = { type: 'toggle' }
+type ToggleInputs = { toggle: undefined }
 type ToggleStates = { name: 'off' } | { name: 'on' }
 
 /** The smallest useful machine: two payload-free states, one input each way. */
@@ -21,13 +21,14 @@ export const toggle = machine({
 	},
 })
 
-type EditorInputs =
-	| { type: 'open'; text: string }
-	| { type: 'revise'; text: string }
-	| { type: 'touch' }
-	| { type: 'submit'; route: 'review' | 'publish' }
-	| { type: 'poke' }
-	| { type: 'lock' }
+type EditorInputs = {
+	open: { text: string }
+	revise: { text: string }
+	touch: undefined
+	submit: { route: 'review' | 'publish' }
+	poke: undefined
+	lock: undefined
+}
 type EditorStates =
 	| { name: 'idle' }
 	| { name: 'draft'; text: string; revision: number }
@@ -41,7 +42,7 @@ type EditorStates =
  * (`poke`), a self-transition (`revise`) and `locked` has no outgoing rows at
  * all.
  */
-type GateInputs = { type: 'submit'; quota: number } | { type: 'reset' }
+type GateInputs = { submit: { quota: number }; reset: undefined }
 type GateStates =
 	| { name: 'draft' }
 	| { name: 'checking'; quota: number }
@@ -58,7 +59,7 @@ export const gate = machine({
 	inputs: type<GateInputs>(),
 	states: type<GateStates>(),
 	transitions: {
-		'draft -submit> checking': ({ input }) => ({ quota: input.quota }),
+		'draft -submit> checking': ({ inputData }) => ({ quota: inputData.quota }),
 		'checking -> allowed': ({ state, skip }) =>
 			state.quota > 0 ? { ...state } : skip(),
 		'checking -> denied': ({ state }) => ({ ...state }),
@@ -74,14 +75,14 @@ export const gate = machine({
  */
 export const pending = machine({
 	initial: 'draft',
-	inputs: type<{ type: 'submit'; quota: number } | { type: 'cancel' }>(),
+	inputs: type<{ submit: { quota: number }; cancel: undefined }>(),
 	states: type<
 		| { name: 'draft' }
 		| { name: 'checking'; quota: number }
 		| { name: 'allowed'; quota: number }
 	>(),
 	transitions: {
-		'draft -submit> checking': ({ input }) => ({ quota: input.quota }),
+		'draft -submit> checking': ({ inputData }) => ({ quota: inputData.quota }),
 		'checking -> allowed': ({ state, skip }) =>
 			state.quota > 0 ? { ...state } : skip(),
 		'checking -cancel> draft': () => {},
@@ -96,7 +97,7 @@ export const pending = machine({
  */
 export const spinner = machine({
 	initial: 'idle',
-	inputs: type<{ type: 'go' } | { type: 'stop' }>(),
+	inputs: type<{ go: undefined; stop: undefined }>(),
 	states: type<{ name: 'idle' } | { name: 'loop'; count: number }>(),
 	transitions: {
 		'idle -go> loop': () => ({ count: 0 }),
@@ -108,7 +109,7 @@ export const spinner = machine({
 /** A chain of immediate hops, three deep, off one input. */
 export const chain = machine({
 	initial: 'a',
-	inputs: type<{ type: 'go' }>(),
+	inputs: type<{ go: undefined }>(),
 	states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' } | { name: 'd' }>(),
 	transitions: {
 		'a -go> b': () => {},
@@ -127,7 +128,7 @@ export const chain = machine({
 export function activity(setup: () => void, teardown: () => void) {
 	return machine({
 		initial: 'a',
-		inputs: type<{ type: 'go' }>(),
+		inputs: type<{ go: undefined }>(),
 		states: type<
 			{ name: 'a' } | { name: 'b' } | { name: 'c' } | { name: 'd' }
 		>(),
@@ -150,16 +151,19 @@ export const editor = machine({
 	inputs: type<EditorInputs>(),
 	states: type<EditorStates>(),
 	transitions: {
-		'idle -open> draft': ({ input }) => ({ text: input.text, revision: 0 }),
-		'draft -revise> draft': ({ state, input }) => ({
-			text: input.text,
+		'idle -open> draft': ({ inputData }) => ({
+			text: inputData.text,
+			revision: 0,
+		}),
+		'draft -revise> draft': ({ state, inputData }) => ({
+			text: inputData.text,
 			revision: state.revision + 1,
 		}),
 		'draft -touch> draft': ({ state }) => ({ ...state }),
-		'draft -submit> review': ({ state, input, skip }) =>
-			input.route === 'review' ? { ...state } : skip(),
-		'draft -submit> published': ({ state, input, skip }) =>
-			input.route === 'publish' ? { ...state } : skip(),
+		'draft -submit> review': ({ state, inputData, skip }) =>
+			inputData.route === 'review' ? { ...state } : skip(),
+		'draft -submit> published': ({ state, inputData, skip }) =>
+			inputData.route === 'publish' ? { ...state } : skip(),
 		'draft -poke> draft': ({ skip }) => skip(),
 		'draft -lock> locked': () => {},
 	},

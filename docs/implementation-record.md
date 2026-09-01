@@ -226,20 +226,17 @@ since; treat it as the reason the shape was chosen, not as a current number.
   other — not a basis for choosing. The index wins on behaviour: dispatch is a
   lookup rather than a scan, and a malformed key arriving from untyped code cannot
   accidentally prefix-match.
-- **The index key length-prefixed, not separator-joined.** One flat keyspace for
-  labelled and immediate rows needs a key that encodes the `from`/`input` pair
-  injectively. Names are arbitrary strings, so no character is available as a
-  separator: `'a\0b' -c>` and `a -b\0c>` join alike whatever the separator is,
-  and filing an immediate under `from` alone collides outright with a labelled
-  row whose pair spells that name. Putting `from.length` in front costs 8 B and
-  is not optional. Spelling the key out at all three sites rather than sharing an
-  `at` helper is a further 4 B smaller — a repeated shape brotli already knows.
+- **The index key encodes both boundaries and input presence.** Names are
+  arbitrary strings, so a separator cannot divide them: `'a\0b' -c>` and
+  `a -b\0c>` join alike. The source length makes that boundary unambiguous. An
+  immediate transition has no input; `''` is a supplied input name. The key must
+  distinguish those cases, or `send('')` can dispatch an immediate row.
 - **Patterns parsed at registration, not matched by generation.** Generating the
   eight patterns a transition could answer to and testing membership: 4.8% larger,
   plus a `Set` allocated per transition. Parsing at registration also shares
   `parse` with the index build, which is part of why it compresses better.
 - **Null-prototype index.** 4 B golfed (17 raw, 15 gzip), the whole cost of an
-  untyped `send({ type: 'toString' })` finding nothing rather than finding
+  untyped `send('toString')` finding nothing rather than finding
   `Object.prototype`'s method and calling it as a handler. Was +10 B over two
   levels pre-golf; the keyspace is flat now, so the prototype is bought once.
 - **`current` as a closure variable behind a getter, not a property `send`
@@ -377,10 +374,10 @@ after which each derived type indexes the result rather than repeating the match
 The runtime was written against `type Unchecked = any`, on the sound argument that
 the type layer above had already checked those positions. But an alias does not
 narrow `any`; what the name bought was that `any` stopped answering to a search for
-it. Nothing there needs it — `current` and a handler's `state` are read for `.name`
-alone, an input for `.type` alone, and a payload is only ever spread — so
-`StateVocab`, `InputVocab | undefined` and `object` type the whole runtime with no
-cast added and a byte-identical bundle.
+it. Nothing there needs it: `current` and a handler's `state` are read for
+`.name`, the input name is a string, `inputData` passes through unchanged, and a
+handler result is only spread. `StateVocab`, `string | undefined`, `unknown`, and
+`object` type the whole runtime with no cast added and a byte-identical bundle.
 
 The golfed runtime reintroduced three, and none of them survived either, at a
 byte-identical bundle: an item that is read for both `run` and a call is an
@@ -479,3 +476,20 @@ stops resolving. An expression-bodied predicate does not trigger it, which is wh
 a probe that only writes `restart: (from, to) => from.id !== to.id` would call
 this safe. The fix is the same shape as I14's: wrap both parameters in
 `NoInfer`. Pinned in `tests/actions.test-d.ts`.
+
+### <a id="i29"></a>I29 — A tuple union keeps separate send arguments correlated
+
+`send` maps each input entry to one tuple, then accepts their union as its rest
+parameter. Required data uses `[name, data]`; data that admits `undefined` uses
+`[name, data?]`. This rejects a union-valued name beside an unrelated
+union-valued payload. Narrowing the name first selects one tuple and permits
+forwarding. A generic `(name: N, data: I[N])` accepts mismatched unions and is
+therefore too broad.
+
+### <a id="i30"></a>I30 — Input maps need a separate shape check
+
+The generic constraint is `object` because interfaces do not satisfy a
+`Record<string, unknown>` constraint without an index signature. That broad
+constraint also admits arrays, functions, and unions, so the `inputs` property
+checks those shapes separately. `AnyInputs` uses `Record<string, unknown>` only
+as the default for APIs with no declared vocabulary to inspect.

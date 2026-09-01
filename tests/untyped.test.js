@@ -23,10 +23,10 @@ describe('the untyped path', () => {
 
 		expect(host.current).toEqual({ name: 'off' })
 
-		host.send({ type: 'toggle' })
+		host.send('toggle')
 		expect(host.current).toEqual({ name: 'on' })
 
-		host.send({ type: 'toggle' })
+		host.send('toggle')
 		expect(host.current).toEqual({ name: 'off' })
 
 		expect(log).toHaveBeenCalledTimes(2)
@@ -47,7 +47,7 @@ describe('the untyped path', () => {
 		const observer = vi.fn()
 		host.observe('* -> *', observer)
 
-		host.send({ type: 'bogus' })
+		host.send('bogus')
 
 		expect(host.current).toEqual({ name: 'off' })
 		expect(observer).not.toHaveBeenCalled()
@@ -67,7 +67,7 @@ describe('the untyped path', () => {
 
 		expect(() => host.observe('bogus -> *', observer)).not.toThrow()
 
-		host.send({ type: 'toggle' })
+		host.send('toggle')
 
 		expect(observer).not.toHaveBeenCalled()
 	})
@@ -79,15 +79,15 @@ describe('the untyped path', () => {
 				initial: 'draft',
 				transitions: {
 					'draft -submit> checking': () => ({ via: 'submit' }),
-					'checking -> settled': ({ input }) => {
-						immediate(input)
+					'checking -> settled': ({ inputData }) => {
+						immediate(inputData)
 						return { via: 'immediate' }
 					},
 				},
 			})
 
 			const host = untyped.start()
-			host.send({ type: 'submit' })
+			host.send('submit')
 
 			expect(host.current).toEqual({
 				name: 'settled',
@@ -98,15 +98,14 @@ describe('the untyped path', () => {
 	})
 
 	describe('an unlabelled arrow in the transitions table (#7)', () => {
-		test("send('') changes nothing and fires no listener", () => {
+		test("send('') cannot dispatch an immediate row", () => {
+			let open = false
+			const immediate = vi.fn(({ skip }) => (open ? {} : skip()))
 			const untyped = machine({
 				initial: 'draft',
 				transitions: {
 					'draft -submit> published': () => ({ via: 'submit' }),
-					// Guarded to skip so `.start()` settling the initial state's
-					// immediates does not carry `draft` away before the test below
-					// gets to observe it.
-					'draft -> published': ({ skip }) => skip(),
+					'draft -> published': immediate,
 				},
 			})
 
@@ -115,9 +114,11 @@ describe('the untyped path', () => {
 			const observer = vi.fn()
 			host.observe('* -> *', observer)
 
-			host.send({ type: '' })
+			open = true
+			host.send('')
 
 			expect(host.current).toEqual(before)
+			expect(immediate).toHaveBeenCalledOnce()
 			expect(observer).not.toHaveBeenCalled()
 		})
 

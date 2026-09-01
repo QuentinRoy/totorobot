@@ -6,10 +6,17 @@ import { expectTypeOf, test } from 'vitest'
 
 import { machine, type } from 'totorobot'
 
-type Inputs =
-	| { type: 'open'; text: string }
-	| { type: 'submit'; route: 'review' | 'publish' }
-	| { type: 'cancel' }
+type Inputs = {
+	open: { text: string }
+	submit: { route: 'review' | 'publish' }
+	cancel: undefined
+}
+type Send = (
+	...args:
+		| ['open', { text: string }]
+		| ['submit', { route: 'review' | 'publish' }]
+		| ['cancel', undefined?]
+) => void
 type States =
 	| { name: 'empty' }
 	| { name: 'draft'; text: string }
@@ -21,11 +28,13 @@ const doc = machine({
 	inputs: type<Inputs>(),
 	states: type<States>(),
 	transitions: {
-		'empty -open> draft': ({ input }) => ({ text: input.text }),
-		'draft -submit> review': ({ state, input, skip }) =>
-			input.route === 'review' ? { text: state.text, reviewer: '' } : skip(),
-		'draft -submit> published': ({ state, input, skip }) =>
-			input.route === 'publish' ? { text: state.text } : skip(),
+		'empty -open> draft': ({ inputData }) => ({ text: inputData.text }),
+		'draft -submit> review': ({ state, inputData, skip }) =>
+			inputData.route === 'review'
+				? { text: state.text, reviewer: '' }
+				: skip(),
+		'draft -submit> published': ({ state, inputData, skip }) =>
+			inputData.route === 'publish' ? { text: state.text } : skip(),
 		'draft -cancel> empty': () => {},
 	},
 })
@@ -114,24 +123,21 @@ test('no array form, no third argument, and no options object with an `AbortSign
 	})
 })
 
-test('the transition record carries input, from, to and is discriminated by input.type, with no separate on field', () => {
+test('the transition record carries input, from, to and is discriminated by input, with no separate on field', () => {
 	const host = doc.start()
 
 	host.observe('* -> *', (e) => {
 		// @ts-expect-error - `on` is removed from the transition record
 		e.on
 
-		if (e.input?.type === 'open') {
-			expectTypeOf(e.input).toEqualTypeOf<{ type: 'open'; text: string }>()
+		if (e.input === 'open') {
+			expectTypeOf(e.inputData).toEqualTypeOf<{ text: string }>()
 		}
-		if (e.input?.type === 'submit') {
-			expectTypeOf(e.input).toEqualTypeOf<{
-				type: 'submit'
-				route: 'review' | 'publish'
-			}>()
+		if (e.input === 'submit') {
+			expectTypeOf(e.inputData).toEqualTypeOf<{ route: 'review' | 'publish' }>()
 		}
-		if (e.input?.type === 'cancel') {
-			expectTypeOf(e.input).toEqualTypeOf<{ type: 'cancel' }>()
+		if (e.input === 'cancel') {
+			expectTypeOf(e.inputData).toEqualTypeOf<undefined>()
 		}
 
 		if (e.from.name === 'draft') {
@@ -150,8 +156,8 @@ test('the transition record carries input, from, to and is discriminated by inpu
 	})
 })
 
-test('an immediate transition is distinguished from a payload-free input by input: undefined, and narrows by optional access, switch, and truthiness', () => {
-	type ImmediateInputs = { type: 'open'; text: string } | { type: 'cancel' }
+test('an immediate transition is distinguished from a payload-free input by input: undefined, and narrows by name checks, switch, and truthiness', () => {
+	type ImmediateInputs = { open: { text: string }; cancel: undefined }
 	type ImmediateStates = { name: 'empty' } | { name: 'draft'; text: string }
 
 	const withImmediate = machine({
@@ -159,7 +165,7 @@ test('an immediate transition is distinguished from a payload-free input by inpu
 		inputs: type<ImmediateInputs>(),
 		states: type<ImmediateStates>(),
 		transitions: {
-			'empty -open> draft': ({ input }) => ({ text: input.text }),
+			'empty -open> draft': ({ inputData }) => ({ text: inputData.text }),
 			'draft -cancel> empty': () => {},
 			'draft -> draft': ({ state }) => ({ ...state }),
 		},
@@ -167,35 +173,37 @@ test('an immediate transition is distinguished from a payload-free input by inpu
 	const host = withImmediate.start()
 
 	host.observe('* -> *', (e) => {
-		// 1. Optional access
-		if (e.input?.type === 'cancel') {
-			expectTypeOf(e.input).toEqualTypeOf<{ type: 'cancel' }>()
+		// 1. Name check
+		if (e.input === 'cancel') {
+			expectTypeOf(e.inputData).toEqualTypeOf<undefined>()
 		}
 
 		// 2. Switch including the absent (undefined) case
-		switch (e.input?.type) {
+		switch (e.input) {
 			case 'open':
-				expectTypeOf(e.input).toEqualTypeOf<{ type: 'open'; text: string }>()
+				expectTypeOf(e.inputData).toEqualTypeOf<{ text: string }>()
 				break
 			case 'cancel':
-				expectTypeOf(e.input).toEqualTypeOf<{ type: 'cancel' }>()
+				expectTypeOf(e.inputData).toEqualTypeOf<undefined>()
 				break
 			case undefined:
-				expectTypeOf(e.input).toEqualTypeOf<undefined>()
+				expectTypeOf(e.inputData).toEqualTypeOf<undefined>()
 				break
 		}
 
 		// 3. Truthiness split
 		if (e.input) {
-			expectTypeOf(e.input).toEqualTypeOf<ImmediateInputs>()
+			expectTypeOf(e.inputData).toEqualTypeOf<
+				ImmediateInputs[keyof ImmediateInputs]
+			>()
 		} else {
-			expectTypeOf(e.input).toEqualTypeOf<undefined>()
+			expectTypeOf(e.inputData).toEqualTypeOf<undefined>()
 		}
 	})
 
 	host.observe('* -open> *', (e) => {
-		expectTypeOf(e.input).not.toBeAny()
-		expectTypeOf(e.input).toEqualTypeOf<{ type: 'open'; text: string }>()
+		expectTypeOf(e.inputData).not.toBeAny()
+		expectTypeOf(e.inputData).toEqualTypeOf<{ text: string }>()
 	})
 })
 
@@ -204,7 +212,7 @@ test('the record carries a send typed with the whole declared vocabulary, howeve
 
 	host.observe('draft -submit> review', (e) => {
 		expectTypeOf(e.send).not.toBeAny()
-		expectTypeOf(e.send).toEqualTypeOf<(input: Inputs) => void>()
+		expectTypeOf(e.send).toEqualTypeOf<Send>()
 
 		// The pattern still narrows both ends: `send` is additive.
 		expectTypeOf(e.from).toEqualTypeOf<{ name: 'draft'; text: string }>()
@@ -216,18 +224,18 @@ test('the record carries a send typed with the whole declared vocabulary, howeve
 
 		// Deliberately not narrowed to what `from` or `to` handles: the send is
 		// read at drain time, by when the machine has moved (design record §12).
-		e.send({ type: 'open', text: 'hello' })
-		e.send({ type: 'submit', route: 'publish' })
-		e.send({ type: 'cancel' })
+		e.send('open', { text: 'hello' })
+		e.send('submit', { route: 'publish' })
+		e.send('cancel')
 
 		// @ts-expect-error - "nope" is not a declared input
-		e.send({ type: 'nope' })
+		e.send('nope')
 	})
 
 	// An immediate arm carries it too, and it is the host's own signature.
 	host.observe('* -> *', (e) => {
 		expectTypeOf(e.send).toEqualTypeOf<typeof host.send>()
-		if (!e.input) expectTypeOf(e.send).toEqualTypeOf<(input: Inputs) => void>()
+		if (!e.input) expectTypeOf(e.send).toEqualTypeOf<Send>()
 	})
 })
 
