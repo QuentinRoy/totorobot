@@ -2,29 +2,29 @@
 
 [![Bundle size](https://deno.bundlejs.com/?q=totorobot&badge=detailed)](https://bundlejs.com/?q=totorobot)
 
-Totorobot is a tiny TypeScript state-machine library. One line declares one
-transition, and the line looks like the edge it declares:
+Totorobot is a small TypeScript state-machine library with a strong focus on
+developer experience and readable definitions. Its types catch invalid
+transitions, state data, and handler return values on the line where you write
+them. The published JavaScript is 1,580 bytes minified and 797 bytes with
+Brotli, with no runtime dependencies.
+
+Each line in the transition table looks like the edge it declares:
 
 ```
 'draft -submit> review'
 ```
 
-Source state, input, target state: that is the whole notation.
+Source state, input, target state. That is the whole notation.
 
-**Each state carries its own data, and the compiler knows which state you are
-in.** `review` requires a `reviewer` that `draft` does not have. Narrow the
-current state on its name and its fields narrow with it, so reading `reviewer`
+Each state carries its own data, and the compiler knows which state you are in.
+`review` requires a `reviewer` that `draft` does not have. Check the current
+state's name and TypeScript narrows its fields with it, so reading `reviewer`
 anywhere but `review` is a compile error. Most libraries share one context
 object across every state, which forces any field that only some states carry to
 be optional everywhere and checked everywhere.
 
-A definition is inert data. `.start()` hands you a running host to send inputs to
-and observe, and that host is the only thing that ever changes. The whole library
-is 1.5 kB minified, 787 bytes over the wire, with no dependencies.
-
-The design keeps asking one question: how much state-machine correctness can
-TypeScript enforce while the creation API stays small enough to hold in your
-head?
+A definition is inert data. `.start()` creates a running host that accepts inputs
+and notifies observers. The host is the only mutable part.
 
 ## Install
 
@@ -32,7 +32,7 @@ head?
 npm install totorobot
 ```
 
-It is ESM and ships its own type declarations.
+The package uses ESM and includes its own TypeScript declarations.
 
 ## Example
 
@@ -92,11 +92,11 @@ doc.send('open', { text: 'hello' })
 doc.send('submit', { reviewer: 'Quentin' })
 ```
 
-`reviewer` exists on `review` alone: `draft` does not have it yet, `published`
-has shed it again, and neither carries it as a nullable placeholder. While the
-document is in review, the action schedules an input back to the same host. Its
-teardown clears the timer if review ends first. Publication notification stays
-with the caller, attached through `observe`.
+`reviewer` exists only on `review`. `draft` does not have it yet, `published` no
+longer needs it, and neither carries a nullable placeholder. While the document
+is in review, the action schedules an input on the same host. Its teardown clears
+the timer if review ends first. The caller registers publication notifications
+through `observe`.
 
 ## Contents
 
@@ -148,12 +148,11 @@ inputs: type<{ submit: { reviewer: string }; cancel: undefined }>(),
 states: type<{ empty: undefined; draft: { text: string; revision: number } }>(),
 ```
 
-Both are a name-to-payload map, and `undefined` is the payload of a name that
-carries nothing. A payload can be **any** value — a primitive, a function, a
-`Map`, an object with its own `name` or `type` property — and Totorobot stores
-what it is handed, unchanged: it never spreads, clones, freezes or validates a
-payload. Mutating an object you passed in is therefore visible through older
-snapshots too.
+Both are maps from a name to its payload. Use `undefined` for a name that carries
+no data. A payload may be a primitive, function, `Map`, or object with its own
+`name` or `type` property. Totorobot stores the value unchanged; it does not
+spread, clone, freeze, or validate it. Mutating an object is therefore visible
+through earlier snapshots.
 
 `type<T>()` only carries `T`. It returns `undefined`, and nothing reads it.
 Either vocabulary can be named, exported, imported, generated, or declared
@@ -226,37 +225,36 @@ The input is the arrow's label, and three rules govern the spelling:
   says which of the two you wrote.
 - **An arrow with no label is an
   [immediate transition](#immediate-transitions-an-edge-with-no-input)**:
-  `'checking -> allowed'`. That edge has no input at all. A pattern's unlabelled
-  arrow means something different: there, the input is simply unconstrained.
+  `'checking -> allowed'`. That edge has no input at all. A pattern's unlabeled
+  arrow means something different: there, the input is unconstrained.
 
 A malformed key is reported at compile time as `not a transition: '…'`, on its
-own line. **The grammar is enforced at runtime too**: `machine()` throws
+own line. The grammar is enforced at runtime too: `machine()` throws
 `SyntaxError` for a malformed key, `observe()` does the same for a malformed
 pattern, and both name the offending string. That is what catches a typo in plain
 JavaScript, where nothing else checks what was written.
 
 ### The handler decides and projects
 
-A handler receives the three names its row already spells — `from`, `input`,
-`to` — beside `fromData` and `inputData`. It returns the destination's payload,
-and nothing else:
+A handler receives the three names its row already spells, `from`, `input`, and
+`to`, plus `fromData` and `inputData`. It returns only the destination's payload:
 
 ```ts
 'empty -open> draft': ({ inputData }) => ({ text: inputData.text, revision: 0 }),
 ```
 
-**The row is the authority for the destination name.** A returned payload with
-its own `name` property is ordinary domain data; it cannot redirect the hop. A
-destination carrying nothing takes a handler with an empty body, and one whose
-payload is exactly the source's takes `({ fromData }) => fromData` — the same
-reference, stored as handed over.
+The row determines the destination name. A returned payload with its own `name`
+property is ordinary data and cannot redirect the transition. A destination
+carrying nothing takes a handler with an empty body. If the destination payload
+is the source payload, `({ fromData }) => fromData` passes the same reference
+through.
 
 ### Declining, and row precedence
 
 `skip()` declines the row, and the next row declared for the same source and
-input is tried. What it returns is a module-private symbol, and it is the one
-value a payload cannot be: every other symbol is ordinary data. **Declaration order is priority order.** That is how one input
-reaches two states:
+input is tried. It returns a private symbol, the only value that cannot be a
+payload; every other symbol is ordinary data. Declaration order sets priority.
+That is how one input reaches two states:
 
 ```ts
 'draft -submit> review': ({ fromData, inputData, skip }) =>
@@ -285,12 +283,12 @@ A row that always declines under some condition is an ordinary way to express
 		: { text: inputData.text, revision: fromData.revision + 1 },
 ```
 
-That row is also a **self-transition**, a row whose target is its source. It
+That row is also a self-transition, a row whose target is its source. It
 commits and notifies like any other row.
 
 ### Immediate transitions: an edge with no input
 
-A row whose arrow carries no label fires on **entering** its source state, tried
+A row whose arrow carries no label fires on entering its source state, tried
 in declaration order alongside every other immediate row declared for that
 state:
 
@@ -308,25 +306,25 @@ input-driven row, so a guarded choice needs no `cond` and no junction
 pseudostate. If every candidate skips, the machine stays in `checking` with its
 input rows still live, which covers "the condition is not met yet".
 
-**Chains settle before anything else runs.** Landing somewhere that itself has
+Chains settle before anything else runs. Landing somewhere that itself has
 immediate rows continues the chain hop after hop, each one committing and
 notifying before the next is tried, until the machine stops moving on its own.
 Only then is the next queued input taken; see
 [commit ordering](#commit-ordering).
 
-**The handler receives no input.** `input` is `undefined`, typed that way rather
+The handler receives no input. `input` is `undefined`, typed that way rather
 than absent, so reading it is as ordinary as on any other row. The transition
 record carries `input: undefined` too. A payload-free named input keeps its name
 and carries `inputData: undefined`.
 
-**A chain that never settles throws.** After 1e5 consecutive hops the machine
+A chain that never settles throws. After 100,000 consecutive hops the machine
 raises `RangeError`, naming a state inside the cycle. There is no rollback:
 listeners keep every hop that committed, and the host stays usable.
 
-**`.start()` settles the initial state's immediates too**, chain and all, before
+`.start()` settles the initial state's immediates too, chain and all, before
 the host is handed back, so those hops are unobservable: nobody has subscribed
 yet. If you need to observe an arrival, do not make it the initial state. The
-argument still follows the **declared** initial state's payload rather than the
+argument still follows the declared initial state's payload rather than the
 settled one's, and a cycle among those rows throws from `.start()` instead of
 from `send` ([rationale §6](docs/design-record.md#what-it-forces-open)).
 
@@ -369,52 +367,53 @@ const profile = machine({
 })
 ```
 
-**The key decides how it is read.** No `->` names a state: the function runs on
+The key decides how it is read. No `->` names a state: the function runs on
 entry, and the function it returns runs on exit. With `->` it is an edge, firing
-once per matching transition, in the same [pattern language](#observing) —
-wildcards included.
+once per matching transition in the same [pattern language](#observing),
+including wildcards.
 
-**Every action receives the transition record**,
-`{ input, inputData, from, fromData, to, toData, send }`, whichever kind of
-trigger fired it and identical to what a matching [listener](#observing) gets. A
-residency is an arrival, so its `to` is the resident state. On an arrival no
-transition caused — the initial state, or a residency registered while the host
-already occupies its state — `input`, `inputData`, `from` and `fromData` are all
-`undefined`, so reading `from` needs a narrowing first.
+Every action receives the same transition record as a matching
+[listener](#observing):
+`{ input, inputData, from, fromData, to, toData, send }`. A residency is an
+arrival, so its `to` is the resident state. On an arrival with no transition,
+either the initial state or a residency registered while the host already
+occupies its state, `input`, `inputData`, `from`, and `fromData` are `undefined`.
+Reading `from` therefore requires narrowing first.
 
-**Starting a host runs a declared residency on the initial state, never an
-edge action.** Entering the initial state is not a transition, so no edge
-action fires there, `* -> *` included — only real transitions afterwards do,
-`from` always present. An initial immediate chain still fires an edge action
-per hop it takes, and the residency on any state it passes through, after the
-initial state's own residency has run.
+Starting a host runs a declared residency on the initial state, never an edge
+action. Entering the initial state is not a transition, so no edge action
+fires there, including `* -> *`. Edge actions fire only on later transitions,
+with `from` always present. An initial immediate chain still fires an edge action
+per hop and the residency on every state it passes through, after the initial
+state's own residency has run.
 
-**Only a residency may return a teardown.** Returning one from an edge is a
+Only a residency may return a teardown. Returning one from an edge is a
 compile error, so moving a helper between the two cannot silently strand its
 cleanup. An `async` body is rejected for the same reason: it returns a promise.
 
-**An action is a bare function, a record with `run`, or an array of either.**
-The record is what carries `restart`; the array lets one trigger carry several,
-set up in declaration order and torn down in reverse — so two residents of one
-state can hold opposite policies.
+An action is a bare function, a record with `run`, or an array of either.
+The record carries `restart`. The array lets one trigger carry several actions,
+which are set up in declaration order and torn down in reverse. Two residents of
+one state can therefore use different policies.
 
-**A self-transition tears down and sets up again by default**, exactly as the
-[caller-side recipe](#residency) does, and residency runs on every hop of an
-immediate chain — including a state entered and left within one drain.
+A self-transition tears down and sets up again by default, exactly as the
+[caller-side recipe](#residency) does. Residency runs on every hop of an
+immediate chain, including a state entered and left within one drain.
 `restart: false` survives it instead: no teardown, no second setup. A predicate
-decides case by case: it receives the same six transition facts, without `send`,
-and returns a boolean —
-`({ fromData, toData }) => fromData.id !== toData.id`. `restart` is consulted only on a self-transition — a genuine departure
-always tears down — and is a compile error on an edge, since an edge has
-nothing to restart. Each residency's predicate runs once per self-transition;
-the same decision governs both the teardown and the setup that follows it.
+receives the same six transition facts without `send` and returns a boolean. For
+example, `({ fromData, toData }) => fromData.id !== toData.id` restarts when the
+resident `id` changes. `restart` is consulted only on a self-transition; leaving
+for another state always tears down. It is a compile error on an edge, since an
+edge has nothing to restart. Each residency's predicate runs once per
+self-transition; the same decision governs both the teardown and the setup that
+follows it.
 
-**Per commit:** the teardown of the residency being left, the commit, every
-matching action in declaration order, then the listeners
-([commit ordering](#commit-ordering) is otherwise unchanged). A throwing action
-propagates and abandons the rest of that commit, like a throwing listener —
-including a throwing teardown among several on one trigger, which leaves the
-rest of that reverse-order unwind unrun.
+For each commit, Totorobot runs the old residency's teardown, commits the new
+state, runs every matching action in declaration order, then calls the listeners.
+[Commit ordering](#commit-ordering) is otherwise unchanged. If an action throws,
+the error propagates and the rest of that commit does not run, just as with a
+throwing listener. If one of several teardowns on a trigger throws, the rest of
+the reverse-order teardown does not run.
 
 ## The host
 
@@ -438,15 +437,13 @@ doc.current // { name: 'draft', data: { text: 'hello', revision: 0 } }
 
 ### Reading
 
-`current` is the state's name beside the payload it carries, and a state
-carrying nothing still has `data`, valued `undefined`. **The snapshot read
-before a transition stays valid and unchanged after it**, which is what makes it
-safe to compare, serialise, or hold in component state. The payload inside it is
-the value you handed over, not a copy: nothing is frozen, and mutating that
-value is visible through every snapshot holding it.
+`current` pairs the state's name with its payload. A state carrying nothing still
+has `data`, set to `undefined`. A snapshot stays valid and unchanged after later
+transitions, so you can compare, serialize, or keep it in component state. The
+payload is the value you passed in, not a copy. Nothing is frozen, and mutating
+that value is visible through every snapshot that holds it.
 
-Checking `name` narrows `data` with it, which is the half of typestate the
-project claims:
+Checking `name` narrows `data` with it. This is Totorobot's typestate guarantee:
 
 ```ts
 const now = doc.current
@@ -459,8 +456,8 @@ if (now.name === 'draft') {
 
 `send` takes an input name followed by its data. Omit the second argument when
 the declared data type includes `undefined`: `doc.send('cancel')`. It returns
-nothing; what happened is `doc.current`. `null` is data like any other and must
-be passed.
+nothing; read `doc.current` to see the result. `null` is data like any other and
+must be passed.
 
 A union-valued name cannot be paired with a separate union-valued payload: the
 values may not belong together. Narrow the name before forwarding a transition
@@ -472,21 +469,23 @@ doc.observe('* -> *', (e) => {
 })
 ```
 
-**Sending is broad: every declared input is accepted from every state.** One the
-current state does not handle changes nothing; it does not throw, corrupt, or
-half-apply. That is also how a stale asynchronous result lands harmlessly.
+You can send every declared input from every state. If the current state does
+not handle an input, nothing changes: the machine does not throw, corrupt its
+state, or apply half a transition. That is also how a stale asynchronous result
+lands harmlessly.
 
-**A send issued while a dispatch is in progress is queued**, whether it comes
-from a listener or from a hop `.start()` is settling, and whether it targets the
-dispatching host or an unrelated one. So a send takes effect immediately only
-when no dispatch is running anywhere; otherwise it waits for the one in progress
-to settle, and `current` read right after such a send still shows the earlier
-state. [Commit ordering](#commit-ordering) has the mechanics.
+If you call `send` while a dispatch is in progress, Totorobot queues it. This is
+true whether the call comes from a listener or from a hop that `.start()` is
+settling, and whether it targets the dispatching host or an unrelated one. A
+send takes effect immediately only when no dispatch is running anywhere.
+Otherwise it waits for the active dispatch to settle, and `current` read right
+after the call still shows the earlier state. [Commit ordering](#commit-ordering)
+has the mechanics.
 
-**There is no typed send site.** `doc.send('publish')` compiles in `draft` and
-does nothing at runtime, so per-state capabilities go unchecked. That is a
-deliberate drop: the narrow-then-send shape is unsound in TypeScript, and a sound
-variant stays addable later without breaking anything
+The compiler does not restrict inputs by the current state.
+`doc.send('publish')` compiles in `draft` and does nothing at runtime. This is a
+deliberate tradeoff: the narrow-then-send shape is unsound in TypeScript, and a
+sound variant can be added later without breaking anything
 ([rationale §12](docs/design-record.md#12-sending-inputs)).
 
 ### Observing
@@ -499,29 +498,30 @@ doc.observe('draft -cancel> *', () => track('cancelled'))
 Listeners go on the host, never on the definition, which is inert. `observe()`
 returns an unsubscribe function.
 
-**The listener receives the transition record**,
-`{ input, inputData, from, fromData, to, toData, send }`: three names, each
-beside the payload it carries. Checking any one name narrows the payload next to
-it, the way checking `current.name` does — `if (e.from === 'draft')` narrows
-`e.fromData`. An immediate transition carries `input: undefined` and
-`inputData: undefined`, while a payload-free named input keeps its name and
-carries `inputData: undefined`.
+The listener receives the transition record,
+`{ input, inputData, from, fromData, to, toData, send }`: three names, each next
+to its payload. Checking a name narrows the payload beside it, just as checking
+`current.name` narrows `current.data`. For example, `if (e.from === 'draft')`
+narrows `e.fromData`. An immediate transition carries `input: undefined` and
+`inputData: undefined`; a payload-free named input keeps its name and carries
+`inputData: undefined`.
 
-**`e.send` is the host's own `send`**, so a reaction drives the machine without
+`e.send` is the host's own `send`, so a reaction drives the machine without
 closing over the host it was registered on:
 
 ```ts
 doc.observe('* -> review', (e) => e.send('publish'))
 ```
 
-It takes the whole declared input vocabulary, however narrow the pattern is —
-not just what `e.from` or `e.to` handles. A send from a listener is
+It takes the whole declared input vocabulary, however narrow the pattern is.
+The pattern does not limit it to what `e.from` or `e.to` handles. A send from a
+listener is
 [queued](#commit-ordering) and read when the queue reaches it, by which point
 the machine has usually moved on, so narrowing to the notified state's rows
 would reject the ordinary case.
 
-**Patterns are the key language with coordinates left open.** `*` stands for any
-state and an unlabelled arrow means any input, or none:
+Patterns use the same key language with some parts left open. `*` stands for any
+state, and an unlabeled arrow means any input or no input:
 
 ```ts
 '* -> loading' //     entry: every arrival, including re-entry
@@ -531,10 +531,10 @@ state and an unlabelled arrow means any input, or none:
 ```
 
 There is no `-*>`. `*` appears only in state positions, so the input coordinate
-is either a name or absent. The unlabelled form is the broad one: it matches
-input-driven edges **and**
+is either a name or absent. The unlabeled form is the broad one: it matches
+input-driven edges and
 [immediate transitions](#immediate-transitions-an-edge-with-no-input), which
-have no input at all. A labelled pattern never matches an immediate. A bare key
+have no input at all. A labeled pattern never matches an immediate. A bare key
 is legal too, but means something else entirely: [residency](#residency), next.
 
 ### Residency
@@ -550,22 +550,21 @@ const off = doc.observe('draft', {
 })
 ```
 
-Already resident when observed, it runs immediately — registration order
-cannot decide whether it fires. Unsubscribing tears down one currently in
-flight, and more than once stays harmless, as everywhere else. Declaring it in
-the definition instead is the same bare-key trigger in `actions`, for a
-machine's own states; `observe` stays the way to scope work to a state you did
-not declare the machine with. The two agree by construction — a declared
-residency is asserted to produce the same log as `observe`'s, for the same
-machine, as a test oracle.
+If the host is already in that state, the residency runs immediately;
+registration order cannot decide whether it fires. Unsubscribing tears down an
+active residency, and calling the unsubscribe function more than once is
+harmless. Declaring a residency in the definition uses the same bare-key trigger
+in `actions` for a machine's own states. `observe` remains the way to scope work
+to a state you did not use to declare the machine. A test asserts that a declared
+residency and `observe` produce the same log for the same machine.
 
 Nothing here is a host feature: `observe(state, { run, restart })` is exactly
 the two-pattern recipe below, offered directly instead of assembled by hand.
-Observe `'draft -> *'` to tear down and `'* -> draft'` to set up, exit listener
-registered **first** so a self-transition tears down before it sets up again,
-and run the setup once at registration if the host is already in the state.
-`persistent` is `if (e.to !== e.from)` in the exit handler; `keyed` compares a
-key computed from each end. The full recipe, with the argument for
+Observe `'draft -> *'` to tear down and `'* -> draft'` to set up. Register the
+exit listener first so a self-transition tears down before it sets up again, and
+run the setup once at registration if the host is already in the state.
+`persistent` is `if (e.to !== e.from)` in the exit handler; `keyed`
+compares a key computed from each end. The full recipe, with the argument for
 leaving residency to the caller rather than the host, is in
 [rationale §11](docs/design-record.md#residency-is-derivable-not-a-host-feature),
 and `tests/helpers.ts` carries it as working code.
@@ -584,12 +583,12 @@ Three rules cover everything a listener sees:
    still runs for the current transition, and one registered during a dispatch
    does not.
 
-Re-entrancy is two more. **A send from inside a dispatch is queued**, across
-every host in the process, and the queue drains first in first out before the
-outermost `send` returns, never on a microtask and never nested. **`send` returns
-nothing**, including when it was queued. So a listener is never re-entered, and a
-queued send waits for the whole chain to settle rather than landing mid-hop,
-where it is evaluated against the state at drain time and may find no row.
+Two more rules govern reentrancy. A send from inside a dispatch is queued across
+every host in the process. The queue drains first in, first out before the
+outermost `send` returns, never on a microtask and never nested. `send` returns
+nothing, including when it was queued. A listener is therefore never reentered,
+and a queued send waits for the whole chain to settle rather than landing
+mid-hop. It is evaluated against the state at drain time and may find no row.
 
 A throwing listener ends the drain and discards what was queued, but the
 transition stays committed and every host works normally afterwards. There is no
@@ -599,8 +598,8 @@ included, is [rationale §11](docs/design-record.md#queue-not-stack).
 
 ## A worked example
 
-A search box, where a slow response must not overwrite a newer one. Each run
-takes the next id, and a result carrying a stale one declines:
+This machine prevents a slow search response from overwriting a newer one. Each
+request takes the next `id`; a result carrying an older `id` declines:
 
 ```ts
 import { machine, type } from 'totorobot'
@@ -671,7 +670,7 @@ box.send('run', { query: 'totoro' })
 The `running` action starts the request and returns its teardown. Sending another
 `run` takes the self-transition, aborts the old request, and starts a new one.
 The two `skip()` rows cover the race where an old promise settles despite being
-aborted: its id no longer matches, so it does nothing. `e.toData.reason` is
+aborted. Its `id` no longer matches, so it does nothing. `e.toData.reason` is
 readable in the listener because the pattern pins the target to `failed`.
 
 ## What the types check
@@ -691,27 +690,28 @@ readable in the listener because the pattern pins the target to `failed`.
 Errors land on the bad line, from a single declaration site, and no handler
 needs a type annotation.
 
-**What is not checked is the send site**, as [Sending](#sending) describes.
-Per-state capabilities are not enforced by the compiler.
+The compiler does not check send sites, as [Sending](#sending) describes.
+Per-state capabilities are not enforced.
 
 ## Guarantees and absences
 
 - **A transition is pure.** Given a state and an input it yields either the next
   state or a refusal, and it neither performs nor schedules anything.
-- **Big steps terminate**, because one input causes at most one transition.
-- **Stale results are free.** A `loaded` arriving after we left `loading`
-  matches no row and does nothing. That ignores the result; cancelling the work
-  is a residency teardown's job, or the caller's where no action declares one.
-- **States have no runtime existence.** The definition carries transition keys
-  rather than a list of states, so there is no source for a visualiser or a
-  "valid states are …" message, and a state with no transitions is invisible at
-  runtime.
-- The design is flat, with no hierarchy and no parallel regions. It is an EFSM,
-  so reachability and "this guard can never fire" are beyond it, and neither is
-  claimed.
+- **A send always terminates.** One input starts at most one immediate chain, and
+  the 100,000-hop limit breaks cycles with a `RangeError`.
+- **Stale results are free.** A `loaded` arriving after the machine leaves
+  `loading` matches no row and does nothing. That ignores the result; canceling
+  the work is a residency teardown's job, or the caller's where no action
+  declares one.
+- **The state vocabulary has no runtime representation.** The definition carries
+  transition keys rather than a list of states, so there is no source for a
+  visualizer or a "valid states are …" message. A state with no transitions is
+  invisible at runtime.
+- The design is flat, with no hierarchy and no parallel regions. It is an
+  extended finite-state machine, so reachability and "this guard can never fire"
+  are beyond it, and neither is claimed.
 
-The absences below are all deliberate. What to reach for instead, and where the
-argument is:
+The table gives the alternative for each omission and links to its rationale:
 
 | absent                      | instead                                                                                                               |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------- |
@@ -738,17 +738,17 @@ const toggle = machine({
 })
 ```
 
-Omitting a vocabulary infers **names** from `transitions`, never payloads. The
-names become exactly the ones the table mentions rather than widening to
-`string`, and every inferred payload is `unknown`. Declaring one vocabulary and
-omitting the other checks that half and reads the other's names off the table.
+Omitting a vocabulary infers names from `transitions`, never payloads. The names
+become exactly the ones the table mentions rather than widening to `string`, and
+every inferred payload is `unknown`. Declaring one vocabulary and omitting the
+other checks that half and reads the other's names from the table.
 
-**The key grammar is enforced either way**, and a malformed key still lands on
+The key grammar is enforced either way, and a malformed key still lands on
 its own row. What inference will not accept is a name a key cannot round-trip.
 `*` is already how a pattern spells "any state", and a leading or trailing space
 is the grammar's own delimiter, so `'a -x>  b'` would quietly mint a state no
 other key can spell the same way twice; such a row is rejected the way a
-malformed key is. A **declared** vocabulary is untouched by this, since declaring
+malformed key is. A declared vocabulary is untouched by this, since declaring
 an odd name by hand is deliberate in a way a doubled space never is.
 
 ## Beyond v1
@@ -762,24 +762,24 @@ A declared `emit` channel and horizontal composition are sketched in
   channel and composition.
 - [Design record](docs/design-record.md) — the decision ledger: what was
   considered and rejected, and on what evidence.
-- [Research notes](docs/research/) — ten prior-art notes on automata theory,
-  execution semantics, HCI state machines, typestate, TypeScript type
-  engineering, and the JS FSM landscape.
+- [Research notes](docs/research/) — research on automata theory, execution
+  semantics, human-computer interaction state machines, typestate, TypeScript
+  type engineering, and JavaScript state-machine libraries.
 
-For contributors — read these before changing `src/`:
+Contributors should read these before changing `src/`:
 
-- [Implementation record](docs/implementation-record.md) — the standing list of
-  compiler behaviour behind the type layer, as numbered findings with stable
-  identifiers the source can cite.
+- [Implementation record](docs/implementation-record.md) — numbered findings
+  about the TypeScript behavior the type layer relies on, with stable identifiers
+  the source can cite.
 - [Explorations](explorations/README.md) — the compilable prototypes behind those
   findings, including one built over Robot3 itself. They are type-checked, and
   the Robot3 one is tested, so a rejected option that starts working again fails
   the build rather than going unnoticed.
 
-Background, from before v1: [requirements](docs/requirements.md), the priority
-stack the exploration targeted, and [acceptance cases](docs/acceptance-cases.md),
-the scenarios candidates were compared against. Both record what the API was
-aimed at rather than what it shipped.
+Two documents record the work before v1: [requirements](docs/requirements.md)
+lists the priorities that guided the exploration, and
+[acceptance cases](docs/acceptance-cases.md) lists the scenarios used to compare
+candidates. They describe the intended API rather than the shipped API.
 
 ## Development
 
