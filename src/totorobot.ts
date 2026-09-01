@@ -463,9 +463,9 @@ interface UncheckedHost {
 }
 
 /**
- * Every row of the table, in order, under the pair that reaches it; an immediate
- * row's input half is empty. One flat map rather than a map of maps, and
- * null-prototype, so `send('toString')` finds nothing to call (I16).
+ * Every row of the table, in order, under the pair that reaches it. A marker
+ * separates named inputs from immediate rows. One flat, null-prototype map, so
+ * `send('toString')` finds nothing to call (I16).
  */
 type Index = Record<string, Row[] | undefined>
 
@@ -569,13 +569,13 @@ export let machine: <
 		}
 		let index: Index = Object.create(null)
 
-		// One flat keyspace for both kinds of row, keyed by the `from`/`input` pair
-		// with the length of `from` in front. Names are arbitrary strings, so no
-		// character is free to be a separator; a length is (I16). Spelled out at all
-		// three sites rather than shared, which measures smaller (I16).
+		// One flat keyspace for both kinds of row. The source length separates the
+		// source from its input; a marker distinguishes a named input from no input.
+		// Spelled out at all three sites rather than shared, which measures smaller
+		// (I16).
 		for (let key in transitions) {
 			let [from, input, to] = parse(key)
-			;(index[from.length + '\0' + from + input] ??= []).push([
+			;(index[from.length + '\0' + from + (input && 1 + input)] ??= []).push([
 				to,
 				transitions[key]!,
 			])
@@ -724,7 +724,7 @@ export let machine: <
 						// Read at drain time, so a queued send may correctly find no row.
 						if (
 							step(
-								index[current.name.length + '\0' + current.name + input],
+								index[current.name.length + '\0' + current.name + 1 + input],
 								input,
 								inputData,
 							)
