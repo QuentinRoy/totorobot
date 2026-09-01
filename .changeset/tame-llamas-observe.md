@@ -3,7 +3,7 @@
 ---
 
 `observe`'s pattern completions now list only patterns a declared row can
-fire — the row keys and their wildcard generalizations — instead of every
+fire (the row keys and their wildcard generalizations), instead of every
 name-valid combination. A dead pattern still fails to compile with the same
 `no row matches '...'` message as before.
 
