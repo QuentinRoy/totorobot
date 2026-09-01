@@ -132,12 +132,12 @@ through `observe`.
 
 Everything the package exports:
 
-| export                                                          | is                                                               |
-| --------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `machine({ inputs?, states?, initial, transitions, actions? })` | a definition: inert data, never mutated                          |
-| `type<T>()`                                                     | a declaration carrying `T`; returns `undefined` at runtime       |
-| `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>`     | derived types, over `M = typeof publication`                     |
-| `Skip`                                                          | what `skip()` returns; it appears in every handler's return type |
+| export                                                                    | is                                                               |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `machine({ inputs?, states?, initial, transitions, actions? })`           | a definition: inert data, never mutated                          |
+| `type<T>()`                                                               | a declaration carrying `T`; returns `undefined` at runtime       |
+| `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>` `Patterns<M>` | derived types, over `M = typeof publication`                     |
+| `Skip`                                                                    | what `skip()` returns; it appears in every handler's return type |
 
 ## `inputs` and `states`: the vocabulary
 
@@ -544,6 +544,12 @@ doc.observe('draft -publish> published', () => {}) // no such row: compile error
 
 This checks table membership only, never reachability: a row unreachable from
 `initial`, or one a guard always declines, still counts.
+
+Completion in an editor offers only matchable patterns — the row keys
+themselves and their wildcard generalizations — instead of every name-valid
+combination. `Patterns<typeof publication>` names that same set, for a helper
+that wraps `observe` and wants the same constraint on its own pattern
+argument.
 
 ### Residency
 

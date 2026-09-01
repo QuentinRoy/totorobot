@@ -725,3 +725,73 @@ dead pattern from a live one, and a false rejection is worse than a missed
 one.
 
 The type layer is erased: `pnpm size` reports 1,580 B raw, unchanged.
+
+### <a id="i37"></a>I37 — A deferred conditional falls back to its type parameter's constraint for completions; a plain intersection does not
+
+[I36](#i36)'s rejection is correct and, per its own repro, reaches the
+caller — but completion in an editor still lists every name-valid pattern,
+not just the ones a declared row can fire. `NoMatch<K, P> extends true ?
+`no row matches '${P}'` : P` is a conditional keyed on the unresolved type
+parameter itself; while `P` is still unresolved (exactly the moment
+completion needs an answer), TypeScript cannot evaluate the conditional and
+falls back to `P`'s own constraint, `Pattern<I, S>`, for _both_ the check
+and the branch it substitutes back in. The crafted rejection message
+survives because it fires later, once the caller's literal has resolved `P`
+and the conditional is no longer deferred — but the completion list, asked
+before that, sees only the constraint.
+
+Confirmed with an isolated two-function repro before touching `src/`: a
+constraint-narrowed generic parameter (`<P extends Narrow>(p: P)`) and a
+constraint-wide one whose parameter type is instead a plain intersection
+(`<P extends Wide>(p: P & Narrow)`) both offer only `Narrow`'s members —
+because an intersection is not a conditional and does not need `P` resolved
+to evaluate. A conditional gains nothing from moving the intersection into
+one of its own branches; substituting the constraint into the _whole_
+expression, deferred conditional included, is what produces today's
+over-wide fallback, and nesting the same expression one level deeper inside
+it does not change that.
+
+The fix adds `MatchedPattern<I, S, K>` — the `NoMatch`-filtered subset of
+`Pattern<I, S>`, built with no call-site `P` in its own definition — and
+intersects it into the existing conditional's live branch: `pattern:
+NoMatch<K, P> extends true ? `no row matches '${P}'` : P &
+MatchedPattern<I, S, K>`. Confirmed against the real `observe-machine`
+fixture (`scripts/completion-fixtures/`, the twenty-state, forty-four-row
+acceptance machine): the conditional still resolves to its constraint under
+completion, `Pattern<I, S> & MatchedPattern<I, S, K>`, which simplifies to
+`MatchedPattern<I, S, K>` alone since it is already a subset — no change to
+the conditional's own shape, so [I36](#i36)'s repro and every existing
+acceptance/rejection case (`tests/patterns.test-d.ts`) needed no update.
+
+This settles #116's own experiment in favor of the non-breaking shape: the
+type parameter's constraint, `P extends Pattern<I, S>`, is untouched, so a
+caller's helper generic over it keeps compiling. `Patterns<M>`, `Carried<M>`
+applied to `MatchedPattern`, ships as the convenience the issue's other
+branch would have made mandatory — a public constraint matching what
+`observe` accepts, for a caller who cannot otherwise name `Pattern` or
+`Host` (both module-local).
+
+A genuinely widened `K` (`string extends K`) falls back to `Pattern<I, S>`
+unfiltered, the same gate [I34](#i34)'s `Transition` fallback and
+[I36](#i36)'s rejection both use, and — like I34 — has no known public call
+site: `machine()`'s own `Table<I, S, K>` parameter requires literal row
+keys, so a caller cannot construct a `Machine` with `K` left at its default
+through the public surface either.
+
+Measured (`scripts/measure-completions.mjs`, `observe-machine`, TypeScript
+7.0.2, `tsc --lsp`), offered-entry count and response size for
+`host.observe('`, nothing typed:
+
+|        | entries | response | warm  |
+| ------ | ------- | -------- | ----- |
+| before | 1 784   | 347 KB   | 13 ms |
+| after  | 219     | 42 KB    | 11 ms |
+
+219 is the row keys (44) plus their wildcard generalizations, filtered
+against the table; it is not merely proportionally smaller than the 1.7 MB
+`design-record.md` §"Completion payload grows as \|states\|²" reports for the
+unfiltered _transition-table_ key surface, but the shrink is the same shape:
+completions now cost what the declared table implies, not the name-valid
+cross-product.
+
+The type layer is erased: `pnpm size` reports 1,580 B raw, unchanged.

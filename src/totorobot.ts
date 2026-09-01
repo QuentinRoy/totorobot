@@ -231,6 +231,25 @@ type NoMatch<K extends string, P extends string> = string extends K
 		? true
 		: false
 
+/**
+ * The matchable subset of `Pattern<I, S>`: every member with at least one
+ * declared row, filtered against the table the same way `NoMatch` rejects a
+ * dead one — but computed from `I`, `S` and `K` alone, with no call-site
+ * pattern in the formula. `observe`'s edge overload intersects its parameter
+ * with this rather than gating on `NoMatch<K, P>` at the top: a pattern this
+ * checks *offers*, `NoMatch` still decides what it *accepts* (I37).
+ */
+type MatchedPattern<
+	I extends Vocab,
+	S extends Vocab,
+	K extends string,
+> = string extends K
+	? Pattern<I, S>
+	: { [P in Pattern<I, S>]: NoMatch<K, P> extends true ? never : P }[Pattern<
+			I,
+			S
+		>]
+
 /** The wildcard rules of the runtime's own comparison, at the type level. */
 type Select<Coordinate extends string, All extends string> = [
 	Coordinate,
@@ -533,7 +552,9 @@ interface Host<
 	// deliberately not added (§11 The host).
 	readonly observe: {
 		<P extends Pattern<I, S>>(
-			pattern: NoMatch<K, P> extends true ? `no row matches '${P}'` : P,
+			pattern: NoMatch<K, P> extends true
+				? `no row matches '${P}'`
+				: P & MatchedPattern<I, S, K>,
 			listener: Listener<I, S, K, P>,
 		): () => void
 		<N extends Name<S>>(
@@ -584,6 +605,18 @@ export type Handled<M, S extends string> = Exclude<
 /** The states that can reach `S`: the reverse index, from the same keys. */
 export type Sources<M, S extends string> = From<
 	Extract<Carried<M>['keys'], `${string} -${string}> ${S}`>
+>
+
+/**
+ * The patterns `observe` accepts on `M`: the public face of `MatchedPattern`,
+ * for a caller wrapping `observe` who wants the same constraint on their own
+ * pattern argument — neither `Pattern` nor `Host` is exported to name
+ * directly (I37).
+ */
+export type Patterns<M> = MatchedPattern<
+	Carried<M>['inputs'],
+	Carried<M>['states'],
+	Carried<M>['keys']
 >
 
 // ---------------------------------------------------------------------------
