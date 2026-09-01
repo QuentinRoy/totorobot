@@ -76,7 +76,7 @@ type InputMap<I extends InputVocab> = true extends IsUnion<I>
  */
 type Declared<Raw, Default> = Raw extends undefined ? Default : Raw
 
-type InputType<I extends InputVocab> = keyof I & string
+type InputName<I extends InputVocab> = keyof I & string
 type StateName<S extends StateVocab> = S['name']
 
 // ---------------------------------------------------------------------------
@@ -89,7 +89,7 @@ type StateName<S extends StateVocab> = S['name']
  * inputs.
  */
 type Key<I extends InputVocab, S extends StateVocab> =
-	| `${StateName<S>} -${InputType<I>}> ${StateName<S>}`
+	| `${StateName<S>} -${InputName<I>}> ${StateName<S>}`
 	| `${StateName<S>} -> ${StateName<S>}`
 
 /** A leading `infer` stops at the first separator, so these agree with `parse`. */
@@ -128,7 +128,7 @@ type Pattern<
 	I extends InputVocab = AnyInputs,
 	S extends StateVocab = StateVocab,
 > =
-	| `${Wildcard<S>} -${InputType<I>}> ${Wildcard<S>}`
+	| `${Wildcard<S>} -${InputName<I>}> ${Wildcard<S>}`
 	| `${Wildcard<S>} -> ${Wildcard<S>}`
 
 // ---------------------------------------------------------------------------
@@ -194,10 +194,10 @@ type Select<Coordinate extends string, All extends string> = [
  */
 type Send<I extends InputVocab> = (
 	...args: {
-		[N in InputType<I>]: undefined extends I[N]
+		[N in InputName<I>]: undefined extends I[N]
 			? [input: N, inputData?: I[N]]
 			: [input: N, inputData: I[N]]
-	}[InputType<I>]
+	}[InputName<I>]
 ) => void
 
 /**
@@ -210,14 +210,14 @@ type Transition<
 	P extends string = '* -> *',
 > =
 	| {
-			[N in Select<Label<P>, InputType<I>>]: {
+			[N in Select<Label<P>, InputName<I>>]: {
 				readonly input: N
 				readonly inputData: I[N]
 				readonly from: StateNamed<S, Select<From<P>, StateName<S>>>
 				readonly to: StateNamed<S, Select<To<P>, StateName<S>>>
 				readonly send: Send<I>
 			}
-	  }[Select<Label<P>, InputType<I>>]
+	  }[Select<Label<P>, InputName<I>>]
 	| ([Label<P>] extends ['']
 			? {
 					readonly input: undefined
