@@ -2,8 +2,8 @@
 'totorobot': minor
 ---
 
-`observe` accepts a bare state key too, meaning residency, with the same
-`{ run, restart }` record `actions` takes:
+`observe` now also accepts a bare state key, meaning residency, using the
+same `{ run, restart }` record `actions` takes:
 
 ```ts
 doc.observe('loading', {
@@ -12,7 +12,7 @@ doc.observe('loading', {
 })
 ```
 
-Already resident when observed, it runs immediately. Unsubscribing tears down
-one currently in flight. No array, no third-argument options form, no
-subscription `AbortSignal`. Existing `observe(pattern, listener)` calls need
-no change.
+If the state is already resident when you call `observe`, the run callback
+fires immediately. Unsubscribing tears down a run in flight. There's no
+array form, no third-argument options object, and no subscription
+`AbortSignal`. Existing `observe(pattern, listener)` calls need no change.
