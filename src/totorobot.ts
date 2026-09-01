@@ -114,7 +114,7 @@ type InputsFromKeys<K extends string> = {
 	[N in RoundTrips<Exclude<Label<K>, ''>>]: unknown
 }
 
-/** The same for state names: map, then immediately index. */
+/** State inference maps names to tagged states, then indexes to their union. */
 type StatesFromKeys<K extends string> = {
 	[N in RoundTrips<From<K> | To<K>>]: { readonly name: N } & Record<
 		string,
