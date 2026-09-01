@@ -1713,6 +1713,26 @@ call to residency rows (`row[4]`, the teardown key only those carry); `fire`'s
 own matching, shared with every real transition and listener, is unchanged.
 Pinned in `tests/actions.test.ts`, "startup invokes no edge action".
 
+### Measured, then declined: completions for `actions`
+
+`actions` offers no key completions, for the same reason `observe`'s pattern
+argument did not before it was fixed ([§11](#observation-observe-on-the-host-with-patterns)):
+`A` defaults to `never`, so with nothing typed the contextual type has no known
+members. The fix that worked for `observe` — intersect the checked type with a
+call-site-free union of the keys a declared table could actually match — was
+prototyped here too, `MatchedPattern` plus every eligible bare state name, and
+rejected on the one number that mattered: unlike `observe`'s pattern, which is
+a function argument paid for once per call, `actions` is a property of the
+object `machine()` takes, and the same intersection there is forced to
+evaluate at every `machine()` declaration, `actions` block or not, the moment
+one is written at all — measured at roughly 78× one declaration's
+instantiation count on the twenty-state acceptance case, for a block with zero
+keys in it. Full numbers and the mechanism are
+[implementation record I38](implementation-record.md#i38); the eligibility
+rule the prototype needed either way — a bare state name whose residency can
+run at all — was worth keeping regardless, and shipped on its own as
+`Eligible`, read by `Actions`'s existing three-way fork.
+
 ## 10. Composition
 
 > **Designed, deferred.** This is the design that was returned to, not the plan;
@@ -2988,7 +3008,9 @@ block · H derived mounting (same set problem as D) · P/Q/R/S/T effect-free var
 **Actions.** U handler performs · V `do:` on the edge · X listeners as the action
 layer · Y actions as data · Z handler acts with multi-target return · AA
 `Symbol.dispose` on the data · AB no feature at all: **not rejected; this is what
-v1 ships**
+v1 ships** · AC key completions via `observe`'s own phantom-key fix (pays for the
+whole trigger union at every `machine()` declaration, not per call; measured
+~78×, implementation-record.md#i38)
 
 **Observation.** A construction-time single observer (loses the standard
 subscribe/unsubscribe contract; every framework consumer writes a fan-out) ·

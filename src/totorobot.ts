@@ -461,6 +461,24 @@ type Restart<
 }
 
 /**
+ * A bare state name whose residency can actually run: `initial`, whose
+ * synthetic arrival needs no incoming row (#100), or any other state with at
+ * least one declared row landing on it (`NoMatch<K, '* -> N'>` false). Named
+ * once rather than left inline in `Actions`, the same question I35 already
+ * stated twice under different names before it was unified — #117 built a
+ * second reader on top of this one (completions for `actions`) and measured
+ * its cost too high to ship (I38), but the question itself is asked here
+ * exactly once regardless.
+ */
+type Eligible<K extends string, Init extends string, N extends string> = [
+	N,
+] extends [Init]
+	? true
+	: NoMatch<K, `* -> ${N}`> extends true
+		? false
+		: true
+
+/**
  * Checked row by row, like `Table`: decidable from the string alone (§9
  * Actions), an edge-shaped key (`from -input> to`, wildcards included) against
  * `Pattern`, else a bare key against the declared state names. Either miss
@@ -469,12 +487,12 @@ type Restart<
  * widens with it.
  *
  * A name-valid key naming no declared row (or, for a noninitial bare state,
- * no incoming row at all) reports `no row matches '…'` instead: an edge with
- * no matching row can never run, and neither can a noninitial residency with
- * none, since `enter` hands the synthetic arrival only to `initial`'s own
- * action (#100). This is a second, independent check alongside
- * `ActionArrival`'s own `Init` comparison, not a replacement for it: a
- * noninitial action's argument still excludes the arrival member it can
+ * no incoming row at all — `Eligible` false) reports `no row matches '…'`
+ * instead: an edge with no matching row can never run, and neither can a
+ * noninitial residency with none, since `enter` hands the synthetic arrival
+ * only to `initial`'s own action (#100). This is a second, independent check
+ * alongside `ActionArrival`'s own `Init` comparison, not a replacement for
+ * it: a noninitial action's argument still excludes the arrival member it can
  * never receive, precise as I33 left it, and eligibility is checked on top of
  * that, not by widening it.
  */
@@ -492,17 +510,12 @@ type Actions<
 				: Action<EdgeAction<I, S, K, P>>
 			: `not a trigger: '${P}'`
 		: P extends Name<S>
-			? [P] extends [Init]
+			? Eligible<K, Init, P> extends true
 				? Action<
 						ResidencyAction<ActionArrival<I, S, K, Init, P>>,
 						Restart<I, S, K, P>
 					>
-				: NoMatch<K, `* -> ${P}`> extends true
-					? `no row matches '${P}'`
-					: Action<
-							ResidencyAction<ActionArrival<I, S, K, Init, P>>,
-							Restart<I, S, K, P>
-						>
+				: `no row matches '${P}'`
 			: `not a trigger: '${P}'`
 }
 

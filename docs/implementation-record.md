@@ -795,3 +795,61 @@ completions now cost what the declared table implies, not the name-valid
 cross-product.
 
 The type layer is erased: `pnpm size` reports 1,580 B raw, unchanged.
+
+### <a id="i38"></a>I38 — `observe`'s completions fix does not transfer to `actions`: the same intersection is paid at every declaration, not per call site
+
+`Actions<I, S, K, Init, A>`'s `[P in A]` is a homomorphic mapped type over the
+caller's own literal keys, `A`; with nothing typed, `A` defaults to `never`
+(§9 Actions), so the mapped type has zero known members and an editor offers
+nothing. [I37](#i37)'s fix for the equivalent problem on `observe` — intersect
+the conditional's live branch with a `NoMatch`-filtered, call-site-free union —
+does not transfer: `observe`'s pattern is one function parameter, so the
+intersection is paid once, when that call is checked. `actions` is a
+_property_ of the object literal `machine()` takes, and adding
+`& Partial<Record<NoInfer<MatchedTrigger<I, S, K, Init>>, unknown>>` to its
+type (`MatchedTrigger` being `MatchedPattern<I, S, K>` plus every bare name
+[I35](#i35)'s eligibility rule, factored out as `Eligible`, accepts) does not
+wait for `A`: `I`, `S`, `K` and `Init` are already resolved by the time
+`machine()`'s parameter type is built, so the mapped type inside
+`MatchedTrigger` evaluates immediately, on every `machine()` declaration,
+whether or not `actions` is written at all.
+
+Measured (isolated repro reusing the `actions-machine` completion fixture —
+docs/acceptance-cases.md case 4, the twenty-state, forty-four-row acceptance
+machine — via `tsc --extendedDiagnostics`, TypeScript 7.0.2), instantiations
+and check time for one `machine()` declaration, no other file in the project:
+
+|                               | instantiations | check time |
+| ----------------------------- | -------------- | ---------- |
+| no `actions` property         | 12 097         | 0.19 s     |
+| `actions: {}`, before         | 12 411         | 0.19 s     |
+| `actions: {}`, after          | 965 173        | 0.37 s     |
+| `actions` with 2 keys, before | 14 241         | 0.18 s     |
+| `actions` with 2 keys, after  | 966 017        | 0.59 s     |
+
+Writing `actions: {}` — no keys, nothing for a caller to complete — is enough
+to multiply one declaration's cost ~78×, because the phantom key set does not
+look at `A` before evaluating. `no actions property` barely moves (12 097 →
+12 350 in the same before/after pair), confirming the cost is conditioned on
+the property being present in the literal, not proportional to what a caller
+puts in it. `observe`'s own [I37](#i37) fix costs nothing analogous because a
+project can contain many machines and, per machine, at most as many `observe`
+calls as are actually written; every one of those calls already pays only for
+itself.
+
+This is the stop condition #117 carried in from the start: unlike `observe`'s
+constraint, paid per call site, this one is paid by every `machine()` call
+that writes an `actions` property at all, whether or not it declares a single
+key — a much larger share of declarations than the ones an editor is actually
+asked to complete for. The issue's own
+estimate — "roughly `|Pattern| x |K|` conditional evaluations, about 4 851 x
+44 on the 20-state acceptance case" — is the right order of magnitude; this
+entry's own count (≈953 000 additional instantiations) is the measured number
+in its place. **The finding is unacceptable, and the change described in
+#117's prototype was not made.** `Actions` keeps the three-way fork it always
+had; only the eligibility rule itself was extracted into `Eligible`
+([I35](#i35)), read by `Actions` alone, with no measurable cost either way (12
+097 → 12 097, 14 241 → 14 241, prefactor against unchanged `src/`). `actions`
+still offers no completions.
+
+The type layer is erased: `pnpm size` reports 1,580 B raw, unchanged.
