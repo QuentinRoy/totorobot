@@ -3,9 +3,7 @@
 [![Bundle size](https://deno.bundlejs.com/?q=totorobot&badge=detailed)](https://bundlejs.com/?q=totorobot)
 
 Totorobot combines clean, readable definitions with precise types. Its API reads
-like a transition graph, and TypeScript checks the details around it. The
-published JavaScript is 1,580 bytes minified and 797 bytes with Brotli, with no
-runtime dependencies.
+like a transition graph, and TypeScript checks the details around it.
 
 Each line in the transition table looks like the edge it declares:
 
