@@ -644,7 +644,9 @@ shared type for noninitial actions as well" — on the grounds that a member no
 declared action can ever receive is exactly the kind of impossible
 combination the rest of that ticket exists to reject; keeping it here for
 uniformity's sake would have been the one place the row-correlation work left
-a synthetic case in, unchecked.
+a synthetic case in, unchecked. [#100](#i35) adds a second, independent check
+alongside this one rather than replacing it: `from` stays precise here, and
+whether a noninitial action is legal to declare at all is decided separately.
 
 ### <a id="i34"></a>I34 — `Transition`'s default `K` collapses every field to `never`, not to conservative facts
 
@@ -679,3 +681,47 @@ a deliberate opt-out rather than a scenario an unwitting caller reaches. The
 fix stands regardless: `K`'s own declared default is `string`
 (`K extends string = string`), and a type should not collapse to `never` at
 its own default, reachable or not.
+
+### <a id="i35"></a>I35 — Registration eligibility is a second check, layered on `ActionArrival`'s own `Init` comparison
+
+#100 needs a noninitial residency action naming a state with no incoming row
+rejected outright: unlike a listener, whose argument merely narrows to
+`never` and stays perfectly legal to declare ([I32](#i32)), a callback
+argument's type cannot itself make the _declaration_ an error — a function
+typed to take `never` still accepts any implementation, by contravariance.
+[I33](#i33)'s narrowing is exactly right about what an action's argument can
+describe, and stays; it says nothing about whether the declaration should
+exist at all, which is the separate question #100 answers.
+
+`Actions<I, S, K, Init, A>` now checks the key `P` directly for that second
+question, the same way it already reports `not a trigger: '${P}'` for a
+malformed one: `[P] extends [Init]` is eligible on the startup arrival alone,
+no incoming row required, matching `ActionArrival`'s own branch; anything
+else additionally needs `NoMatch<K, '* -> ${P}'>` to be `false`. Both checks
+share the one `[P] extends [Init]` discriminant rather than computing it
+twice under different names. `ActionArrival` is unchanged: a noninitial
+action's `from` still excludes `undefined` outright, and eligibility is
+checked on top of that precision, not instead of it.
+
+### <a id="i36"></a>I36 — Rejecting a dead pattern is a parameter type, inferred through its own conditional
+
+A pattern naming only declared state and input names, but no declared row
+(`NoMatch<K, P>`, built on [I32](#i32)'s `MatchingRows`), needs a diagnostic
+at the registration site, the same class of problem `Table` already solves
+for a malformed transition key: turn the offending value's own type into a
+literal message, `` `no row matches '${P}'` ``, so the caller's string
+argument fails to match it.
+
+`Actions` applies this per mapped key, exactly like `not a trigger: '${P}'`
+already does — no new mechanism. `Host.observe`'s first overload has no
+object-literal keys to map over, one `pattern` parameter instead; TypeScript
+still infers `P` from the argument through `NoMatch<K, P> extends true ?
+`no row matches '${P}'` : P`, the naked `P` in the conditional's true branch,
+confirmed against `TypeScript 7.0.2` with an isolated repro before landing it
+in `src/`. A widened `K` (`string extends K`) falls back to `false` — never
+rejects — the same conservative gate [I34](#i34)'s `Transition` fallback
+uses, for the same reason: a wrapper that erased the exact rows cannot tell a
+dead pattern from a live one, and a false rejection is worse than a missed
+one.
+
+The type layer is erased: `pnpm size` reports 1,580 B raw, unchanged.

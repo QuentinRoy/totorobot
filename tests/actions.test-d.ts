@@ -64,7 +64,7 @@ test('a residency action reading `from` without narrowing away the initial arriv
 	})
 })
 
-test("a noninitial residency action's `from` excludes `undefined` entirely: the arrival can only ever reach the initial state's own action, so a noninitial one needs no narrowing to read `from` — unlike the initial state's own action, and unlike `observe` for either (#99)", () => {
+test("a noninitial residency action's `from` excludes `undefined` entirely: the arrival can only ever reach the initial state's own action, so a noninitial one needs no narrowing to read `from` — unlike the initial state's own action, and unlike `observe` for either (I33)", () => {
 	const doc = machine({
 		initial: 'off',
 		inputs: type<Inputs>(),
@@ -92,6 +92,37 @@ test("a noninitial residency action's `from` excludes `undefined` entirely: the 
 		expectTypeOf(from).toEqualTypeOf<'off' | undefined>()
 		// @ts-expect-error - `from` is `undefined` on the synthetic arrival
 		from.length
+	})
+})
+
+test('a residency action naming a noninitial state with no incoming row is a compile-time registration error: neither a real transition nor the startup arrival can ever reach it (#100)', () => {
+	machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States & { ghost: undefined }>(),
+		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
+		actions: {
+			// "ghost" is declared, but no row reaches it and it is not `initial`.
+			// @ts-expect-error - no row matches 'ghost'
+			ghost: () => {},
+		},
+	})
+})
+
+test('a residency action declared on the initial state remains valid with no incoming row at all: the startup arrival alone makes it eligible (#100)', () => {
+	machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		// Nothing transitions into "off"; only "on" is reached, and only by it.
+		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
+		actions: {
+			off: ({ to, toData, send }) => {
+				expectTypeOf(to).toEqualTypeOf<'off'>()
+				expectTypeOf(toData).toEqualTypeOf<undefined>()
+				expectTypeOf(send).not.toBeAny()
+			},
+		},
 	})
 })
 
@@ -203,6 +234,37 @@ test('an undeclared input in an edge trigger is rejected', () => {
 		actions: {
 			// @ts-expect-error - "nope" is not a declared input
 			'off -nope> on': () => {},
+		},
+	})
+})
+
+test('an edge trigger naming only declared state/input names, but no declared row, is rejected (#100)', () => {
+	machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
+		actions: {
+			// "gone", "toggle" and "off" are all declared, but no row pairs them.
+			// @ts-expect-error - no row matches 'gone -toggle> off'
+			'gone -toggle> off': () => {},
+		},
+	})
+})
+
+test('a broad edge trigger with no matching row is rejected the same way, wildcard source and wildcard target alike (#100)', () => {
+	machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
+		actions: {
+			// "gone" has no outgoing row at all.
+			// @ts-expect-error - no row matches 'gone -> *'
+			'gone -> *': () => {},
+			// no row uses "go", from any source.
+			// @ts-expect-error - no row matches '* -go> gone'
+			'* -go> gone': () => {},
 		},
 	})
 })

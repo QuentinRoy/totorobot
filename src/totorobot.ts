@@ -220,6 +220,17 @@ type MatchingRows<K extends string, P extends string> = K extends unknown
 		: never
 	: never
 
+/**
+ * A pattern with no declared row it could ever fire from — the same
+ * `string extends K` gate `Transition`'s own fallback uses (I34), so a
+ * genuinely widened `K` is left unchecked rather than falsely rejected.
+ */
+type NoMatch<K extends string, P extends string> = string extends K
+	? false
+	: [MatchingRows<K, P>] extends [never]
+		? true
+		: false
+
 /** The wildcard rules of the runtime's own comparison, at the type level. */
 type Select<Coordinate extends string, All extends string> = [
 	Coordinate,
@@ -358,7 +369,7 @@ type Residency<
  * declared action, fixed before the host starts, is ever handed the
  * synthetic arrival. Every other residency action is reachable only by a real
  * transition, so its argument is a plain `Transition`, real rows alone. This
- * is `observe`'s own late-registration case with no equivalent here (I32).
+ * is `observe`'s own late-registration case with no equivalent here (I33).
  */
 type ActionArrival<
 	I extends Vocab,
@@ -437,6 +448,16 @@ type Restart<
  * reports its own `not a trigger: '…'` rather than poisoning a well-formed
  * neighbour. `restart` has no meaning on an edge, so only the residency arm
  * widens with it.
+ *
+ * A name-valid key naming no declared row (or, for a noninitial bare state,
+ * no incoming row at all) reports `no row matches '…'` instead: an edge with
+ * no matching row can never run, and neither can a noninitial residency with
+ * none, since `enter` hands the synthetic arrival only to `initial`'s own
+ * action (#100). This is a second, independent check alongside
+ * `ActionArrival`'s own `Init` comparison, not a replacement for it: a
+ * noninitial action's argument still excludes the arrival member it can
+ * never receive, precise as I33 left it, and eligibility is checked on top of
+ * that, not by widening it.
  */
 type Actions<
 	I extends Vocab,
@@ -447,13 +468,22 @@ type Actions<
 > = {
 	readonly [P in A]: P extends `${string} -${string}> ${string}`
 		? P extends Pattern<I, S>
-			? Action<EdgeAction<I, S, K, P>>
+			? NoMatch<K, P> extends true
+				? `no row matches '${P}'`
+				: Action<EdgeAction<I, S, K, P>>
 			: `not a trigger: '${P}'`
 		: P extends Name<S>
-			? Action<
-					ResidencyAction<ActionArrival<I, S, K, Init, P>>,
-					Restart<I, S, K, P>
-				>
+			? [P] extends [Init]
+				? Action<
+						ResidencyAction<ActionArrival<I, S, K, Init, P>>,
+						Restart<I, S, K, P>
+					>
+				: NoMatch<K, `* -> ${P}`> extends true
+					? `no row matches '${P}'`
+					: Action<
+							ResidencyAction<ActionArrival<I, S, K, Init, P>>,
+							Restart<I, S, K, P>
+						>
 			: `not a trigger: '${P}'`
 }
 
@@ -492,14 +522,18 @@ interface Host<
 > {
 	readonly current: Current<S>
 	readonly send: Send<I>
-	// Generic in the pattern, so a listener's record is narrowed by it. A bare
-	// state key is the second, overloaded form: the same record `actions` takes
-	// for a residency, minus the array — call `observe` again for a second one —
-	// and minus the third-argument options form, deliberately not added (§11 The
-	// host).
+	// Generic in the pattern, so a listener's record is narrowed by it. A
+	// name-valid edge pattern with no declared row it could ever fire from is
+	// rejected the same way `Table` rejects a malformed key — the pattern
+	// parameter's own type, not the listener's (#100). A bare state key is
+	// the second, overloaded form: always eligible, since a late registration
+	// can find any declared state already occupied, and takes the same record
+	// `actions` does for a residency, minus the array — call `observe` again
+	// for a second one — and minus the third-argument options form,
+	// deliberately not added (§11 The host).
 	readonly observe: {
 		<P extends Pattern<I, S>>(
-			pattern: P,
+			pattern: NoMatch<K, P> extends true ? `no row matches '${P}'` : P,
 			listener: Listener<I, S, K, P>,
 		): () => void
 		<N extends Name<S>>(
