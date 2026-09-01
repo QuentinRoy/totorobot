@@ -54,6 +54,21 @@ type InputVocab = object
 type AnyInputs = Record<string, unknown>
 type StateVocab = { readonly name: string }
 
+type IsUnion<T, Whole = T> = T extends Whole
+	? [Whole] extends [T]
+		? false
+		: true
+	: never
+
+/** `object` admits interfaces; this check rejects non-map shapes (I30). */
+type InputMap<I extends InputVocab> = true extends IsUnion<I>
+	? never
+	: I extends readonly unknown[] | Function
+		? never
+		: Exclude<keyof I, string> extends never
+			? unknown
+			: never
+
 /**
  * Lands an omitted property and an explicit `undefined` on the same type;
  * constraining the raw parameter to bare `T` widens the explicit case instead
@@ -527,7 +542,9 @@ export let machine: <
 	readonly initial: Init & StateName<NoInfer<S>>
 	// `| undefined` is what `type()` returns, and inference subtracts it. Spelled
 	// out because `exactOptionalPropertyTypes` makes `?:` a different thing.
-	readonly inputs?: RawI | undefined
+	readonly inputs?:
+		| (RawI & InputMap<Exclude<RawI, undefined>>)
+		| undefined
 	readonly states?: RawS | undefined
 	readonly transitions: Table<I, S, K>
 	readonly actions?: Actions<I, S, A> | undefined

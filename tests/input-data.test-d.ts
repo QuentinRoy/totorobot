@@ -56,3 +56,30 @@ test('possibly mismatched union-valued names and data are rejected', () => {
 		if (event.input === 'text') event.send(event.input, event.inputData)
 	})
 })
+
+test('input vocabularies are name-to-payload maps', () => {
+	type State = { name: 'idle' }
+	type Tagged = { type: 'open'; text: string } | { type: 'close' }
+
+	machine({
+		initial: 'idle',
+		// @ts-expect-error arrays are not input maps
+		inputs: type<string[]>(),
+		states: type<State>(),
+		transitions: {},
+	})
+	machine({
+		initial: 'idle',
+		// @ts-expect-error functions are not input maps
+		inputs: type<() => void>(),
+		states: type<State>(),
+		transitions: {},
+	})
+	machine({
+		initial: 'idle',
+		// @ts-expect-error tagged unions are not input maps
+		inputs: type<Tagged>(),
+		states: type<State>(),
+		transitions: {},
+	})
+})

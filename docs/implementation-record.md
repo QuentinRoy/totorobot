@@ -488,3 +488,11 @@ parameter. Required data uses `[name, data]`; data that admits `undefined` uses
 union-valued payload. Narrowing the name first selects one tuple and permits
 forwarding. A generic `(name: N, data: I[N])` accepts mismatched unions and is
 therefore too broad.
+
+### <a id="i30"></a>I30 — Input maps need a separate shape check
+
+The generic constraint is `object` because interfaces do not satisfy a
+`Record<string, unknown>` constraint without an index signature. That broad
+constraint also admits arrays, functions, and unions, so the `inputs` property
+checks those shapes separately. `AnyInputs` uses `Record<string, unknown>` only
+as the default for APIs with no declared vocabulary to inspect.
