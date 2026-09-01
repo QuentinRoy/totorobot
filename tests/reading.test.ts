@@ -4,15 +4,14 @@ import { editor } from './fixtures.ts'
 import { cloneDeep } from './helpers.ts'
 
 describe('reading', () => {
-	test('current is the state itself, tag included', () => {
+	test('current is the state name beside its data', () => {
 		const host = editor.start()
-		expect(host.current).toEqual({ name: 'idle' })
+		expect(host.current).toStrictEqual({ name: 'idle', data: undefined })
 
 		host.send('open', { text: 'hello' })
 		expect(host.current).toEqual({
 			name: 'draft',
-			text: 'hello',
-			revision: 0,
+			data: { text: 'hello', revision: 0 },
 		})
 	})
 

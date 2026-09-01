@@ -38,11 +38,12 @@ type MarkingMenuInputs = {
 	up: { point: Point }
 	cancel: { point: Point }
 }
-type MarkingMenuStates =
-	| { name: 'idle' }
-	| { name: 'startup'; origin: Point; stroke: Stroke }
-	| { name: 'expert'; stroke: Stroke }
-	| { name: 'novice'; menu: Menu; center: Point; stroke: Stroke }
+type MarkingMenuStates = {
+	idle: undefined
+	startup: { origin: Point; stroke: Stroke }
+	expert: { stroke: Stroke }
+	novice: { menu: Menu; center: Point; stroke: Stroke }
+}
 
 const DWELL_DISTANCE_THRESHOLD = 10
 const DWELL_DELAY = 500
@@ -69,33 +70,36 @@ const markingMenu = machine({
 			origin: inputData.point,
 			stroke: [inputData.point],
 		}),
-		'startup -move> startup': ({ state, inputData, skip }) =>
-			distance(state.origin, inputData.point) < DWELL_DISTANCE_THRESHOLD
-				? { ...state, stroke: appendStroke(state.stroke, inputData.point) }
+		'startup -move> startup': ({ fromData, inputData, skip }) =>
+			distance(fromData.origin, inputData.point) < DWELL_DISTANCE_THRESHOLD
+				? {
+						...fromData,
+						stroke: appendStroke(fromData.stroke, inputData.point),
+					}
 				: skip(),
-		'startup -move> expert': ({ state, inputData, skip }) =>
-			distance(state.origin, inputData.point) < DWELL_DISTANCE_THRESHOLD
+		'startup -move> expert': ({ fromData, inputData, skip }) =>
+			distance(fromData.origin, inputData.point) < DWELL_DISTANCE_THRESHOLD
 				? skip()
-				: { stroke: appendStroke(state.stroke, inputData.point) },
-		'startup -dwellElapsed> novice': ({ state }) => ({
+				: { stroke: appendStroke(fromData.stroke, inputData.point) },
+		'startup -dwellElapsed> novice': ({ fromData }) => ({
 			menu: rootMenu,
-			center: state.origin,
-			stroke: state.stroke,
+			center: fromData.origin,
+			stroke: fromData.stroke,
 		}),
-		'expert -move> expert': ({ state, inputData }) => ({
-			...state,
-			stroke: appendStroke(state.stroke, inputData.point),
+		'expert -move> expert': ({ fromData, inputData }) => ({
+			...fromData,
+			stroke: appendStroke(fromData.stroke, inputData.point),
 		}),
-		'novice -move> novice': ({ state, inputData }) => ({
-			...state,
-			stroke: appendStroke(state.stroke, inputData.point),
+		'novice -move> novice': ({ fromData, inputData }) => ({
+			...fromData,
+			stroke: appendStroke(fromData.stroke, inputData.point),
 		}),
-		'startup -up> idle': () => ({}),
-		'expert -up> idle': () => ({}),
-		'novice -up> idle': () => ({}),
-		'startup -cancel> idle': () => ({}),
-		'expert -cancel> idle': () => ({}),
-		'novice -cancel> idle': () => ({}),
+		'startup -up> idle': () => {},
+		'expert -up> idle': () => {},
+		'novice -up> idle': () => {},
+		'startup -cancel> idle': () => {},
+		'expert -cancel> idle': () => {},
+		'novice -cancel> idle': () => {},
 	},
 	actions: {
 		// The dwell is internal: nothing outside the machine needs to know it
@@ -129,8 +133,7 @@ describe('acceptance: Reduced Marking Menu', () => {
 
 		expect(doc.current).toEqual({
 			name: 'startup',
-			origin: p0,
-			stroke: [p0],
+			data: { origin: p0, stroke: [p0] },
 		})
 		expect(reportedStart).toHaveBeenCalledOnce()
 		expect(vi.getTimerCount()).toBe(1)
@@ -144,8 +147,7 @@ describe('acceptance: Reduced Marking Menu', () => {
 		doc.send('move', { point: p1Near })
 		expect(doc.current).toEqual({
 			name: 'startup',
-			origin: p0,
-			stroke: [p0, p1Near],
+			data: { origin: p0, stroke: [p0, p1Near] },
 		})
 
 		const opened = vi.fn()
@@ -155,9 +157,7 @@ describe('acceptance: Reduced Marking Menu', () => {
 
 		expect(doc.current).toEqual({
 			name: 'novice',
-			menu: rootMenu,
-			center: p0,
-			stroke: [p0, p1Near],
+			data: { menu: rootMenu, center: p0, stroke: [p0, p1Near] },
 		})
 		expect(opened).toHaveBeenCalledOnce()
 	})
@@ -170,7 +170,7 @@ describe('acceptance: Reduced Marking Menu', () => {
 		doc.send('move', { point: p2Far })
 		expect(doc.current).toEqual({
 			name: 'expert',
-			stroke: [p0, p2Far],
+			data: { stroke: [p0, p2Far] },
 		})
 
 		expect(vi.getTimerCount()).toBe(0) // the residency's teardown ran on the way out
@@ -191,7 +191,7 @@ describe('acceptance: Reduced Marking Menu', () => {
 
 		doc.send('cancel', { point: p0 })
 
-		expect(doc.current).toEqual({ name: 'idle' })
+		expect(doc.current.name).toBe('idle')
 		expect(reportedCancellation).toHaveBeenCalledOnce()
 		expect(vi.getTimerCount()).toBe(0)
 	})

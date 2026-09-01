@@ -33,10 +33,10 @@ export function residency(
 		teardown?.()
 		teardown = undefined
 	})
-	const offEnter = doc.observe(`* -> ${state}`, (e: { to: unknown }) => {
-		teardown = setup(e.to)
+	const offEnter = doc.observe(`* -> ${state}`, (e: { toData: unknown }) => {
+		teardown = setup(e.toData)
 	})
-	if (doc.current.name === state) teardown = setup(doc.current)
+	if (doc.current.name === state) teardown = setup(doc.current.data)
 	return () => {
 		offExit()
 		offEnter()

@@ -58,7 +58,7 @@ test('possibly mismatched union-valued names and data are rejected', () => {
 })
 
 test('input vocabularies are name-to-payload maps', () => {
-	type State = { name: 'idle' }
+	type State = { idle: undefined }
 	type Tagged = { type: 'open'; text: string } | { type: 'close' }
 
 	machine({

@@ -21,8 +21,10 @@ describe('sending', () => {
 			expect(callback).toHaveBeenCalledExactlyOnceWith({
 				input: 'set',
 				inputData: payload,
-				from: { name: 'idle' },
-				to: { name: 'ready' },
+				from: 'idle',
+				fromData: undefined,
+				to: 'ready',
+				toData: undefined,
 				send: host.send,
 			})
 			expect(callback.mock.calls[0]![0].inputData).toBe(payload)
@@ -44,13 +46,35 @@ describe('sending', () => {
 
 			host.send('set', value)
 
-			expect(host.current).toEqual({ name: 'ready' })
+			expect(host.current.name).toBe('ready')
 			expect(handler).toHaveBeenCalledExactlyOnceWith({
-				state: { name: 'idle' },
 				input: 'set',
 				inputData: value,
+				from: 'idle',
+				fromData: undefined,
+				to: 'ready',
 				skip: expect.any(Function),
 			})
+		}
+	})
+
+	test('a returned payload is stored as supplied, whatever it is', () => {
+		for (const value of [
+			42,
+			null,
+			() => 42,
+			Symbol('value'),
+			new Map([['answer', 42]]),
+			{ name: 'domain name', type: 'domain type' },
+		]) {
+			const host = machine({
+				initial: 'idle',
+				transitions: { 'idle -set> ready': () => value },
+			}).start()
+
+			host.send('set')
+
+			expect(host.current.data).toBe(value)
 		}
 	})
 
@@ -65,8 +89,7 @@ describe('sending', () => {
 
 		expect(host.current).toEqual({
 			name: 'draft',
-			text: 'hello',
-			revision: 0,
+			data: { text: 'hello', revision: 0 },
 		})
 		expect(broad).toHaveBeenCalledOnce()
 		expect(narrow).toHaveBeenCalledOnce()
@@ -105,9 +128,7 @@ describe('sending', () => {
 		const priority = machine({
 			initial: 'start',
 			inputs: type<{ go: undefined }>(),
-			states: type<
-				{ name: 'start' } | { name: 'first' } | { name: 'second' }
-			>(),
+			states: type<{ start: undefined; first: undefined; second: undefined }>(),
 			transitions: {
 				// Neither row ever declines, so declaration order alone decides —
 				// 'second' is unreachable.
@@ -119,7 +140,7 @@ describe('sending', () => {
 		const host = priority.start()
 		host.send('go')
 
-		expect(host.current).toEqual({ name: 'first' })
+		expect(host.current.name).toBe('first')
 	})
 
 	test('a guarded row that declines falls through to the next row for the same input', () => {
@@ -132,12 +153,11 @@ describe('sending', () => {
 
 		expect(host.current).toEqual({
 			name: 'published',
-			text: 'hello',
-			revision: 0,
+			data: { text: 'hello', revision: 0 },
 		})
 	})
 
-	test('a self-transition commits and notifies with the same state on both ends', () => {
+	test('a self-transition commits and notifies with the same name on both ends', () => {
 		const host = editor.start()
 		host.send('open', { text: 'hello' })
 
@@ -149,32 +169,33 @@ describe('sending', () => {
 		expect(observer).toHaveBeenCalledExactlyOnceWith({
 			input: 'revise',
 			inputData: { text: 'goodbye' },
-			from: { name: 'draft', text: 'hello', revision: 0 },
-			to: { name: 'draft', text: 'goodbye', revision: 1 },
+			from: 'draft',
+			fromData: { text: 'hello', revision: 0 },
+			to: 'draft',
+			toData: { text: 'goodbye', revision: 1 },
 			send: expect.any(Function),
 		})
 		expect(host.current).toEqual({
 			name: 'draft',
-			text: 'goodbye',
-			revision: 1,
+			data: { text: 'goodbye', revision: 1 },
 		})
 	})
 
-	test('a handler receives the source state, input name and data', () => {
+	test('a handler receives the source name and data, and the input name and data', () => {
 		const act = vi.fn()
 		const ping = vi.fn()
 		const probe = machine({
 			initial: 'ready',
 			inputs: type<{ act: { n: number }; ping: undefined }>(),
-			states: type<{ name: 'ready'; count: number }>(),
+			states: type<{ ready: { count: number } }>(),
 			transitions: {
-				'ready -act> ready': ({ state, input, inputData }) => {
-					act(state, input, inputData)
-					return { count: state.count + inputData.n }
+				'ready -act> ready': ({ from, fromData, input, inputData }) => {
+					act(from, fromData, input, inputData)
+					return { count: fromData.count + inputData.n }
 				},
-				'ready -ping> ready': ({ state, input, inputData }) => {
-					ping(state, input, inputData)
-					return { ...state }
+				'ready -ping> ready': ({ from, fromData, input, inputData }) => {
+					ping(from, fromData, input, inputData)
+					return fromData
 				},
 			},
 		})
@@ -183,41 +204,42 @@ describe('sending', () => {
 		host.send('act', { n: 2 })
 		host.send('ping')
 
-		expect(act).toHaveBeenCalledExactlyOnceWith(
-			{ name: 'ready', count: 1 },
-			'act',
-			{ n: 2 },
-		)
+		expect(act).toHaveBeenCalledExactlyOnceWith('ready', { count: 1 }, 'act', {
+			n: 2,
+		})
 		expect(ping).toHaveBeenCalledExactlyOnceWith(
-			{ name: 'ready', count: 3 },
+			'ready',
+			{ count: 3 },
 			'ping',
 			undefined,
 		)
 	})
 
-	test('a handler whose target carries no payload returns nothing', () => {
+	test('a handler whose target carries no payload returns nothing, and the snapshot keeps an undefined data', () => {
 		const host = editor.start()
 		host.send('open', { text: 'hello' })
 
 		host.send('lock')
 
-		expect(host.current).toEqual({ name: 'locked' })
+		expect(host.current).toStrictEqual({ name: 'locked', data: undefined })
 	})
 
-	test('a handler whose target carries no payload may also return {}', () => {
+	test('the row, not the return, decides the destination', () => {
 		const relay = machine({
 			initial: 'a',
 			inputs: type<{ go: undefined }>(),
-			states: type<{ name: 'a' } | { name: 'b' }>(),
+			states: type<{ a: undefined; b: { name: string } }>(),
 			transitions: {
-				'a -go> b': () => ({}),
+				// A payload with its own `name` is ordinary domain data; it cannot
+				// redirect the hop the row declares.
+				'a -go> b': () => ({ name: 'c' }),
 			},
 		})
 
 		const host = relay.start()
 		host.send('go')
 
-		expect(host.current).toEqual({ name: 'b' })
+		expect(host.current).toEqual({ name: 'b', data: { name: 'c' } })
 	})
 
 	test('send returns undefined, always', () => {
@@ -234,11 +256,11 @@ describe('sending', () => {
 			const relay = machine({
 				initial: 'draft',
 				inputs: type<{ submit: undefined }>(),
-				states: type<
-					| { name: 'draft' }
-					| { name: 'checking' }
-					| { name: 'settled'; via: string }
-				>(),
+				states: type<{
+					draft: undefined
+					checking: undefined
+					settled: { via: string }
+				}>(),
 				transitions: {
 					'draft -submit> checking': () => {},
 					'checking -> settled': () => ({ via: 'immediate' }),
@@ -250,7 +272,7 @@ describe('sending', () => {
 
 			expect(host.current).toEqual({
 				name: 'settled',
-				via: 'immediate',
+				data: { via: 'immediate' },
 			})
 		})
 
@@ -259,12 +281,12 @@ describe('sending', () => {
 			allowed.send('submit', { quota: 3 })
 			expect(allowed.current).toEqual({
 				name: 'allowed',
-				quota: 3,
+				data: { quota: 3 },
 			})
 
 			const denied = gate.start()
 			denied.send('submit', { quota: 0 })
-			expect(denied.current).toEqual({ name: 'denied', quota: 0 })
+			expect(denied.current).toEqual({ name: 'denied', data: { quota: 0 } })
 		})
 
 		test('an immediate row receives input as undefined, not the input that entered the state', () => {
@@ -272,38 +294,41 @@ describe('sending', () => {
 			const relay = machine({
 				initial: 'draft',
 				inputs: type<{ submit: undefined }>(),
-				states: type<
-					{ name: 'draft' } | { name: 'checking' } | { name: 'settled' }
-				>(),
+				states: type<{
+					draft: undefined
+					checking: undefined
+					settled: undefined
+				}>(),
 				transitions: {
 					'draft -submit> checking': () => {},
-					'checking -> settled': ({ inputData }) => immediate(inputData),
+					'checking -> settled': ({ input, inputData }) =>
+						immediate(input, inputData),
 				},
 			})
 
 			const host = relay.start()
 			host.send('submit')
 
-			expect(immediate).toHaveBeenCalledExactlyOnceWith(undefined)
+			expect(immediate).toHaveBeenCalledExactlyOnceWith(undefined, undefined)
 		})
 
 		test('a state whose immediate rows all skip stays put, its input rows still live', () => {
 			const host = pending.start()
 			host.send('submit', { quota: 0 })
 
-			expect(host.current).toEqual({ name: 'checking', quota: 0 })
+			expect(host.current).toEqual({ name: 'checking', data: { quota: 0 } })
 
 			// the immediate row skipping does not disable 'checking's ordinary
 			// input rows — 'cancel' still fires from here.
 			host.send('cancel')
-			expect(host.current).toEqual({ name: 'draft' })
+			expect(host.current.name).toBe('draft')
 		})
 
 		test('a chain of several immediate hops settles fully before send returns', () => {
 			const host = chain.start()
 			host.send('go')
 
-			expect(host.current).toEqual({ name: 'd' })
+			expect(host.current.name).toBe('d')
 		})
 	})
 
@@ -315,9 +340,12 @@ describe('sending', () => {
 		const collide = machine({
 			initial: 'a',
 			inputs: type<{ b: undefined }>(),
-			states: type<
-				{ name: 'a' } | { name: 'a\0b' } | { name: 'bad' } | { name: 'good' }
-			>(),
+			states: type<{
+				a: undefined
+				'a\0b': undefined
+				bad: undefined
+				good: undefined
+			}>(),
 			transitions: {
 				'a\0b -> bad': bad,
 				'a -b> good': good,
@@ -329,7 +357,7 @@ describe('sending', () => {
 
 		expect(bad).not.toHaveBeenCalled()
 		expect(good).toHaveBeenCalledOnce()
-		expect(host.current).toEqual({ name: 'good' })
+		expect(host.current.name).toBe('good')
 	})
 
 	// The same hazard between two labelled rows: `'a\0b' -c>` and `a -b\0c>`.
@@ -337,9 +365,12 @@ describe('sending', () => {
 		const collide = machine({
 			initial: 'a',
 			inputs: type<{ c: undefined; 'b\0c': undefined }>(),
-			states: type<
-				{ name: 'a' } | { name: 'a\0b' } | { name: 'bad' } | { name: 'good' }
-			>(),
+			states: type<{
+				a: undefined
+				'a\0b': undefined
+				bad: undefined
+				good: undefined
+			}>(),
 			transitions: {
 				'a\0b -c> bad': () => {},
 				'a -b\0c> good': () => {},
@@ -349,7 +380,7 @@ describe('sending', () => {
 		const host = collide.start()
 		host.send('b\0c')
 
-		expect(host.current).toEqual({ name: 'good' })
+		expect(host.current.name).toBe('good')
 	})
 
 	test('send returns undefined when it was queued, too', () => {

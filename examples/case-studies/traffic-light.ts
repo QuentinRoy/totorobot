@@ -5,15 +5,16 @@ import { machine, type } from '../../src/totorobot.ts'
  *
  * `yellow` carries a `blinking` flag that simply does not exist on the other
  * states — the thing a single flat context could not express. Reading
- * `data.blinking` from the `red` or `green` rows is a compile error rather than
- * a nullable field everyone has to check.
+ * `fromData.blinking` from the `red` or `green` rows is a compile error rather
+ * than a nullable field everyone has to check.
  */
 type Inputs = { next: undefined }
 
-type States =
-	| { name: 'red'; changes: number }
-	| { name: 'green'; changes: number }
-	| { name: 'yellow'; changes: number; blinking: boolean }
+type States = {
+	red: { changes: number }
+	green: { changes: number }
+	yellow: { changes: number; blinking: boolean }
+}
 
 export const trafficLight = machine({
 	inputs: type<Inputs>(),
@@ -21,14 +22,14 @@ export const trafficLight = machine({
 	initial: 'red',
 
 	transitions: {
-		'red -next> green': ({ state }) => ({ changes: state.changes + 1 }),
-		'green -next> yellow': ({ state }) => ({
-			changes: state.changes + 1,
+		'red -next> green': ({ fromData }) => ({ changes: fromData.changes + 1 }),
+		'green -next> yellow': ({ fromData }) => ({
+			changes: fromData.changes + 1,
 			blinking: true,
 		}),
-		// `state.blinking` is available here and nowhere else.
-		'yellow -next> red': ({ state }) => ({
-			changes: state.changes + (state.blinking ? 1 : 0),
+		// `fromData.blinking` is available here and nowhere else.
+		'yellow -next> red': ({ fromData }) => ({
+			changes: fromData.changes + (fromData.blinking ? 1 : 0),
 		}),
 	},
 })

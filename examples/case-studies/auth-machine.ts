@@ -18,15 +18,11 @@ type Inputs = {
 	fail: { reason: string }
 }
 
-type States =
-	| { name: 'idle'; error: string | null; attempts: number }
-	| {
-			name: 'authenticating'
-			username: string
-			password: string
-			attempts: number
-	  }
-	| { name: 'authenticated'; username: string; token: string }
+type States = {
+	idle: { error: string | null; attempts: number }
+	authenticating: { username: string; password: string; attempts: number }
+	authenticated: { username: string; token: string }
+}
 
 export const authMachine = machine({
 	inputs: type<Inputs>(),
@@ -36,23 +32,23 @@ export const authMachine = machine({
 	transitions: {
 		// A blank username is not an attempt: the row declines, so nothing
 		// changes and no listener fires. Declining is an ordinary outcome.
-		'idle -login> authenticating': ({ state, inputData, skip }) =>
+		'idle -login> authenticating': ({ fromData, inputData, skip }) =>
 			inputData.username.trim()
 				? {
 						username: inputData.username,
 						password: inputData.password,
-						attempts: state.attempts + 1,
+						attempts: fromData.attempts + 1,
 					}
 				: skip(),
 
-		'authenticating -succeed> authenticated': ({ state, inputData }) => ({
-			username: state.username,
+		'authenticating -succeed> authenticated': ({ fromData, inputData }) => ({
+			username: fromData.username,
 			token: inputData.token,
 		}),
 
-		'authenticating -fail> idle': ({ state, inputData }) => ({
+		'authenticating -fail> idle': ({ fromData, inputData }) => ({
 			error: inputData.reason,
-			attempts: state.attempts,
+			attempts: fromData.attempts,
 		}),
 	},
 })

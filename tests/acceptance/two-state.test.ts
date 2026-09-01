@@ -20,13 +20,13 @@ import { toggle } from '../fixtures.ts'
 describe('acceptance: two-state ceremony floor', () => {
 	test('off and on carry no data, and toggle enters the other state from each', () => {
 		const doc = toggle.start()
-		expect(doc.current).toEqual({ name: 'off' })
+		expect(doc.current.name).toBe('off')
 
 		doc.send('toggle')
-		expect(doc.current).toEqual({ name: 'on' })
+		expect(doc.current.name).toBe('on')
 
 		doc.send('toggle')
-		expect(doc.current).toEqual({ name: 'off' })
+		expect(doc.current.name).toBe('off')
 	})
 
 	test('live-runtime trace 1: a toggle queued while observing off -> on drains to on -> off before the outer call returns', () => {
@@ -37,7 +37,7 @@ describe('acceptance: two-state ceremony floor', () => {
 		doc.observe('* -> *', (e) => {
 			// the first commit-and-observation cycle finishes before the queued
 			// input is applied to `on`
-			log(`${e.from.name} -> ${e.to.name}`)
+			log(`${e.from} -> ${e.to}`)
 			if (!queued) {
 				queued = true
 				doc.send('toggle') // an observer submits a second input while observing the first transition
@@ -51,6 +51,6 @@ describe('acceptance: two-state ceremony floor', () => {
 		expect(log).toHaveBeenCalledTimes(2)
 		expect(log).toHaveBeenNthCalledWith(1, 'off -> on')
 		expect(log).toHaveBeenNthCalledWith(2, 'on -> off')
-		expect(doc.current).toEqual({ name: 'off' })
+		expect(doc.current.name).toBe('off')
 	})
 })

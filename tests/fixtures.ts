@@ -8,7 +8,7 @@
 import { machine, type } from 'totorobot'
 
 type ToggleInputs = { toggle: undefined }
-type ToggleStates = { name: 'off' } | { name: 'on' }
+type ToggleStates = { off: undefined; on: undefined }
 
 /** The smallest useful machine: two payload-free states, one input each way. */
 export const toggle = machine({
@@ -29,12 +29,14 @@ type EditorInputs = {
 	poke: undefined
 	lock: undefined
 }
-type EditorStates =
-	| { name: 'idle' }
-	| { name: 'draft'; text: string; revision: number }
-	| { name: 'review'; text: string; revision: number }
-	| { name: 'published'; text: string; revision: number }
-	| { name: 'locked' }
+type Draft = { text: string; revision: number }
+type EditorStates = {
+	idle: undefined
+	draft: Draft
+	review: Draft
+	published: Draft
+	locked: undefined
+}
 
 /**
  * A richer topology for the reading and sending behaviour groups: `draft` carries
@@ -42,12 +44,36 @@ type EditorStates =
  * (`poke`), a self-transition (`revise`) and `locked` has no outgoing rows at
  * all.
  */
+export const editor = machine({
+	initial: 'idle',
+	inputs: type<EditorInputs>(),
+	states: type<EditorStates>(),
+	transitions: {
+		'idle -open> draft': ({ inputData }) => ({
+			text: inputData.text,
+			revision: 0,
+		}),
+		'draft -revise> draft': ({ fromData, inputData }) => ({
+			text: inputData.text,
+			revision: fromData.revision + 1,
+		}),
+		'draft -touch> draft': ({ fromData }) => fromData,
+		'draft -submit> review': ({ fromData, inputData, skip }) =>
+			inputData.route === 'review' ? fromData : skip(),
+		'draft -submit> published': ({ fromData, inputData, skip }) =>
+			inputData.route === 'publish' ? fromData : skip(),
+		'draft -poke> draft': ({ skip }) => skip(),
+		'draft -lock> locked': () => {},
+	},
+})
+
 type GateInputs = { submit: { quota: number }; reset: undefined }
-type GateStates =
-	| { name: 'draft' }
-	| { name: 'checking'; quota: number }
-	| { name: 'allowed'; quota: number }
-	| { name: 'denied'; quota: number }
+type GateStates = {
+	draft: undefined
+	checking: { quota: number }
+	allowed: { quota: number }
+	denied: { quota: number }
+}
 
 /**
  * A guarded choice, expressed as ordered immediate rows out of a transient
@@ -59,10 +85,10 @@ export const gate = machine({
 	inputs: type<GateInputs>(),
 	states: type<GateStates>(),
 	transitions: {
-		'draft -submit> checking': ({ inputData }) => ({ quota: inputData.quota }),
-		'checking -> allowed': ({ state, skip }) =>
-			state.quota > 0 ? { ...state } : skip(),
-		'checking -> denied': ({ state }) => ({ ...state }),
+		'draft -submit> checking': ({ inputData }) => inputData,
+		'checking -> allowed': ({ fromData, skip }) =>
+			fromData.quota > 0 ? fromData : skip(),
+		'checking -> denied': ({ fromData }) => fromData,
 		'allowed -reset> draft': () => {},
 		'denied -reset> draft': () => {},
 	},
@@ -76,15 +102,15 @@ export const gate = machine({
 export const pending = machine({
 	initial: 'draft',
 	inputs: type<{ submit: { quota: number }; cancel: undefined }>(),
-	states: type<
-		| { name: 'draft' }
-		| { name: 'checking'; quota: number }
-		| { name: 'allowed'; quota: number }
-	>(),
+	states: type<{
+		draft: undefined
+		checking: { quota: number }
+		allowed: { quota: number }
+	}>(),
 	transitions: {
-		'draft -submit> checking': ({ inputData }) => ({ quota: inputData.quota }),
-		'checking -> allowed': ({ state, skip }) =>
-			state.quota > 0 ? { ...state } : skip(),
+		'draft -submit> checking': ({ inputData }) => inputData,
+		'checking -> allowed': ({ fromData, skip }) =>
+			fromData.quota > 0 ? fromData : skip(),
 		'checking -cancel> draft': () => {},
 	},
 })
@@ -98,19 +124,21 @@ export const pending = machine({
 export const spinner = machine({
 	initial: 'idle',
 	inputs: type<{ go: undefined; stop: undefined }>(),
-	states: type<{ name: 'idle' } | { name: 'loop'; count: number }>(),
+	states: type<{ idle: undefined; loop: { count: number } }>(),
 	transitions: {
 		'idle -go> loop': () => ({ count: 0 }),
-		'loop -> loop': ({ state }) => ({ count: state.count + 1 }),
+		'loop -> loop': ({ fromData }) => ({ count: fromData.count + 1 }),
 		'loop -stop> idle': () => {},
 	},
 })
+
+type Steps = { a: undefined; b: undefined; c: undefined; d: undefined }
 
 /** A chain of immediate hops, three deep, off one input. */
 export const chain = machine({
 	initial: 'a',
 	inputs: type<{ go: undefined }>(),
-	states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' } | { name: 'd' }>(),
+	states: type<Steps>(),
 	transitions: {
 		'a -go> b': () => {},
 		'b -> c': () => {},
@@ -129,9 +157,7 @@ export function activity(setup: () => void, teardown: () => void) {
 	return machine({
 		initial: 'a',
 		inputs: type<{ go: undefined }>(),
-		states: type<
-			{ name: 'a' } | { name: 'b' } | { name: 'c' } | { name: 'd' }
-		>(),
+		states: type<Steps>(),
 		transitions: {
 			'a -go> b': () => {},
 			'b -> c': () => {},
@@ -145,26 +171,3 @@ export function activity(setup: () => void, teardown: () => void) {
 		},
 	})
 }
-
-export const editor = machine({
-	initial: 'idle',
-	inputs: type<EditorInputs>(),
-	states: type<EditorStates>(),
-	transitions: {
-		'idle -open> draft': ({ inputData }) => ({
-			text: inputData.text,
-			revision: 0,
-		}),
-		'draft -revise> draft': ({ state, inputData }) => ({
-			text: inputData.text,
-			revision: state.revision + 1,
-		}),
-		'draft -touch> draft': ({ state }) => ({ ...state }),
-		'draft -submit> review': ({ state, inputData, skip }) =>
-			inputData.route === 'review' ? { ...state } : skip(),
-		'draft -submit> published': ({ state, inputData, skip }) =>
-			inputData.route === 'publish' ? { ...state } : skip(),
-		'draft -poke> draft': ({ skip }) => skip(),
-		'draft -lock> locked': () => {},
-	},
-})

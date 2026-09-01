@@ -10,7 +10,8 @@
  * so only code *shape* is left to spend (I16), and `pnpm size` arbitrates. The
  * type layer is erased and free. The export list is the API; the rest is
  * module-local — in the emitted declarations, so signatures resolve, but not
- * importable. Data is never validated: naming something absent is a silent
+ * importable. Payloads are stored as supplied — never spread, cloned, frozen or
+ * validated (§5 The declared vocabulary): naming something absent is a silent
  * no-op, and only a malformed key or a chain that never settles throws.
  */
 
@@ -48,11 +49,13 @@ let parse = (
 
 // ---------------------------------------------------------------------------
 // The vocabulary
+//
+// One shape for both: a map from a name to what that name carries, and
+// `undefined` for a name that carries nothing (§5 The declared vocabulary).
 // ---------------------------------------------------------------------------
 
-type InputVocab = object
-type AnyInputs = Record<string, unknown>
-type StateVocab = { readonly name: string }
+type Vocab = object
+type AnyVocab = Record<string, unknown>
 
 type IsUnion<T, Whole = T> = T extends Whole
 	? [Whole] extends [T]
@@ -61,12 +64,12 @@ type IsUnion<T, Whole = T> = T extends Whole
 	: never
 
 /** `object` admits interfaces; this check rejects non-map shapes (I30). */
-type InputMap<I extends InputVocab> =
-	true extends IsUnion<I>
+type VocabMap<V extends Vocab> =
+	true extends IsUnion<V>
 		? never
-		: I extends readonly unknown[] | Function
+		: V extends readonly unknown[] | Function
 			? never
-			: Exclude<keyof I, string> extends never
+			: Exclude<keyof V, string> extends never
 				? unknown
 				: never
 
@@ -77,8 +80,10 @@ type InputMap<I extends InputVocab> =
  */
 type Declared<Raw, Default> = Raw extends undefined ? Default : Raw
 
-type InputName<I extends InputVocab> = keyof I & string
-type StateName<S extends StateVocab> = S['name']
+type Name<V extends Vocab> = keyof V & string
+
+/** The payload a name carries. `& keyof V` is the constraint, never a filter. */
+type Payload<V extends Vocab, N extends string> = V[N & keyof V]
 
 // ---------------------------------------------------------------------------
 // The key grammar, at the type level
@@ -89,9 +94,8 @@ type StateName<S extends StateVocab> = S['name']
  * offers as completions — |states|² × |inputs| of them, priced in §12 Sending
  * inputs.
  */
-type Key<I extends InputVocab, S extends StateVocab> =
-	| `${StateName<S>} -${InputName<I>}> ${StateName<S>}`
-	| `${StateName<S>} -> ${StateName<S>}`
+type Key<I extends Vocab, S extends Vocab> =
+	`${Name<S>} -${Name<I>}> ${Name<S>}` | `${Name<S>} -> ${Name<S>}`
 
 /** A leading `infer` stops at the first separator, so these agree with `parse`. */
 type From<K> = K extends `${infer F} -${string}> ${string}` ? F : never
@@ -115,21 +119,15 @@ type InputsFromKeys<K extends string> = {
 	[N in RoundTrips<Exclude<Label<K>, ''>>]: unknown
 }
 
-/** State inference maps names to tagged states, then indexes to their union. */
+/** The same for state names, read off both ends of every key. */
 type StatesFromKeys<K extends string> = {
-	[N in RoundTrips<From<K> | To<K>>]: { readonly name: N } & Record<
-		string,
-		unknown
-	>
-}[RoundTrips<From<K> | To<K>>]
+	[N in RoundTrips<From<K> | To<K>>]: unknown
+}
 
 /** No `-*>`: the unlabelled arrow is the broad form, and a bare key is not one. */
-type Wildcard<S extends StateVocab> = StateName<S> | '*'
-type Pattern<
-	I extends InputVocab = AnyInputs,
-	S extends StateVocab = StateVocab,
-> =
-	| `${Wildcard<S>} -${InputName<I>}> ${Wildcard<S>}`
+type Wildcard<S extends Vocab> = Name<S> | '*'
+type Pattern<I extends Vocab = AnyVocab, S extends Vocab = AnyVocab> =
+	| `${Wildcard<S>} -${Name<I>}> ${Wildcard<S>}`
 	| `${Wildcard<S>} -> ${Wildcard<S>}`
 
 // ---------------------------------------------------------------------------
@@ -137,34 +135,31 @@ type Pattern<
 // ---------------------------------------------------------------------------
 
 /**
- * A handler's return for a payload-free target; an index-signature form is as
- * strict but reports through machinery the caller never wrote (I17).
- */
-declare const emptyObjectTag: unique symbol
-type EmptyObject = { readonly [emptyObjectTag]?: never }
-
-/**
  * Checked row by row: a malformed key poisons its own value type, so
- * `not a transition: '…'` lands on that row, not on the whole table. The handler
- * is typed inline, not behind an alias over `S`, so a wrong-shaped return names
- * the one state the row targets (I18). `NoInfer` closes both handler parameters
- * as inference sites; without it every row is rejected (I14).
+ * `not a transition: '…'` lands on that row, not on the whole table. The return
+ * is the destination's payload, resolved inline rather than behind an alias over
+ * `S`, so a wrong-shaped return names the one state the row targets (I18); the
+ * row stays the authority for the name, which no return can redirect (§5 The
+ * declared vocabulary). The `void` arm accepts an empty body, and only where the
+ * payload already admits `undefined`, so a destination that carries something
+ * still rejects a handler that returns nothing (I27). `NoInfer` guards the
+ * parameters (I14).
  */
-type Table<I extends InputVocab, S extends StateVocab, K extends string> = {
+type Table<I extends Vocab, S extends Vocab, K extends string> = {
 	readonly [P in K]: P extends Key<I, S>
 		? (args: {
-				readonly state: NoInfer<Extract<S, { name: From<P> }>>
 				readonly input: NoInfer<[Label<P>] extends [''] ? undefined : Label<P>>
 				readonly inputData: NoInfer<
-					[Label<P>] extends [''] ? undefined : I[Label<P> & keyof I]
+					[Label<P>] extends [''] ? undefined : Payload<I, Label<P>>
 				>
+				readonly from: From<P>
+				readonly fromData: NoInfer<Payload<S, From<P>>>
+				readonly to: To<P>
 				readonly skip: () => Skip
 			}) =>
-				| (keyof Omit<Extract<S, { name: To<P> }>, 'name'> extends never
-						? EmptyObject | void
-						: string extends keyof Omit<Extract<S, { name: To<P> }>, 'name'>
-							? Omit<Extract<S, { name: To<P> }>, 'name'> | void
-							: Omit<Extract<S, { name: To<P> }>, 'name'>)
+				| (undefined extends S[To<P> & keyof S]
+						? S[To<P> & keyof S] | void
+						: S[To<P> & keyof S])
 				| Skip
 		: `not a transition: '${P}'`
 }
@@ -172,11 +167,6 @@ type Table<I extends InputVocab, S extends StateVocab, K extends string> = {
 // ---------------------------------------------------------------------------
 // What a running machine is
 // ---------------------------------------------------------------------------
-
-type StateNamed<S extends StateVocab, N extends string> = Extract<
-	S,
-	{ name: N }
->
 
 /** The wildcard rules of the runtime's own comparison, at the type level. */
 type Select<Coordinate extends string, All extends string> = [
@@ -186,6 +176,15 @@ type Select<Coordinate extends string, All extends string> = [
 	: Coordinate & All
 
 /**
+ * The name and the payload as one union member, so a name check narrows the data
+ * beside it (§5 The declared vocabulary). A state carrying nothing keeps its
+ * `data`, valued `undefined`, rather than dropping the property.
+ */
+type Current<S extends Vocab> = {
+	[N in Name<S>]: { readonly name: N; readonly data: S[N] }
+}[Name<S>]
+
+/**
  * `send` is the whole declared vocabulary from every state, never narrowed to
  * what `from` or `to` handles: a queued input is read at drain time, by which
  * point the machine has moved, so the normal reaction sends something the state
@@ -193,45 +192,57 @@ type Select<Coordinate extends string, All extends string> = [
  * keeps each input name paired with its data when callers hold unions of both
  * fields (I29).
  */
-type Send<I extends InputVocab> = (
+type Send<I extends Vocab> = (
 	...args: {
-		[N in InputName<I>]: undefined extends I[N]
+		[N in Name<I>]: undefined extends I[N]
 			? [input: N, inputData?: I[N]]
 			: [input: N, inputData: I[N]]
-	}[InputName<I>]
+	}[Name<I>]
 ) => void
 
 /**
- * Narrowed by the listener's own pattern. The immediate hop is a separate arm
- * because the mapped type is indexed by input name; a labelled pattern drops it.
+ * Three names and their three payloads, narrowed by the listener's own pattern.
+ * One member per source, destination and input the pattern admits, because that
+ * product is what lets a check on any one name narrow the payload beside it
+ * (I31). The immediate hop is a separate arm because the innermost mapped type
+ * is indexed by input name; a labelled pattern drops it. `X` is what the record
+ * carries beyond the facts — `send` for a committed transition, nothing for a
+ * restart decision (§9 Actions).
  */
 type Transition<
-	I extends InputVocab = AnyInputs,
-	S extends StateVocab = StateVocab,
+	I extends Vocab = AnyVocab,
+	S extends Vocab = AnyVocab,
 	P extends string = '* -> *',
-> =
-	| {
-			[N in Select<Label<P>, InputName<I>>]: {
-				readonly input: N
-				readonly inputData: I[N]
-				readonly from: StateNamed<S, Select<From<P>, StateName<S>>>
-				readonly to: StateNamed<S, Select<To<P>, StateName<S>>>
-				readonly send: Send<I>
-			}
-	  }[Select<Label<P>, InputName<I>>]
-	| ([Label<P>] extends ['']
-			? {
-					readonly input: undefined
-					readonly inputData: undefined
-					readonly from: StateNamed<S, Select<From<P>, StateName<S>>>
-					readonly to: StateNamed<S, Select<To<P>, StateName<S>>>
-					readonly send: Send<I>
-				}
-			: never)
+	X extends object = { readonly send: Send<I> },
+> = {
+	[F in Select<From<P>, Name<S>>]: {
+		[T in Select<To<P>, Name<S>>]:
+			| {
+					[N in Select<Label<P>, Name<I>>]: X & {
+						readonly input: N
+						readonly inputData: I[N]
+						readonly from: F
+						readonly fromData: S[F]
+						readonly to: T
+						readonly toData: S[T]
+					}
+			  }[Select<Label<P>, Name<I>>]
+			| ([Label<P>] extends ['']
+					? X & {
+							readonly input: undefined
+							readonly inputData: undefined
+							readonly from: F
+							readonly fromData: S[F]
+							readonly to: T
+							readonly toData: S[T]
+						}
+					: never)
+	}[Select<To<P>, Name<S>>]
+}[Select<From<P>, Name<S>>]
 
 type Listener<
-	I extends InputVocab = AnyInputs,
-	S extends StateVocab = StateVocab,
+	I extends Vocab = AnyVocab,
+	S extends Vocab = AnyVocab,
 	P extends string = '* -> *',
 > = (transition: Transition<I, S, P>) => void
 
@@ -251,17 +262,21 @@ type Listener<
 type Teardown = () => void
 
 /**
- * Entering the initial state is the one arrival no transition caused, so
- * `from` and `input` are `undefined` there. Its own arm rather than a widened
- * `Transition`, which `observe` and every edge share: `input: undefined`
- * already discriminates an immediate hop, so `from: undefined` extends that
- * vocabulary instead of inventing a second one (§9 Actions).
+ * The arrival no transition caused: entering the initial state, and finding a
+ * state already occupied when a residency is registered on it. Source and input
+ * are absent on both, names and payloads alike; `to` is wherever the machine
+ * stands, which registration can reach in a noninitial state (§9 Actions). Its
+ * own arm rather than a widened `Transition`, which `observe` and every edge
+ * share: `input: undefined` already discriminates an immediate hop, so
+ * `from: undefined` extends that vocabulary instead of inventing a second one.
  */
-type Initial<I extends InputVocab, S extends StateVocab, N extends string> = {
+type Arrived<I extends Vocab, S extends Vocab, N extends string> = {
 	readonly input: undefined
 	readonly inputData: undefined
 	readonly from: undefined
-	readonly to: NoInfer<StateNamed<S, N>>
+	readonly fromData: undefined
+	readonly to: NoInfer<N>
+	readonly toData: NoInfer<Payload<S, N>>
 	readonly send: Send<I>
 }
 
@@ -274,12 +289,8 @@ type Initial<I extends InputVocab, S extends StateVocab, N extends string> = {
  * setup with nothing to tear down end in a plain statement rather than an
  * explicit `return undefined`.
  */
-type ResidencyAction<
-	I extends InputVocab,
-	S extends StateVocab,
-	N extends string,
-> = (
-	arrival: NoInfer<Transition<I, S, `* -> ${N}`>> | Initial<I, S, N>,
+type ResidencyAction<I extends Vocab, S extends Vocab, N extends string> = (
+	arrival: NoInfer<Transition<I, S, `* -> ${N}`>> | Arrived<I, S, N>,
 ) => undefined | Teardown | void
 
 /**
@@ -289,11 +300,9 @@ type ResidencyAction<
  * rejected (I27) — while still taking a plain block body with nothing to
  * return.
  */
-type EdgeAction<
-	I extends InputVocab,
-	S extends StateVocab,
-	P extends string,
-> = (transition: NoInfer<Transition<I, S, P>>) => undefined | void
+type EdgeAction<I extends Vocab, S extends Vocab, P extends string> = (
+	transition: NoInfer<Transition<I, S, P>>,
+) => undefined | void
 
 /**
  * An action is its run function alone, a record with `run`, or an array of
@@ -307,14 +316,16 @@ type Action<Run, Extra extends object = {}> =
 	| readonly (Run | ({ readonly run: Run } & Extra))[]
 
 /**
- * `restart` is consulted only on a self-transition; the default is to restart
- * (§9 Actions). `NoInfer` on the predicate's parameters for the same reason
- * `Table`'s handler needs it on `state` (I14): unguarded, a block-bodied
- * predicate reopens `S` as an inference site and the whole table collapses
+ * `restart` is consulted only on a self-transition, so its facts are that hop's:
+ * the same six a committed record carries, minus `send`, which is what keeps the
+ * decision pure in the types and at runtime alike (§9 Actions). The default is to
+ * restart. Without `NoInfer` the predicate reopens `S` and the table collapses
  * (I28).
  */
-type Restart<N extends StateVocab> = {
-	readonly restart?: boolean | ((from: NoInfer<N>, to: NoInfer<N>) => boolean)
+type Restart<I extends Vocab, S extends Vocab, N extends string> = {
+	readonly restart?:
+		| boolean
+		| ((facts: NoInfer<Transition<I, S, `${N} -> ${N}`, {}>>) => boolean)
 }
 
 /**
@@ -325,13 +336,13 @@ type Restart<N extends StateVocab> = {
  * neighbour. `restart` has no meaning on an edge, so only the residency arm
  * widens with it.
  */
-type Actions<I extends InputVocab, S extends StateVocab, A extends string> = {
+type Actions<I extends Vocab, S extends Vocab, A extends string> = {
 	readonly [P in A]: P extends `${string} -${string}> ${string}`
 		? P extends Pattern<I, S>
 			? Action<EdgeAction<I, S, P>>
 			: `not a trigger: '${P}'`
-		: P extends StateName<S>
-			? Action<ResidencyAction<I, S, P>, Restart<StateNamed<S, P>>>
+		: P extends Name<S>
+			? Action<ResidencyAction<I, S, P>, Restart<I, S, P>>
 			: `not a trigger: '${P}'`
 }
 
@@ -341,30 +352,19 @@ type Actions<I extends InputVocab, S extends StateVocab, A extends string> = {
  * everything but the array, which a caller gets by calling `observe` twice (§11
  * The host).
  */
-type ObserveAction<
-	I extends InputVocab,
-	S extends StateVocab,
-	N extends string,
-> =
+type ObserveAction<I extends Vocab, S extends Vocab, N extends string> =
 	| ResidencyAction<I, S, N>
-	| ({ readonly run: ResidencyAction<I, S, N> } & Restart<StateNamed<S, N>>)
+	| ({ readonly run: ResidencyAction<I, S, N> } & Restart<I, S, N>)
 
-/** Arity follows the initial state's payload, by `Table`'s three-way rule. */
-type Start<S extends StateVocab, Init extends string> = keyof Omit<
-	Extract<S, { name: Init }>,
-	'name'
-> extends never
-	? []
-	: string extends keyof Omit<Extract<S, { name: Init }>, 'name'>
-		? [data?: Omit<Extract<S, { name: Init }>, 'name'>]
-		: [data: Omit<Extract<S, { name: Init }>, 'name'>]
+/** The initial payload, omitted exactly when `send` would omit one (§5). */
+type Start<S extends Vocab, Init extends string> =
+	undefined extends Payload<S, Init>
+		? [data?: Payload<S, Init>]
+		: [data: Payload<S, Init>]
 
 /** A running machine: the only mutable thing in the design. */
-interface Host<
-	I extends InputVocab = AnyInputs,
-	S extends StateVocab = StateVocab,
-> {
-	readonly current: S
+interface Host<I extends Vocab = AnyVocab, S extends Vocab = AnyVocab> {
+	readonly current: Current<S>
 	readonly send: Send<I>
 	// Generic in the pattern, so a listener's record is narrowed by it. A bare
 	// state key is the second, overloaded form: the same record `actions` takes
@@ -376,27 +376,20 @@ interface Host<
 			pattern: P,
 			listener: Listener<I, S, P>,
 		): () => void
-		<N extends StateName<S>>(
-			pattern: N,
-			action: ObserveAction<I, S, N>,
-		): () => void
+		<N extends Name<S>>(pattern: N, action: ObserveAction<I, S, N>): () => void
 	}
 }
 
 /** Nothing at runtime; a function position keeps the three inferable together. */
 declare const vocabulary: unique symbol
-interface Vocabulary<
-	I extends InputVocab,
-	S extends StateVocab,
-	K extends string,
-> {
+interface Vocabulary<I extends Vocab, S extends Vocab, K extends string> {
 	readonly [vocabulary]?: (declared: readonly [I, S, K]) => void
 }
 
 /** A declared machine. Inert, shareable, and never mutated by running one. */
 interface Machine<
-	I extends InputVocab = AnyInputs,
-	S extends StateVocab = StateVocab,
+	I extends Vocab = AnyVocab,
+	S extends Vocab = AnyVocab,
 	K extends string = string,
 	Init extends string = string,
 > extends Vocabulary<I, S, K> {
@@ -434,27 +427,35 @@ export type Sources<M, S extends string> = From<
 // The definition
 // ---------------------------------------------------------------------------
 
-type UncheckedInput = {
+/** What a handler is told: three names, and payloads dispatch never reads (I23). */
+type UncheckedSource = {
 	readonly input: string | undefined
 	readonly inputData: unknown
+	readonly from: string | undefined
+	readonly fromData: unknown
+	readonly to: string
 }
+
+/** The whole hop, once a handler has produced the destination's payload. */
+type UncheckedFacts = UncheckedSource & { readonly toData: unknown }
+
 type UncheckedSend = (
-	input: Exclude<UncheckedInput['input'], undefined>,
-	inputData?: UncheckedInput['inputData'],
+	input: Exclude<UncheckedSource['input'], undefined>,
+	inputData?: unknown,
 ) => void
 
-/** One shape for every handler; input data is opaque to dispatch (I23). */
+/** One shape for every handler; a payload is opaque, in and out (I23). */
 type UncheckedHandler = (
-	args: UncheckedInput & {
-		readonly state: StateVocab
-		readonly skip: () => Skip
-	},
-) => object | undefined | Skip
+	args: UncheckedSource & { readonly skip: () => Skip },
+) => unknown
 
 type Row = readonly [to: string, handler: UncheckedHandler]
 
+/** The snapshot, unchecked: the name dispatch keys on, and what it carries. */
+type Snapshot = { readonly name: string; readonly data: unknown }
+
 interface UncheckedHost {
-	readonly current: StateVocab
+	readonly current: Snapshot
 	readonly send: UncheckedSend
 	readonly observe: (
 		pattern: string,
@@ -529,30 +530,31 @@ let toRow = (key: string, item: UncheckedItem): Registration => {
  *
  * `inputs` and `states` are the vocabulary's only inference sites, both optional
  * — omitting one keeps the names `transitions` mentions and widens only their
- * data. `initial` is a `NoInfer` position rather than a third site (I21),
- * intersected with `Init` to recover its name, which is what lets `start`
- * follow the initial state's data. `RawI`/`RawS` are what the properties infer
- * to and `I`/`S` the resolved vocabularies; collapsing each pair into one fails
- * (I19), and the defaults hold only because `Table`'s `NoInfer` closes the
- * handler parameters — as would overloads, at the cost of per-row diagnostics
- * (I14). `K` comes from the mapped type in `transitions`, with no second one
- * beside it (I20). `A` is the same idea again for `actions`: inferred from that
- * block's own keys, contributing nothing back to `I`, `S` or `K` (§9 Actions).
+ * payloads to `unknown`. `initial` is a `NoInfer` position rather than a third
+ * site (I21), intersected with `Init` to recover its name, which is what lets
+ * `start` follow the initial state's payload. `RawI`/`RawS` are what the
+ * properties infer to and `I`/`S` the resolved vocabularies; collapsing each
+ * pair into one fails (I19), and the defaults hold only because `Table`'s
+ * `NoInfer` closes the handler parameters — as would overloads, at the cost of
+ * per-row diagnostics (I14). `K` comes from the mapped type in `transitions`,
+ * with no second one beside it (I20). `A` is the same idea again for `actions`:
+ * inferred from that block's own keys, contributing nothing back to `I`, `S` or
+ * `K` (§9 Actions).
  */
 export let machine: <
 	Init extends string,
 	K extends string,
-	RawI extends InputVocab | undefined = undefined,
-	RawS extends StateVocab | undefined = undefined,
-	I extends InputVocab = Declared<RawI, InputsFromKeys<K>>,
-	S extends StateVocab = Declared<RawS, StatesFromKeys<K>>,
+	RawI extends Vocab | undefined = undefined,
+	RawS extends Vocab | undefined = undefined,
+	I extends Vocab = Declared<RawI, InputsFromKeys<K>>,
+	S extends Vocab = Declared<RawS, StatesFromKeys<K>>,
 	A extends string = never,
 >(definition: {
-	readonly initial: Init & StateName<NoInfer<S>>
+	readonly initial: Init & Name<NoInfer<S>>
 	// `| undefined` is what `type()` returns, and inference subtracts it. Spelled
 	// out because `exactOptionalPropertyTypes` makes `?:` a different thing.
-	readonly inputs?: (RawI & InputMap<Exclude<RawI, undefined>>) | undefined
-	readonly states?: RawS | undefined
+	readonly inputs?: (RawI & VocabMap<Exclude<RawI, undefined>>) | undefined
+	readonly states?: (RawS & VocabMap<Exclude<RawS, undefined>>) | undefined
 	readonly transitions: Table<I, S, K>
 	readonly actions?: Actions<I, S, A> | undefined
 }) => Machine<I, S, K, Init> =
@@ -593,10 +595,11 @@ export let machine: <
 		}
 
 		return {
-			start: (data?: object): UncheckedHost => {
+			start: (data?: unknown): UncheckedHost => {
 				// A closure variable behind a getter, not a property `send` mutates:
-				// measured smaller (I16). `current` is the whole tagged state.
-				let current: StateVocab = { ...data, name: initial }
+				// measured smaller (I16). The payload is stored as handed over, so a
+				// caller's reference is what a snapshot reads back (§5).
+				let current: Snapshot = { name: initial, data }
 
 				// Copy-on-write at registration, iteration at dispatch: allocation lands on
 				// the path that runs least, and it measures smaller (I16).
@@ -612,20 +615,25 @@ export let machine: <
 				let clear = (row: Registration) => (row[6] = void row[6]?.())
 
 				// The wildcard rules once, for actions, residencies and listeners alike:
-				// `*` and `''` stand for any, and a missing `from` — the initial arrival,
-				// which no transition caused — matches no edge row, so that case needs no
-				// branch of its own (§9 Actions). Only a residency has a teardown key,
-				// stores what it returns, and gates setup on a self-transition by
-				// `row[7]`, the decision `step` already made below: one call to
-				// `restart` serves both halves of the same residency's hop (§9 Actions).
-				let fire = (list: Registration[], e: Arrival): void => {
+				// `*` and `''` stand for any, and a missing `from` — an arrival no
+				// transition caused — matches no edge row, so that case needs no branch
+				// of its own (§9 Actions). Only a residency has a teardown key, stores
+				// what it returns, and gates setup on a self-transition by `row[7]`, the
+				// decision `step` already made below: one call to `restart` serves both
+				// halves of the same residency's hop (§9 Actions).
+				let fire = (list: Registration[], facts: UncheckedFacts): void => {
+					// The facts plus the one capability a committed record carries: the
+					// same `send` the host exposes, so a reaction drives the machine
+					// without closing over the host it was registered on. Once per call,
+					// so the allocation stays off the path that runs most (I16).
+					let e: Arrival = { ...facts, send }
 					for (let row of list) {
 						let [f, l, t, run, key] = row
 						if (
-							(f === '*' || f === e.from?.name) &&
+							(f === '*' || f === e.from) &&
 							(l === '' || l === e.input) &&
-							(t === '*' || t === e.to.name) &&
-							(!key || e.to.name !== e.from?.name || row[7])
+							(t === '*' || t === e.to) &&
+							(!key || e.to !== e.from || row[7])
 						) {
 							let teardown = run(e)
 							if (key) row[6] = teardown as Teardown | undefined
@@ -633,32 +641,48 @@ export let machine: <
 					}
 				}
 
-				// The arrival no transition caused: `from` and `input` are simply absent
+				// The arrival no transition caused: source and input are simply absent
 				// (§9 Actions). Shared by `start` and a bare-key `observe`, which goes
 				// through `fire` for the `to === state` test its third clause already does.
 				let enter = (list: Registration[]): void =>
-					fire(list, { to: current, send } as Arrival)
+					fire(list, {
+						to: current.name,
+						toData: current.data,
+					} as UncheckedFacts)
 
 				// One scanning path for both kinds of transition: commit the first row
 				// that does not decline, report whether the machine moved. Fusing it with
 				// the chain below, or splitting a `commit` out of it, measured larger (I16).
 				let step = (
 					rows: Row[] = [],
-					input?: UncheckedInput['input'],
-					inputData?: UncheckedInput['inputData'],
+					input?: UncheckedFacts['input'],
+					inputData?: unknown,
 				): boolean => {
+					// The source, read once for the whole scan: only a commit moves the
+					// machine, and a commit returns.
+					let { name: from, data: fromData } = current
 					for (let [to, handler] of rows) {
-						let payload = handler({ state: current, input, inputData, skip })
+						let toData = handler({ input, inputData, from, fromData, to, skip })
 						// Declining is ordinary and silent: try the next row for this pair.
-						if (payload !== SKIP) {
-							let from = current
-							let next: StateVocab = { ...payload, name: to }
+						if (toData !== SKIP) {
+							// The hop's own facts, built before the commit so a restart
+							// predicate sees what it is deciding about, and carrying no `send`:
+							// a pure decision is one at runtime too, not only in the types (§9
+							// Actions).
+							let facts: UncheckedFacts = {
+								input,
+								inputData,
+								from,
+								fromData,
+								to,
+								toData,
+							}
 
 							// The residency being left tears down before the commit, actions
 							// before listeners, each in reverse declaration order, so several on
 							// one trigger unwind like a stack. A throw here abandons the hop with
 							// nothing committed and the later teardowns unrun (§9 Actions). `false`
-							// survives, a predicate decides from the two states either side,
+							// survives, a predicate decides from the transition's own facts,
 							// anything else restarts, an omitted `restart` included; `.call` is the
 							// cheapest thing only a function has. `row[7]` banks that one decision
 							// for `fire` to reuse below, on that same row's setup, so a predicate
@@ -666,10 +690,10 @@ export let machine: <
 							for (let list of [acts, listeners]) {
 								for (let row of list.toReversed()) {
 									if (
-										row[4] === from.name &&
-										(to !== from.name ||
+										row[4] === from &&
+										(to !== from ||
 											(row[7] = (row[5] as Predicate)?.call
-												? (row[5] as Predicate)(from, next)
+												? (row[5] as Predicate)(facts)
 												: row[5] !== false))
 									) {
 										clear(row)
@@ -678,22 +702,12 @@ export let machine: <
 							}
 
 							// Commit, then notify, so every listener sees a machine that agrees
-							// with the record. The tag is spread last, so a handler that spread
-							// its source in cannot leave the source's tag behind.
-							current = next
-							// The same `send` the host exposes: a reaction drives the machine
-							// without closing over the host it was registered on.
-							let record: Arrival = {
-								input,
-								inputData,
-								from,
-								to: current,
-								send,
-							}
+							// with the record. The payload is stored exactly as returned (§5).
+							current = { name: to, data: toData }
 
 							// Actions in declaration order, then listeners (§9 Actions).
-							fire(acts, record)
-							fire(listeners, record)
+							fire(acts, facts)
+							fire(listeners, facts)
 							// One input yields at most one transition.
 							return true
 						}
@@ -746,7 +760,7 @@ export let machine: <
 				})
 
 				return {
-					get current(): StateVocab {
+					get current(): Snapshot {
 						return current
 					},
 
@@ -779,16 +793,11 @@ export let machine: <
 	}) as typeof machine
 
 /**
- * What `fire` hands whatever it matched. The transition record, except that
- * `from` is absent on the initial state's arrival, which no transition caused;
- * only an action can see that one, since a missing `from` matches no edge (§9
- * Actions).
+ * What `fire` hands whatever it matched. The transition record, except that the
+ * source is absent on an arrival no transition caused; only a residency can see
+ * that one, since a missing `from` matches no edge (§9 Actions).
  */
-type Arrival = UncheckedInput & {
-	readonly from: StateVocab | undefined
-	readonly to: StateVocab
-	readonly send: UncheckedSend
-}
+type Arrival = UncheckedFacts & { readonly send: UncheckedSend }
 
 /**
  * One row shape for a listener, an edge action and a residency action alike: a
@@ -807,7 +816,7 @@ type Registration = [
 	to: string,
 	run: (arrival: Arrival) => unknown,
 	key?: string,
-	restart?: boolean | ((from: StateVocab, to: StateVocab) => boolean),
+	restart?: boolean | ((facts: UncheckedFacts) => boolean),
 	teardown?: Teardown | undefined,
 	restarted?: boolean,
 ]

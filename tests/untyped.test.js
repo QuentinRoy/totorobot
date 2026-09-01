@@ -19,15 +19,15 @@ describe('the untyped path', () => {
 
 		const host = untyped.start()
 		const log = vi.fn()
-		host.observe('* -> *', (e) => log(`${e.from.name}->${e.to.name}`))
+		host.observe('* -> *', (e) => log(`${e.from}->${e.to}`))
 
-		expect(host.current).toEqual({ name: 'off' })
-
-		host.send('toggle')
-		expect(host.current).toEqual({ name: 'on' })
+		expect(host.current.name).toBe('off')
 
 		host.send('toggle')
-		expect(host.current).toEqual({ name: 'off' })
+		expect(host.current.name).toBe('on')
+
+		host.send('toggle')
+		expect(host.current.name).toBe('off')
 
 		expect(log).toHaveBeenCalledTimes(2)
 		expect(log).toHaveBeenNthCalledWith(1, 'off->on')
@@ -49,7 +49,7 @@ describe('the untyped path', () => {
 
 		host.send('bogus')
 
-		expect(host.current).toEqual({ name: 'off' })
+		expect(host.current.name).toBe('off')
 		expect(observer).not.toHaveBeenCalled()
 	})
 
@@ -91,7 +91,7 @@ describe('the untyped path', () => {
 
 			expect(host.current).toEqual({
 				name: 'settled',
-				via: 'immediate',
+				data: { via: 'immediate' },
 			})
 			expect(immediate).toHaveBeenCalledExactlyOnceWith(undefined)
 		})

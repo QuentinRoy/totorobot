@@ -17,11 +17,12 @@ type Send = (
 		| ['submit', { route: 'review' | 'publish' }]
 		| ['cancel', undefined?]
 ) => void
-type States =
-	| { name: 'empty' }
-	| { name: 'draft'; text: string }
-	| { name: 'review'; text: string; reviewer: string }
-	| { name: 'published'; text: string }
+type States = {
+	empty: undefined
+	draft: { text: string }
+	review: { text: string; reviewer: string }
+	published: { text: string }
+}
 
 const doc = machine({
 	initial: 'empty',
@@ -29,12 +30,12 @@ const doc = machine({
 	states: type<States>(),
 	transitions: {
 		'empty -open> draft': ({ inputData }) => ({ text: inputData.text }),
-		'draft -submit> review': ({ state, inputData, skip }) =>
+		'draft -submit> review': ({ fromData, inputData, skip }) =>
 			inputData.route === 'review'
-				? { text: state.text, reviewer: '' }
+				? { text: fromData.text, reviewer: '' }
 				: skip(),
-		'draft -submit> published': ({ state, inputData, skip }) =>
-			inputData.route === 'publish' ? { text: state.text } : skip(),
+		'draft -submit> published': ({ fromData, inputData, skip }) =>
+			inputData.route === 'publish' ? fromData : skip(),
 		'draft -cancel> empty': () => {},
 	},
 })
@@ -65,12 +66,13 @@ test('a bare key means residency, typed as the same record `actions` takes (#76)
 	const host = doc.start()
 
 	host.observe('draft', (arrival) => {
-		expectTypeOf(arrival.to).toEqualTypeOf<{ name: 'draft'; text: string }>()
+		expectTypeOf(arrival.to).toEqualTypeOf<'draft'>()
+		expectTypeOf(arrival.toData).toEqualTypeOf<{ text: string }>()
 	})
 	host.observe('draft', { run: () => {} })
 	host.observe('draft', {
 		run: () => {},
-		restart: (from, to) => from.text !== to.text,
+		restart: ({ fromData, toData }) => fromData.text !== toData.text,
 	})
 
 	// @ts-expect-error - "nope" is not a declared state
@@ -80,10 +82,12 @@ test('a bare key means residency, typed as the same record `actions` takes (#76)
 test("observe's residency shares actions' arrival-capable type: `from` is `undefined` on registration's synthetic arrival (#92)", () => {
 	const host = doc.start()
 
-	host.observe('draft', ({ from }) => {
-		expectTypeOf(from).toEqualTypeOf<States | undefined>()
+	host.observe('draft', ({ from, fromData }) => {
+		expectTypeOf(from).toEqualTypeOf<keyof States | undefined>()
 		// @ts-expect-error - `from` is `undefined` on the synthetic arrival
-		from.name
+		from.length
+		// and so is its data, whatever the states either side carry
+		expectTypeOf(fromData).toEqualTypeOf<States[keyof States] | undefined>()
 	})
 })
 
@@ -92,9 +96,9 @@ test('a block-bodied restart predicate on observe does not reopen the host as an
 
 	host.observe('draft', {
 		run: () => {},
-		restart: (from, to) => {
-			expectTypeOf(from).toEqualTypeOf<{ name: 'draft'; text: string }>()
-			expectTypeOf(to).toEqualTypeOf<{ name: 'draft'; text: string }>()
+		restart: (facts) => {
+			expectTypeOf(facts.fromData).toEqualTypeOf<{ text: string }>()
+			expectTypeOf(facts.toData).toEqualTypeOf<{ text: string }>()
 			return true
 		},
 	})
@@ -123,7 +127,7 @@ test('no array form, no third argument, and no options object with an `AbortSign
 	})
 })
 
-test('the transition record carries input, from, to and is discriminated by input, with no separate on field', () => {
+test('the transition record carries each name beside its payload, and a check on any one name narrows the payload', () => {
 	const host = doc.start()
 
 	host.observe('* -> *', (e) => {
@@ -140,25 +144,24 @@ test('the transition record carries input, from, to and is discriminated by inpu
 			expectTypeOf(e.inputData).toEqualTypeOf<undefined>()
 		}
 
-		if (e.from.name === 'draft') {
-			expectTypeOf(e.from).toEqualTypeOf<{ name: 'draft'; text: string }>()
+		if (e.from === 'draft') {
+			expectTypeOf(e.fromData).toEqualTypeOf<{ text: string }>()
 		}
-		if (e.to.name === 'review') {
-			expectTypeOf(e.to).toEqualTypeOf<{
-				name: 'review'
+		if (e.to === 'review') {
+			expectTypeOf(e.toData).toEqualTypeOf<{
 				text: string
 				reviewer: string
 			}>()
 		}
-		if (e.to.name === 'empty') {
-			expectTypeOf(e.to).toEqualTypeOf<{ name: 'empty' }>()
+		if (e.to === 'empty') {
+			expectTypeOf(e.toData).toEqualTypeOf<undefined>()
 		}
 	})
 })
 
 test('an immediate transition is distinguished from a payload-free input by input: undefined, and narrows by name checks, switch, and truthiness', () => {
 	type ImmediateInputs = { open: { text: string }; cancel: undefined }
-	type ImmediateStates = { name: 'empty' } | { name: 'draft'; text: string }
+	type ImmediateStates = { empty: undefined; draft: { text: string } }
 
 	const withImmediate = machine({
 		initial: 'empty',
@@ -167,7 +170,7 @@ test('an immediate transition is distinguished from a payload-free input by inpu
 		transitions: {
 			'empty -open> draft': ({ inputData }) => ({ text: inputData.text }),
 			'draft -cancel> empty': () => {},
-			'draft -> draft': ({ state }) => ({ ...state }),
+			'draft -> draft': ({ fromData }) => fromData,
 		},
 	})
 	const host = withImmediate.start()
@@ -215,9 +218,10 @@ test('the record carries a send typed with the whole declared vocabulary, howeve
 		expectTypeOf(e.send).toEqualTypeOf<Send>()
 
 		// The pattern still narrows both ends: `send` is additive.
-		expectTypeOf(e.from).toEqualTypeOf<{ name: 'draft'; text: string }>()
-		expectTypeOf(e.to).toEqualTypeOf<{
-			name: 'review'
+		expectTypeOf(e.from).toEqualTypeOf<'draft'>()
+		expectTypeOf(e.fromData).toEqualTypeOf<{ text: string }>()
+		expectTypeOf(e.to).toEqualTypeOf<'review'>()
+		expectTypeOf(e.toData).toEqualTypeOf<{
 			text: string
 			reviewer: string
 		}>()

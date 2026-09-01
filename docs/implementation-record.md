@@ -139,10 +139,16 @@ moved the other way, back to a hand-written schema. **And it is not free for eve
 consumer**: under `--isolatedDeclarations`, an inferred machine cannot be exported
 at all (`TS9010`).
 
-### <a id="i14"></a>I14 — The handler's `state` parameter needs `NoInfer`
+### <a id="i14"></a>I14 — A handler's source parameter needs `NoInfer` while it names `S` directly
 
-The shipped signature puts the state vocabulary `S` in a handler **parameter**
-(`state: Extract<S, { name: … }>`). A parameter is an inference site, so a handler
+> **Narrowed by #98.** The parameter is `fromData: S[From<P> & keyof S]` now, and
+> TypeScript does not infer to an indexed access, so the position below is no
+> longer an inference site. `Table` keeps the wrapper as insurance; the mechanism
+> is live one property over, on `Restart`'s predicate ([I28](#i28)).
+
+While a state was a tagged object, the signature put the state vocabulary `S` in a
+handler **parameter** (`state: Extract<S, { name: … }>`), a distributive
+conditional over the naked `S`. A parameter is an inference site, so a handler
 that destructures its argument makes the compiler infer `S` from the transition
 table, competing with the `states` property that is meant to be its only source.
 `S` lands on garbage, the key type built from it collapses, and **every row** is
@@ -156,21 +162,23 @@ pass where that inference happens, which is why the failure looks intermittent.
 `NoInfer` on the parameter closes the site and leaves variance untouched
 everywhere else.
 
-The residual limitation is the mirror image, and it is TypeScript's rather than
-the notation's: a handler that destructures **nothing** — `() => ({ … })` — is not
-context-sensitive, so it is typed in the same pass that infers `states:` from the
-sibling property, before `S` is known. Its return expression has no contextual
+The residual limitation is the mirror image, it survives #98, and it is
+TypeScript's rather than the notation's: a handler that destructures **nothing**
+— `() => ({ … })` — is not context-sensitive, so it is typed in the same pass
+that infers `states:` from the sibling property, before `S` is known. Its return expression has no contextual
 type and its literals widen, which a target pinning a literal field then rejects.
-Reading `state` or `input` defers the handler to the pass after the vocabulary is
-known and needs no annotation; an argument-free handler returning a pinned literal
-needs `as const` or a return type. Nothing the library can express moves this: the
-vocabulary and the table are properties of one object literal, and one is inferred
-from the other.
+Destructuring any of the argument's fields defers the handler to the pass after
+the vocabulary is known and needs no annotation; an argument-free handler
+returning a pinned literal needs `as const` or a return type. Nothing the library
+can express moves this: the vocabulary and the table are properties of one object
+literal, and one is inferred from the other. The same pass is why an argument-free `() => {}` is checked as
+`() => void` rather than against its contextual return type, which is what
+[I27](#i27) has to widen the return for.
 
 The fix is one word, on the parameter rather than on `S` itself:
 
 ```ts
-readonly state: NoInfer<Extract<S, { name: From<P> }>>
+readonly fromData: NoInfer<Payload<S, From<P>>>
 ```
 
 `states` is then the sole inference site, and the state half of the signature needs
@@ -184,8 +192,10 @@ from individual rows up to the opening `machine({` and collapse several bad rows
 into one, where the single signature with `NoInfer` preserves per-row errors.
 Pinned on a miniature of the table, independently of the library, in
 [`explorations/handler-param-inference.ts`](../explorations/handler-param-inference.ts),
-with a tripwire that goes off if a future TypeScript stops inferring from that
-position — the announcement that the wrapper could be dropped. TS 7.0.2.
+which now carries both shapes: the tagged one, whose `@ts-expect-error` must keep
+firing, and the map one, which compiles without the wrapper and turns red if a
+future TypeScript starts inferring from an indexed access — the announcement that
+`Table`'s wrapper is load-bearing again. TS 7.0.2.
 
 ### <a id="i15"></a>I15 — The runtime is golfed for bundle size, on purpose
 
@@ -286,12 +296,29 @@ since; treat it as the reason the shape was chosen, not as a current number.
   where the closure would have been the only argument at that call site: the
   required form is 8 B larger (775 vs 767), so it loses on size as well as on
   allocation, and the optional parameter stays.
+- **`send` attached by `fire`, once per call.** A restart predicate must not be
+  handed `send`, so a hop builds the six facts and `fire` spreads the capability
+  onto them for the callbacks that get one. Five shapes were measured against the
+  787 B brotli bundle that reused a single record and leaked `send` to the
+  predicate: building both objects in `step` costs 12 B (respelled) or 18 B
+  (spread from the facts); deriving the facts back out of the record with a rest
+  pattern, 15 B; a shared module-level helper doing the same, 26 B; attaching
+  `send` inside `fire` costs 10 B, and 1 B if it is attached per matching row
+  instead of per call. The per-row form is not taken: it moves an allocation onto
+  the notify path, which is the same trade the listener list is copy-on-write to
+  avoid. Attaching lazily, so nothing is allocated when no row matches, spends the
+  saving again on reading the coordinates off the other object (16 B).
 - **The departure loop over `[acts, listeners]`, not a `leave` helper called
   twice.** The two-element array literal plus one nested loop measures smaller
   than factoring the row scan into a named function and calling it once per row
   array (1,790 B vs 1,810 B raw, pre-golf).
 
 ### <a id="i17"></a>I17 — The empty-payload encoding is tagged, not an index signature
+
+> **Retired by #98.** A payload-free state declares `undefined`, so a handler's
+> return is `undefined` rather than an object minus a tag and never reduces to
+> `{}`. `EmptyObject` is gone from the source; the finding is kept because the
+> `{}` hazard it records applies to any type that reduces a target to `{}`.
 
 A payload-free target reduces to `{}` under the bare `Omit<S, 'name'>` form, and
 `{}` accepts every object literal — TypeScript's weak-type and excess-property
@@ -325,17 +352,15 @@ A wrong-shaped handler return, checked through a named alias parameterized over
 the state vocabulary, produces an error naming the **whole** vocabulary:
 
 ```
-… but required in type 'Data<{ name: "empty" } | { name: "draft"; … } |
-{ name: "review"; … }, "review">'
+… but required in type 'Data<{ empty: undefined; draft: … ; review: … }, "review">'
 ```
 
 Resolving the same computation **inline** reports against the one state the row
-targets — `Omit<{ name: "review"; text: string; by: string }, "name">` — and this
-holds with `S` as a real type parameter. This is the highest-traffic error in the
-library, so the rule earns its residual cost: the `Omit<…, 'name'>` wrapper in
-the message. The variant with perfect messages, keeping the tag in the handler's
-return, was rejected for costing the arrow test
-([design record §5](design-record.md#revision-the-shape-of-a-named-thing)).
+targets — `{ text: string; by: string }` — and this holds with `S` as a real type
+parameter. This is the highest-traffic error in the library, so `Table` spells
+`S[To<P> & keyof S]` out rather than reaching for the `Payload<V, N>` alias its
+parameters use. Since #98 the message carries no wrapper at all: the payload is
+what the vocabulary declares, not an `Omit` of it.
 
 ### <a id="i19"></a>I19 — An invalid inference candidate falls back to the constraint, not to the default
 
@@ -383,10 +408,10 @@ after which each derived type indexes the result rather than repeating the match
 The runtime was written against `type Unchecked = any`, on the sound argument that
 the type layer above had already checked those positions. But an alias does not
 narrow `any`; what the name bought was that `any` stopped answering to a search for
-it. Nothing there needs it: `current` and a handler's `state` are read for
-`.name`, the input name is a string, `inputData` passes through unchanged, and a
-handler result is only spread. `StateVocab`, `string | undefined`, `unknown`, and
-`object` type the whole runtime with no cast added and a byte-identical bundle.
+it. Nothing there needs it: dispatch reads three names, all strings, and every
+payload passes through untouched — since #98 a handler's result is not even
+spread. `string | undefined`, `unknown` and `object` type the whole runtime with
+no cast added and a byte-identical bundle.
 
 The golfed runtime reintroduced three, and none of them survived either, at a
 byte-identical bundle: an item that is read for both `run` and a call is an
@@ -407,6 +432,13 @@ to the declared one would hand callers `any` rather than merely losing
 precision.
 
 ### <a id="i24"></a>I24 — A generic call in a table value cannot see a vocabulary that arrives as a default
+
+> **Measured on the tagged vocabulary, and no longer reproducible in the
+> miniature.** With name-to-payload maps, `explorations/wrapper-inference.ts`
+> section 3 narrows under both tiers: an indexed access degrades to `never` where
+> `Omit<Extract<…>>` degraded to `{}`, and the contextual return type now recovers
+> the row key with the tier in place. A wrapper still fails against the shipped
+> signature, by alias identity ([I25](#i25)) rather than by the tier.
 
 `machine` resolves the vocabulary in two tiers: `RawI`/`RawS` infer from the
 `inputs`/`states` properties, and `I`/`S` are defaulted type parameters computed
@@ -445,7 +477,8 @@ spelling that works.
 ### <a id="i26"></a>I26 — A wrapper's return type reopens the inference site `NoInfer` closes on the parameters
 
 [I14](#i14) put `NoInfer` on the handler's parameters so a context-sensitive handler
-stops inferring the state vocabulary contravariantly from the table. A wrapper whose
+stops inferring the state vocabulary contravariantly from the table — a guard the
+table still carries, whatever the payload's spelling. A wrapper whose
 type parameters are recovered from context rather than handed in defeats that: its
 **return** type names the vocabulary outside the guard, the table becomes an
 inference site again, and the vocabulary widens to whatever the rows say, so an
@@ -462,8 +495,24 @@ ordinary no-teardown action failed under `undefined | Teardown` alone, though th
 identical body typechecks given straight to a variable of that type. It holds even
 with `inputs`/`states` declared, so it is not [I24](#i24)'s defaulting tier.
 
-The fix is a wider signature, the shape `Table` already uses for a payload-free
-target: union `| void` in. That does not reopen the hole plain `undefined` was
+The fix is a wider signature, the shape `Table` uses wherever the destination's
+payload admits `undefined`: union `| void` in. Since #98 that arm is conditional
+— `undefined extends Payload ? Payload | void : Payload` — so a destination that
+carries something still rejects a handler with nothing to return, and `void` is
+never a way to _declare_ a payload-free state.
+
+**It cannot be narrowed to empty bodies alone.** `() => {}` and
+`() => cleanUp()`, where `cleanUp` returns `void`, have the same inferred type,
+so no return type accepts one and rejects the other; TypeScript's rule that lets
+an `undefined`-returning function omit its `return` needs a _contextual_
+signature, which an argument-free handler never gets here ([I14](#i14)). A
+returned `void` therefore type-checks wherever an empty body does, and lands the
+destination's `undefined` either way. Both directions are pinned in
+`tests/state-data.test-d.ts`, alongside the rejections the conditional keeps: a
+teardown-shaped return, a `{}`, and either spelling against a destination that
+carries data.
+
+The `void` arm does not reopen the hole plain `undefined` was
 chosen to close, because void-return bivariance fires only when a return type
 **is** `void`; as one arm of a union, a wrong-shaped return, a stray `Teardown` on
 an edge, and an `async` body's `Promise` are all still rejected. Keep `undefined`
@@ -473,18 +522,25 @@ left in the signature would say which arm did it.
 Pinned in `tests/actions.test-d.ts`, both directions — the plain body is accepted,
 and each rejection still fires.
 
-### <a id="i28"></a>I28 — `restart`'s predicate parameters need `NoInfer`, the same as a handler's `state`
+### <a id="i28"></a>I28 — `restart`'s predicate parameter needs `NoInfer`
 
-`Restart<N>`'s predicate is `(from: N, to: N) => boolean`, contributed into
-`Actions<I, S, A>` alongside the run function `Table` and `ResidencyAction`
-already guard with `NoInfer` ([I14](#i14)). Left bare, a block-bodied predicate
-— `restart: (from, to) => { return from.id !== to.id }` — reopens `S` as an
-inference site the same way the unguarded `state` parameter did: `S` collapses,
-every row in `transitions` is rejected as `not a transition: '…'`, and `initial`
-stops resolving. An expression-bodied predicate does not trigger it, which is why
-a probe that only writes `restart: (from, to) => from.id !== to.id` would call
-this safe. The fix is the same shape as I14's: wrap both parameters in
-`NoInfer`. Pinned in `tests/actions.test-d.ts`.
+`Restart<I, S, N>`'s predicate takes one record of the hop's facts,
+`(facts: Transition<I, S, "N -> N", {}>) => boolean`, contributed into
+`Actions<I, S, A>`. Left bare, a block-bodied predicate —
+`restart: (facts) => { return facts.fromData.id !== facts.toData.id }` — makes
+that record an inference site: it is a mapped type over `keyof S`, which
+TypeScript reverse-maps ([I10](#i10)), so `S` collapses, every row in
+`transitions` is rejected as `not a transition: '…'`, and `initial` stops
+resolving. An expression-bodied predicate does not trigger it, which is why a
+probe writing only
+`restart: ({ fromData, toData }) => fromData.id !== toData.id` would call this
+safe.
+
+This is the entry that outlived [I14](#i14)'s: a handler's payload is an indexed
+access and no longer inferred from, while the predicate's whole record still is.
+The fix is one `NoInfer` around that parameter. Pinned in
+`tests/actions.test-d.ts`, and re-measured after #98 by removing the wrapper,
+which reproduces the collapse.
 
 ### <a id="i29"></a>I29 — A tuple union keeps separate send arguments correlated
 
@@ -495,10 +551,26 @@ union-valued payload. Narrowing the name first selects one tuple and permits
 forwarding. A generic `(name: N, data: I[N])` accepts mismatched unions and is
 therefore too broad.
 
-### <a id="i30"></a>I30 — Input maps need a separate shape check
+### <a id="i30"></a>I30 — Vocabulary maps need a separate shape check
 
 The generic constraint is `object` because interfaces do not satisfy a
 `Record<string, unknown>` constraint without an index signature. That broad
-constraint also admits arrays, functions, and unions, so the `inputs` property
-checks those shapes separately. `AnyInputs` uses `Record<string, unknown>` only
-as the default for APIs with no declared vocabulary to inspect.
+constraint also admits arrays, functions, and unions, so the `inputs` and
+`states` properties check those shapes separately, through `VocabMap`. A
+rejected `states` leaves no state name behind, so `initial` stops resolving too;
+that second error is the collapse, not a separate fault. `AnyVocab` uses
+`Record<string, unknown>` only as the default for APIs with no declared
+vocabulary to inspect.
+
+### <a id="i31"></a>I31 — A name narrows the payload beside it only through a union of records
+
+Two sibling fields, `from` and `fromData`, correlate only if the record is a
+union with one member per pairing: TypeScript narrows a discriminant against the
+union it is a member of, and nothing else. So `Transition` is the product of the
+sources, destinations and inputs its pattern admits — the same |states|² ×
+|inputs| the key union already costs — and a check on any one of the three names
+narrows all six fields. Intersecting the shared half onto each member (`X &
+{ … }`, where `X` is `{ send }` or `{}`) keeps that narrowing intact, which is
+what lets one type serve a committed record and a restart predicate's facts.
+#99 filters the product against the table; until then it carries pairings no row
+declares.

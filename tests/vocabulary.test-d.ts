@@ -19,8 +19,7 @@ type Inputs = {
 	revise: { text: string }
 	cancel: undefined
 }
-type States =
-	{ name: 'empty' } | { name: 'draft'; text: string; revision: number }
+type States = { empty: undefined; draft: { text: string; revision: number } }
 
 const doc = machine({
 	initial: 'empty',
@@ -31,10 +30,10 @@ const doc = machine({
 			text: inputData.text,
 			revision: 0,
 		}),
-		'draft -revise> draft': ({ state, inputData, skip }) =>
-			inputData.text === state.text
+		'draft -revise> draft': ({ fromData, inputData, skip }) =>
+			inputData.text === fromData.text
 				? skip()
-				: { text: inputData.text, revision: state.revision + 1 },
+				: { text: inputData.text, revision: fromData.revision + 1 },
 		'draft -cancel> empty': () => {},
 	},
 })
@@ -44,11 +43,11 @@ const withData = machine({
 	inputs: type<Inputs>(),
 	states: type<States>(),
 	transitions: {
-		'draft -revise> draft': ({ state, inputData, skip }) =>
-			inputData.text === state.text
+		'draft -revise> draft': ({ fromData, inputData, skip }) =>
+			inputData.text === fromData.text
 				? skip()
-				: { text: inputData.text, revision: state.revision + 1 },
-		'draft -cancel> draft': ({ state }) => ({ ...state }),
+				: { text: inputData.text, revision: fromData.revision + 1 },
+		'draft -cancel> draft': ({ fromData }) => fromData,
 	},
 })
 
@@ -69,52 +68,68 @@ function read<T>(value: T): T {
 	return value
 }
 
-test('narrowing the tag narrows the state, with no nullable padding', () => {
+test('checking the name narrows the data beside it, with no nullable padding', () => {
 	const current = read(doc.start().current)
 
 	expectTypeOf(current).not.toBeAny()
 	if (current.name === 'empty') {
 		expectTypeOf(current).not.toBeAny()
-		expectTypeOf(current).toEqualTypeOf<{ name: 'empty' }>()
+		expectTypeOf(current.data).toEqualTypeOf<undefined>()
 	}
 	if (current.name === 'draft') {
 		expectTypeOf(current).not.toBeAny()
-		expectTypeOf(current).toEqualTypeOf<{
-			name: 'draft'
+		expectTypeOf(current.data).toEqualTypeOf<{
 			text: string
 			revision: number
 		}>()
 	}
 })
 
-test("a handler's state is the full source state, tag included, and its input is that input's payload, with no type annotations", () => {
+test("a handler's names and payloads are the row's own, with no type annotations", () => {
 	machine({
 		initial: 'empty',
 		inputs: type<Inputs>(),
 		states: type<States>(),
 		transitions: {
-			'empty -open> draft': ({ state, inputData }) => {
-				expectTypeOf(state).toEqualTypeOf<{ name: 'empty' }>()
+			'empty -open> draft': ({ from, fromData, to, input, inputData }) => {
+				expectTypeOf(from).toEqualTypeOf<'empty'>()
+				expectTypeOf(fromData).toEqualTypeOf<undefined>()
+				expectTypeOf(to).toEqualTypeOf<'draft'>()
+				expectTypeOf(input).toEqualTypeOf<'open'>()
 				expectTypeOf(inputData).toEqualTypeOf<{ text: string }>()
 				return { text: inputData.text, revision: 0 }
 			},
-			'draft -revise> draft': ({ state, inputData }) => {
-				expectTypeOf(state).toEqualTypeOf<{
-					name: 'draft'
+			'draft -revise> draft': ({ fromData, inputData }) => {
+				expectTypeOf(fromData).toEqualTypeOf<{
 					text: string
 					revision: number
 				}>()
 				expectTypeOf(inputData).toEqualTypeOf<{ text: string }>()
-				return { text: inputData.text, revision: state.revision + 1 }
+				return { text: inputData.text, revision: fromData.revision + 1 }
 			},
-			'draft -cancel> empty': ({ state, inputData }) => {
-				expectTypeOf(state).toEqualTypeOf<{
-					name: 'draft'
+			'draft -cancel> empty': ({ fromData, inputData }) => {
+				expectTypeOf(fromData).toEqualTypeOf<{
 					text: string
 					revision: number
 				}>()
 				expectTypeOf(inputData).toEqualTypeOf<undefined>()
 			},
+		},
+	})
+})
+
+test('a handler returns the destination payload, and nothing else', () => {
+	machine({
+		initial: 'empty',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: {
+			// @ts-expect-error - the destination carries no payload
+			'draft -cancel> empty': () => ({ text: 'x' }),
+			// @ts-expect-error - `revision` is missing from the destination payload
+			'empty -open> draft': ({ inputData }) => ({ text: inputData.text }),
+			// @ts-expect-error - a destination that carries data needs a return
+			'draft -revise> draft': () => {},
 		},
 	})
 })

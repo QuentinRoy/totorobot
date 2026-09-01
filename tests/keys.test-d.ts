@@ -12,11 +12,10 @@ type Inputs = {
 	revise: { text: string }
 	cancel: undefined
 }
-type States =
-	{ name: 'empty' } | { name: 'draft'; text: string; revision: number }
+type States = { empty: undefined; draft: { text: string; revision: number } }
 
 type SkipInputs = { revise: { text: string }; cancel: undefined }
-type SkipStates = { name: 'draft'; text: string } | { name: 'empty' }
+type SkipStates = { draft: { text: string }; empty: undefined }
 
 test('a handler returning the wrong shape for its target state is rejected', () => {
 	machine({
@@ -41,14 +40,14 @@ test('reading source data the source state does not have is rejected', () => {
 		inputs: type<Inputs>(),
 		states: type<States>(),
 		transitions: {
-			'empty -open> draft': ({ state, inputData }) => ({
+			'empty -open> draft': ({ fromData, inputData }) => ({
 				text: inputData.text,
 				// @ts-expect-error - empty carries no payload; there is no `.revision` to read
-				revision: state.revision,
+				revision: fromData.revision,
 			}),
-			'draft -revise> draft': ({ state, inputData }) => ({
+			'draft -revise> draft': ({ fromData, inputData }) => ({
 				text: inputData.text,
-				revision: state.revision + 1,
+				revision: fromData.revision + 1,
 			}),
 			'draft -cancel> empty': () => {},
 		},
@@ -117,7 +116,7 @@ test('an unlabelled arrow is accepted as an immediate transition', () => {
 				text: inputData.text,
 				revision: 0,
 			}),
-			'draft -> draft': ({ state }) => ({ ...state }),
+			'draft -> draft': ({ fromData }) => fromData,
 		},
 	})
 })
@@ -133,9 +132,9 @@ test("an immediate row's handler receives no input, and a wrong-shaped return is
 				revision: 0,
 			}),
 			'draft -cancel> empty': () => {},
-			'empty -> draft': ({ state, inputData }) => {
+			'empty -> draft': ({ fromData, inputData }) => {
 				// @ts-expect-error - empty carries no payload; there is no `.anything` to read
-				state.anything
+				fromData.anything
 				expectTypeOf(inputData).toEqualTypeOf<undefined>()
 				return { text: '', revision: 0 }
 			},
@@ -171,8 +170,8 @@ test('skip() is returnable from a handler for every target shape, including a pa
 		inputs: type<SkipInputs>(),
 		states: type<SkipStates>(),
 		transitions: {
-			'draft -revise> draft': ({ state, inputData, skip }) =>
-				inputData.text === state.text ? skip() : { text: inputData.text },
+			'draft -revise> draft': ({ fromData, inputData, skip }) =>
+				inputData.text === fromData.text ? skip() : { text: inputData.text },
 			'draft -cancel> empty': ({ skip }) =>
 				Math.random() > 0.5 ? skip() : undefined,
 		},
@@ -188,7 +187,7 @@ test('a declared vocabulary may still name `*` or a padded name explicitly (#22)
 	// `type<T>()` is a different inference site entirely, and declaring ' b'
 	// or '*' by hand is deliberate in a way a doubled space in a key never is
 	// — so neither is filtered here.
-	type OddStates = { name: 'off' } | { name: '*' } | { name: ' padded' }
+	type OddStates = { off: undefined; '*': undefined; ' padded': undefined }
 	type OddInputs = { go: undefined }
 
 	machine({
@@ -208,9 +207,9 @@ test('a wrong-shaped return is still rejected on a row that could also skip()', 
 		inputs: type<SkipInputs>(),
 		states: type<SkipStates>(),
 		transitions: {
-			'draft -revise> draft': ({ state, inputData, skip }) =>
+			'draft -revise> draft': ({ fromData, inputData, skip }) =>
 				// @ts-expect-error - draft's data needs `text`; the skip() channel does not excuse a wrong shape
-				inputData.text === state.text ? skip() : { wrong: true },
+				inputData.text === fromData.text ? skip() : { wrong: true },
 			'draft -cancel> empty': ({ skip }) =>
 				// @ts-expect-error - empty carries no payload; a handler may return skip() or nothing, not data
 				Math.random() > 0.5 ? skip() : { text: 'x' },

@@ -5,32 +5,43 @@ import { toggle } from './fixtures.ts'
 import { cloneDeep } from './helpers.ts'
 
 describe('construction', () => {
-	test('start(data) yields a host whose current is the initial state, tag included', () => {
+	test('start(data) yields a host whose current is the initial name and its data', () => {
 		const counter = machine({
 			initial: 'ready',
 			inputs: type<{ increment: undefined }>(),
-			states: type<{ name: 'ready'; count: number }>(),
+			states: type<{ ready: { count: number } }>(),
 			transitions: {
-				'ready -increment> ready': ({ state }) => ({
-					count: state.count + 1,
+				'ready -increment> ready': ({ fromData }) => ({
+					count: fromData.count + 1,
 				}),
 			},
 		})
 
 		const host = counter.start({ count: 0 })
-		expect(host.current).toEqual({ name: 'ready', count: 0 })
+		expect(host.current).toEqual({ name: 'ready', data: { count: 0 } })
 	})
 
-	test('start() takes no argument for a payload-free initial state', () => {
+	test('start() takes no argument for a payload-free initial state, and data is undefined', () => {
 		const host = toggle.start()
-		expect(host.current).toEqual({ name: 'off' })
+		expect(host.current).toStrictEqual({ name: 'off', data: undefined })
+	})
+
+	test('the initial payload is stored as supplied, not copied', () => {
+		const carrier = machine({
+			initial: 'ready',
+			states: type<{ ready: Map<string, number> }>(),
+			transitions: {},
+		})
+
+		const data = new Map([['a', 1]])
+		expect(carrier.start(data).current.data).toBe(data)
 	})
 
 	test('type<T>() carries no runtime value and returns undefined', () => {
 		// `undefined` rather than `null` or a marker object is what a caller
 		// observes — the README is explicit about which of the three it is.
-		expect(type<{ type: 'increment' }>()).toBeUndefined()
-		expect(type<{ name: 'ready'; count: number }>()).toBeUndefined()
+		expect(type<{ increment: undefined }>()).toBeUndefined()
+		expect(type<{ ready: { count: number } }>()).toBeUndefined()
 	})
 
 	// The hops settled here are unobservable by construction (item 6): there is
@@ -39,30 +50,30 @@ describe('construction', () => {
 	test("start() settles the initial state's immediate rows before returning", () => {
 		const junction = machine({
 			initial: 'checking',
-			states: type<
-				| { name: 'checking'; quota: number }
-				| { name: 'allowed'; quota: number }
-				| { name: 'denied'; quota: number }
-			>(),
+			states: type<{
+				checking: { quota: number }
+				allowed: { quota: number }
+				denied: { quota: number }
+			}>(),
 			transitions: {
-				'checking -> allowed': ({ state, skip }) =>
-					state.quota > 0 ? { quota: state.quota } : skip(),
-				'checking -> denied': ({ state }) => ({ quota: state.quota }),
+				'checking -> allowed': ({ fromData, skip }) =>
+					fromData.quota > 0 ? fromData : skip(),
+				'checking -> denied': ({ fromData }) => fromData,
 			},
 		})
 
 		const allowed = junction.start({ quota: 3 })
-		expect(allowed.current).toEqual({ name: 'allowed', quota: 3 })
+		expect(allowed.current).toEqual({ name: 'allowed', data: { quota: 3 } })
 
 		const denied = junction.start({ quota: 0 })
-		expect(denied.current).toEqual({ name: 'denied', quota: 0 })
+		expect(denied.current).toEqual({ name: 'denied', data: { quota: 0 } })
 	})
 
 	test('a chain from the initial state settles fully, not one hop', () => {
 		const relay = machine({
 			initial: 'a',
 			inputs: type<{ go: undefined }>(),
-			states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
+			states: type<{ a: undefined; b: undefined; c: undefined }>(),
 			transitions: {
 				'a -> b': () => {},
 				'b -> c': () => {},
@@ -71,14 +82,14 @@ describe('construction', () => {
 		})
 
 		const host = relay.start()
-		expect(host.current).toEqual({ name: 'c' })
+		expect(host.current.name).toBe('c')
 	})
 
 	test("the initial state's immediates all skipping leaves the host in the declared initial state", () => {
 		const stalled = machine({
 			initial: 'checking',
 			inputs: type<{ submit: undefined }>(),
-			states: type<{ name: 'checking' } | { name: 'allowed' }>(),
+			states: type<{ checking: undefined; allowed: undefined }>(),
 			transitions: {
 				'checking -> allowed': ({ skip }) => skip(),
 				'checking -submit> allowed': () => {},
@@ -86,13 +97,13 @@ describe('construction', () => {
 		})
 
 		const host = stalled.start()
-		expect(host.current).toEqual({ name: 'checking' })
+		expect(host.current.name).toBe('checking')
 	})
 
 	test("start()'s arity still follows the declared initial state: a payload-free initial that settles into a data-carrying state still takes no argument", () => {
 		const promoted = machine({
 			initial: 'start',
-			states: type<{ name: 'start' } | { name: 'ready'; count: number }>(),
+			states: type<{ start: undefined; ready: { count: number } }>(),
 			transitions: {
 				'start -> ready': () => ({ count: 0 }),
 			},
@@ -101,41 +112,39 @@ describe('construction', () => {
 		// No argument to `.start()` — `start` carries no payload, even though it
 		// settles into `ready`, which carries data.
 		const host = promoted.start()
-		expect(host.current).toEqual({ name: 'ready', count: 0 })
+		expect(host.current).toEqual({ name: 'ready', data: { count: 0 } })
 	})
 
 	test('the hop budget spent settling the initial state does not carry over into the first send', () => {
 		const twice = machine({
 			initial: 'a',
 			inputs: type<{ go: undefined }>(),
-			states: type<
-				{ name: 'a'; count: number } | { name: 'b'; count: number }
-			>(),
+			states: type<{ a: { count: number }; b: { count: number } }>(),
 			transitions: {
 				// Each chain alone is comfortably under the 1e5 budget; only a
 				// shared counter across start() and send() would push their sum
 				// over it.
-				'a -> a': ({ state, skip }) =>
-					state.count < 60_000 ? { count: state.count + 1 } : skip(),
+				'a -> a': ({ fromData, skip }) =>
+					fromData.count < 60_000 ? { count: fromData.count + 1 } : skip(),
 				'a -go> b': () => ({ count: 0 }),
-				'b -> b': ({ state, skip }) =>
-					state.count < 60_000 ? { count: state.count + 1 } : skip(),
+				'b -> b': ({ fromData, skip }) =>
+					fromData.count < 60_000 ? { count: fromData.count + 1 } : skip(),
 			},
 		})
 
 		const host = twice.start({ count: 0 })
-		expect(host.current).toEqual({ name: 'a', count: 60_000 })
+		expect(host.current).toEqual({ name: 'a', data: { count: 60_000 } })
 
 		host.send('go')
-		expect(host.current).toEqual({ name: 'b', count: 60_000 })
+		expect(host.current).toEqual({ name: 'b', data: { count: 60_000 } })
 	})
 
 	test("a cycle among the initial state's immediates throws RangeError from start(), naming the state it could not settle", () => {
 		const spinningStart = machine({
 			initial: 'loop',
-			states: type<{ name: 'loop'; count: number }>(),
+			states: type<{ loop: { count: number } }>(),
 			transitions: {
-				'loop -> loop': ({ state }) => ({ count: state.count + 1 }),
+				'loop -> loop': ({ fromData }) => ({ count: fromData.count + 1 }),
 			},
 		})
 
@@ -150,8 +159,8 @@ describe('construction', () => {
 
 		hostA.send('toggle')
 
-		expect(hostA.current).toEqual({ name: 'on' })
-		expect(hostB.current).toEqual({ name: 'off' })
+		expect(hostA.current.name).toBe('on')
+		expect(hostB.current.name).toBe('off')
 	})
 
 	test('two hosts from one definition share no listeners', () => {
