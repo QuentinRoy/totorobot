@@ -56,24 +56,25 @@ export async function readPublishedBundle(
 	pkg: string,
 	version: string,
 ): Promise<Buffer | null> {
-	let url: string
 	try {
 		const { stdout } = await run('npm', [
 			'view',
 			`${pkg}@${version}`,
 			'dist.tarball',
 		])
-		url = stdout.trim()
+		const url = stdout.trim()
+		if (!url) return null
+
+		const response = await fetch(url)
+		if (!response.ok) return null
+		const tarball = Buffer.from(await response.arrayBuffer())
+
+		return await extract(tarball, `package/${bundleName}`)
 	} catch {
+		// The registry lookup, the download and the read of its body all fail
+		// the same way here. None of them is worth stopping a release for.
 		return null
 	}
-	if (!url) return null
-
-	const response = await fetch(url)
-	if (!response.ok) return null
-	const tarball = Buffer.from(await response.arrayBuffer())
-
-	return extract(tarball, `package/${bundleName}`)
 }
 
 /**
