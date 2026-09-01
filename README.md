@@ -104,6 +104,7 @@ with the caller, attached through `observe`.
 - [Example](#example)
 - [The surface](#the-surface)
 - [`inputs` and `states`: the vocabulary](#inputs-and-states-the-vocabulary)
+  - [Migrating inputs](#migrating-inputs)
 - [`initial`: where a host starts](#initial-where-a-host-starts)
 - [`transitions`: the table](#transitions-the-table)
   - [The key language](#the-key-language)
