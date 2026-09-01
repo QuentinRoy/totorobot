@@ -15,6 +15,6 @@ which the row's own target name can no longer be confused with; a restart
 predicate takes one record of the same six facts instead of two states.
 
 Payloads are stored as supplied, so any value works — including a primitive, a
-function, or an object with its own `name` or `type` field — and mutating one
-is visible through older snapshots. A handler returning a helper typed
-`void` now has to call it and return separately.
+function, or an object with its own `name` or `type` field — and mutating one is
+visible through older snapshots. A destination that carries nothing takes a
+handler with an empty body; `{}` is no longer accepted for one.

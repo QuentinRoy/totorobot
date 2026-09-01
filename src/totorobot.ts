@@ -143,8 +143,9 @@ type Pattern<I extends Vocab = AnyVocab, S extends Vocab = AnyVocab> =
  * declared vocabulary). The `void` arm is what accepts an empty body where the
  * destination carries nothing, and it is added only where the payload already
  * admits `undefined`, so a destination that carries something still rejects a
- * handler that returns nothing (I27). `NoInfer` closes the handler's parameters
- * as inference sites; without it every row is rejected (I14).
+ * handler that returns nothing (I27). `NoInfer` on the parameters is insurance
+ * rather than load-bearing since payloads moved behind an indexed access, which
+ * is not a position TypeScript infers from (I14).
  */
 type Table<I extends Vocab, S extends Vocab, K extends string> = {
 	readonly [P in K]: P extends Key<I, S>
@@ -319,10 +320,10 @@ type Action<Run, Extra extends object = {}> =
 /**
  * `restart` is consulted only on a self-transition, so its facts are that hop's:
  * the same six a committed record carries, minus `send`, which is what keeps the
- * decision pure (§9 Actions). The default is to restart. `NoInfer` on the
- * predicate's parameter for the same reason `Table`'s handler needs it (I14):
- * unguarded, a block-bodied predicate reopens `S` as an inference site and the
- * whole table collapses (I28).
+ * decision pure in the types and at runtime alike (§9 Actions). The default is to
+ * restart. `NoInfer` on the predicate's parameter is load-bearing here, unlike on
+ * a handler's: the record is a mapped type over `keyof S`, so an unguarded
+ * block-bodied predicate reopens `S` and the whole table collapses (I28).
  */
 type Restart<I extends Vocab, S extends Vocab, N extends string> = {
 	readonly restart?:
@@ -429,22 +430,26 @@ export type Sources<M, S extends string> = From<
 // The definition
 // ---------------------------------------------------------------------------
 
-/** Every fact dispatch reads: three names, and payloads it never inspects (I23). */
-type UncheckedFacts = {
+/** What a handler is told: three names, and payloads dispatch never reads (I23). */
+type UncheckedSource = {
 	readonly input: string | undefined
 	readonly inputData: unknown
 	readonly from: string | undefined
 	readonly fromData: unknown
 	readonly to: string
 }
+
+/** The whole hop, once a handler has produced the destination's payload. */
+type UncheckedFacts = UncheckedSource & { readonly toData: unknown }
+
 type UncheckedSend = (
-	input: Exclude<UncheckedFacts['input'], undefined>,
+	input: Exclude<UncheckedSource['input'], undefined>,
 	inputData?: unknown,
 ) => void
 
 /** One shape for every handler; a payload is opaque, in and out (I23). */
 type UncheckedHandler = (
-	args: UncheckedFacts & { readonly skip: () => Skip },
+	args: UncheckedSource & { readonly skip: () => Skip },
 ) => unknown
 
 type Row = readonly [to: string, handler: UncheckedHandler]
@@ -659,20 +664,17 @@ export let machine: <
 						let toData = handler({ input, inputData, from, fromData, to, skip })
 						// Declining is ordinary and silent: try the next row for this pair.
 						if (toData !== SKIP) {
-							// The same record every callback below reads, built before the
-							// commit so a restart predicate sees the hop it is deciding about
-							// (§9 Actions). Respelled rather than spread from the handler's own
-							// argument, which measures smaller (I16). The same `send` the host
-							// exposes: a reaction drives the machine without closing over the
-							// host it was registered on.
-							let record: Arrival = {
+							// The hop's own facts, built before the commit so a restart
+							// predicate sees what it is deciding about, and carrying no `send`:
+							// a pure decision is one at runtime too, not only in the types (§9
+							// Actions).
+							let facts: UncheckedFacts = {
 								input,
 								inputData,
 								from,
 								fromData,
 								to,
 								toData,
-								send,
 							}
 
 							// The residency being left tears down before the commit, actions
@@ -690,7 +692,7 @@ export let machine: <
 										row[4] === from &&
 										(to !== from ||
 											(row[7] = (row[5] as Predicate)?.call
-												? (row[5] as Predicate)(record)
+												? (row[5] as Predicate)(facts)
 												: row[5] !== false))
 									) {
 										clear(row)
@@ -701,6 +703,21 @@ export let machine: <
 							// Commit, then notify, so every listener sees a machine that agrees
 							// with the record. The payload is stored exactly as returned (§5).
 							current = { name: to, data: toData }
+
+							// The facts again, plus the one capability a committed record
+							// carries: the same `send` the host exposes, so a reaction drives
+							// the machine without closing over the host it was registered on.
+							// Respelled rather than spread from `facts`, which measures smaller
+							// (I16).
+							let record: Arrival = {
+								input,
+								inputData,
+								from,
+								fromData,
+								to,
+								toData,
+								send,
+							}
 
 							// Actions in declaration order, then listeners (§9 Actions).
 							fire(acts, record)
@@ -794,10 +811,7 @@ export let machine: <
  * source is absent on an arrival no transition caused; only a residency can see
  * that one, since a missing `from` matches no edge (§9 Actions).
  */
-type Arrival = UncheckedFacts & {
-	readonly toData: unknown
-	readonly send: UncheckedSend
-}
+type Arrival = UncheckedFacts & { readonly send: UncheckedSend }
 
 /**
  * One row shape for a listener, an edge action and a residency action alike: a
@@ -816,7 +830,7 @@ type Registration = [
 	to: string,
 	run: (arrival: Arrival) => unknown,
 	key?: string,
-	restart?: boolean | ((facts: Arrival) => boolean),
+	restart?: boolean | ((facts: UncheckedFacts) => boolean),
 	teardown?: Teardown | undefined,
 	restarted?: boolean,
 ]

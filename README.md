@@ -185,8 +185,7 @@ host.current.data.text
 
 A handler now returns its destination's payload alone, so a target carrying
 nothing takes an empty body and a target carrying data returns that data
-directly. A handler that used to end in `return cleanUp()`, where `cleanUp`
-returns `void`, has to call it and return separately.
+directly. `{}` is no longer a way to say "nothing": return nothing at all.
 
 ## `initial`: where a host starts
 

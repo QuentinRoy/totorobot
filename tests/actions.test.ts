@@ -179,6 +179,28 @@ describe('actions', () => {
 		expect(log).toHaveBeenNthCalledWith(3, 'setup:1')
 	})
 
+	test('the restart predicate is handed the transition facts alone: no send, at runtime as well as in the types', () => {
+		const restart = vi.fn(() => true)
+		const doc = machine({
+			initial: 'idle',
+			inputs: type<{ set: { id: number } }>(),
+			states: type<{ idle: { id: number } }>(),
+			transitions: { 'idle -set> idle': ({ inputData }) => inputData },
+			actions: { idle: { run: () => {}, restart } },
+		}).start({ id: 0 })
+
+		doc.send('set', { id: 1 })
+
+		expect(restart).toHaveBeenCalledExactlyOnceWith({
+			input: 'set',
+			inputData: { id: 1 },
+			from: 'idle',
+			fromData: { id: 0 },
+			to: 'idle',
+			toData: { id: 1 },
+		})
+	})
+
 	test('the restart predicate runs exactly once per self-transition, not once for teardown and again for setup', () => {
 		const restart = vi.fn(() => true)
 		const doc = machine({

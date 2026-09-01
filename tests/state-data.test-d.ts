@@ -106,6 +106,34 @@ test('the row owns the destination: a handler returns its payload and nothing el
 	})
 })
 
+test('an empty body is what a destination carrying nothing takes, and a `void` expression is indistinguishable from one', () => {
+	const cleanUp: () => void = () => {}
+
+	machine({
+		initial: 'empty',
+		states: type<{ empty: undefined; draft: { text: string } }>(),
+		transitions: {
+			// The common row, and the reason the return type keeps a `void` arm
+			// where the payload admits `undefined`: a parameterless block body is
+			// inferred as `() => void` before the contextual type reaches it (I27).
+			'draft -close> empty': () => {},
+			// Which is the same type as the row above, so no return type can tell
+			// them apart. A returned `void` lands the destination's `undefined`.
+			'draft -discard> empty': () => cleanUp(),
+			// The arm is conditional, so a destination that carries data rejects
+			// both spellings, and a teardown-shaped return is rejected either way.
+			// @ts-expect-error - `draft` carries `{ text: string }`
+			'empty -open> draft': () => {},
+			// @ts-expect-error - `draft` carries `{ text: string }`
+			'empty -reopen> draft': () => cleanUp(),
+			// @ts-expect-error - a function is not `empty`'s payload
+			'draft -drop> empty': () => () => {},
+			// @ts-expect-error - and neither is `{}`, which the tagged shape took
+			'draft -abandon> empty': () => ({}),
+		},
+	})
+})
+
 test('a handler has no sending capability and no destination payload before it returns one', () => {
 	machine({
 		initial: 'empty',

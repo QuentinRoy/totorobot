@@ -1496,9 +1496,11 @@ into one closure, and they can hold opposite policies. A list sets up in declara
 order and tears down in reverse, so a resource acquired later comes down before the
 one it was built on.
 
-**The field is `restart`, and it takes `boolean | ((from, to) => boolean)`.** `false`
+**The field is `restart`, and it takes a boolean or a predicate.** `false`
 survives re-entry; a predicate decides case by case from the resident data before and
-after. It is named for the decision rather than for the occasion, which is what makes
+after. It was `(from, to) => boolean`; since #98 it is one record of the hop's six
+facts, `send` excluded, so a pure decision is spelled the same way every other
+callback is. It is named for the decision rather than for the occasion, which is what makes
 the boolean readable: `restart: false` says what does not happen, where
 `reentry: false` would deny the re-entry itself. `boolean` rather than `false` alone,
 so that a computed flag typechecks and `{ ...base, restart: true }` can put the
@@ -1510,8 +1512,8 @@ cannot silently strand its cleanup.
 The predicate absorbs what looked like a separate question. A finer-grained policy
 (restart only when something relevant changed) was expected to need a second field,
 `key: ({ id }) => id`, and that second value shape was the main cost counted against
-a single field. It needs neither: `restart: (from, to) => from.id !== to.id` is the
-same field, and it hands the comparison to the caller instead of making the host
+a single field. It needs neither:
+`restart: ({ fromData, toData }) => fromData.id !== toData.id` is the same field, and it hands the comparison to the caller instead of making the host
 define when two keys are equal. So the layering is not "coarse now, object values
 later"; it is **one field that grows**. `keyed` is therefore not in the API at all,
 and `once` or `debounced` would be further fields on the same record.
