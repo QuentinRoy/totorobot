@@ -5,10 +5,6 @@
 A pattern or trigger that matches no declared row is now a type error instead
 of a listener typed with `never`.
 
-```ts
-doc.observe('draft -publish> published', () => {}) // no such row: type error
-```
-
 This is a breaking type change. Add the missing row, or remove the
 registration. It checks table membership, not reachability, so a row that is
 unreachable from `initial`, or a guard that always declines it, still counts
