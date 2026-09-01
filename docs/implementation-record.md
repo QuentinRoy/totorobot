@@ -646,6 +646,11 @@ combination the rest of that ticket exists to reject; keeping it here for
 uniformity's sake would have been the one place the row-correlation work left
 a synthetic case in, unchecked.
 
+**Superseded by [I35](#i35).** #100 checks whether a declaration can ever run
+directly, at the key, rather than by narrowing what its argument describes;
+once that check exists, narrowing the type too is redundant, and costs the
+uniformity #99 asked for. `ActionArrival` is gone.
+
 ### <a id="i34"></a>I34 — `Transition`'s default `K` collapses every field to `never`, not to conservative facts
 
 `Transition<I, S, K, P>`'s row filtering (`MatchingRows<K, P>`, [I32](#i32))
@@ -679,3 +684,48 @@ a deliberate opt-out rather than a scenario an unwitting caller reaches. The
 fix stands regardless: `K`'s own declared default is `string`
 (`K extends string = string`), and a type should not collapse to `never` at
 its own default, reachable or not.
+
+### <a id="i35"></a>I35 — Registration eligibility is checked at the key, not folded into the record type
+
+#100 needs a noninitial residency action naming a state with no incoming row
+rejected outright: unlike a listener, whose argument merely narrows to
+`never` and stays perfectly legal to declare ([I32](#i32)), a callback
+argument's type cannot itself make the _declaration_ an error — a function
+typed to take `never` still accepts any implementation, by contravariance.
+[I33](#i33) reached for the type anyway, narrowing a noninitial action's
+`Residency` down to a plain `Transition` to make the unreachable arrival
+member disappear; that stopped an impossible read, not an impossible
+declaration, and cost the shared type #99 asked for in the process.
+
+`Actions<I, S, K, Init, A>` now checks the key `P` directly, the same way it
+already reports `not a trigger: '${P}'` for a malformed one: a bare state
+gets the shared, arrival-capable `Residency<I, S, K, P>` unconditionally
+again, gated on eligibility rather than narrowed by it — `[P] extends
+[Init]` is eligible on the arrival alone, no incoming row required, and
+anything else needs `NoMatch<K, '* -> ${P}'>` to be `false`. `ActionArrival`
+is gone; every residency action reads exactly the union `observe`'s does,
+`from: undefined` included, whether or not this particular declaration could
+ever actually see it.
+
+### <a id="i36"></a>I36 — Rejecting a dead pattern is a parameter type, inferred through its own conditional
+
+A pattern naming only declared state and input names, but no declared row
+(`NoMatch<K, P>`, built on [I32](#i32)'s `MatchingRows`), needs a diagnostic
+at the registration site, the same class of problem `Table` already solves
+for a malformed transition key: turn the offending value's own type into a
+literal message, `` `no row matches '${P}'` ``, so the caller's string
+argument fails to match it.
+
+`Actions` applies this per mapped key, exactly like `not a trigger: '${P}'`
+already does — no new mechanism. `Host.observe`'s first overload has no
+object-literal keys to map over, one `pattern` parameter instead; TypeScript
+still infers `P` from the argument through `NoMatch<K, P> extends true ?
+`no row matches '${P}'` : P`, the naked `P` in the conditional's true branch,
+confirmed against `TypeScript 7.0.2` with an isolated repro before landing it
+in `src/`. A widened `K` (`string extends K`) falls back to `false` — never
+rejects — the same conservative gate [I34](#i34)'s `Transition` fallback
+uses, for the same reason: a wrapper that erased the exact rows cannot tell a
+dead pattern from a live one, and a false rejection is worse than a missed
+one.
+
+The type layer is erased: `pnpm size` reports 1,580 B raw, unchanged.

@@ -159,19 +159,21 @@ describe('observing', () => {
 		const log = vi.fn()
 		host.observe('* -> allowed', () => log('entry'))
 		host.observe('checking -> *', () => log('exit'))
-		host.observe('checking -submit> *', () => log('labelled'))
+		host.observe('* -submit> *', () => log('labelled'))
 		host.observe('* -> *', () => log('broad'))
 
-		// draft -submit> checking (matches only the broad pattern), then
-		// checking -> allowed, immediate (matches entry, exit and broad — never
-		// the labelled pattern, even though its state coordinates would).
+		// draft -submit> checking, labelled (matches the labelled and the broad
+		// pattern), then checking -> allowed, immediate (matches entry, exit and
+		// broad — never the labelled pattern, even though its state coordinates
+		// would, since an immediate hop carries no label to match).
 		host.send('submit', { quota: 1 })
 
-		expect(log).toHaveBeenCalledTimes(4)
-		expect(log).toHaveBeenNthCalledWith(1, 'broad')
-		expect(log).toHaveBeenNthCalledWith(2, 'entry')
-		expect(log).toHaveBeenNthCalledWith(3, 'exit')
-		expect(log).toHaveBeenNthCalledWith(4, 'broad')
+		expect(log).toHaveBeenCalledTimes(5)
+		expect(log).toHaveBeenNthCalledWith(1, 'labelled')
+		expect(log).toHaveBeenNthCalledWith(2, 'broad')
+		expect(log).toHaveBeenNthCalledWith(3, 'entry')
+		expect(log).toHaveBeenNthCalledWith(4, 'exit')
+		expect(log).toHaveBeenNthCalledWith(5, 'broad')
 	})
 
 	test('every hop in a chain notifies, in order, and e.to agrees with current on every hop', () => {
@@ -324,6 +326,30 @@ describe('observing', () => {
 			fromData: undefined,
 			to: 'done',
 			toData: { id: 7 },
+			send: expect.any(Function),
+		})
+	})
+
+	test('a bare-state observer for a state no row reaches still receives its registration arrival while resident: eligible through the arrival alone, with no incoming row to match (#100)', () => {
+		const host = machine({
+			initial: 'off',
+			inputs: type<{ toggle: undefined }>(),
+			states: type<{ off: { count: number }; on: undefined }>(),
+			// Nothing transitions into "off": the initial state's own startup
+			// arrival is the only way `observe('off', …)` can ever fire here.
+			transitions: { 'off -toggle> on': () => {} },
+		}).start({ count: 3 })
+		const observer = vi.fn()
+
+		host.observe('off', observer)
+
+		expect(observer).toHaveBeenCalledExactlyOnceWith({
+			input: undefined,
+			inputData: undefined,
+			from: undefined,
+			fromData: undefined,
+			to: 'off',
+			toData: { count: 3 },
 			send: expect.any(Function),
 		})
 	})

@@ -535,6 +535,16 @@ input-driven edges and
 have no input at all. A labeled pattern never matches an immediate. A bare key
 is legal too, but means something else entirely: [residency](#residency), next.
 
+A pattern built from declared state and input names but naming no declared row
+— exact or broad — is a compile error, not a listener typed with `never`:
+
+```ts
+doc.observe('draft -publish> published', () => {}) // no such row: compile error
+```
+
+This checks table membership only, never reachability: a row unreachable from
+`initial`, or one a guard always declines, still counts.
+
 ### Residency
 
 A bare state key passed to `observe` scopes work to "while we are in `draft`",
@@ -677,6 +687,10 @@ readable in the listener because the pattern pins the target to `failed`.
   with no nullable padding in states that logically guarantee a field.
 - Unknown state or input names anywhere in a transition key, a pattern, or an
   `actions` trigger.
+- A pattern or trigger built from declared names but matching no declared row —
+  by table membership, not reachability. A bare-state observer is the one
+  exception: it stays valid with no incoming row, since a late registration can
+  find the state already occupied.
 - **A handler returning the wrong payload for its target state, with no
   exceptions.** A target carrying nothing accepts only a handler that returns
   nothing; a fresh literal with extra properties, a wider-typed variable, an

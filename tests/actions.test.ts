@@ -338,9 +338,12 @@ describe('actions', () => {
 		const pinned = vi.fn()
 		machine({
 			initial: 'a',
-			inputs: type<{ x: undefined }>(),
+			inputs: type<{ x: undefined; y: undefined }>(),
 			states: type<{ a: undefined; b: undefined }>(),
-			transitions: { 'a -x> b': () => {} },
+			// 'b -y> a' gives every pattern below a real row to match, so none is
+			// rejected as statically unreachable (#100); 'y' is never sent, so it
+			// stays as unfired at startup as the rest.
+			transitions: { 'a -x> b': () => {}, 'b -y> a': () => {} },
 			actions: {
 				'* -> a': wildcardSource,
 				'a -> *': wildcardTarget,

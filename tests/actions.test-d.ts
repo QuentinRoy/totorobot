@@ -64,7 +64,7 @@ test('a residency action reading `from` without narrowing away the initial arriv
 	})
 })
 
-test("a noninitial residency action's `from` excludes `undefined` entirely: the arrival can only ever reach the initial state's own action, so a noninitial one needs no narrowing to read `from` — unlike the initial state's own action, and unlike `observe` for either (#99)", () => {
+test("a noninitial residency action shares observe's arrival-capable record type: `from` stays optional-`undefined` even though only a late `observe` registration can ever produce that member for a noninitial state — eligibility is checked at declaration (#100), not by narrowing what the callback describes", () => {
 	const doc = machine({
 		initial: 'off',
 		inputs: type<Inputs>(),
@@ -74,24 +74,51 @@ test("a noninitial residency action's `from` excludes `undefined` entirely: the 
 			'on -toggle> off': () => {},
 		},
 		actions: {
-			// "on" is not the initial state: `enter` only ever hands the
-			// synthetic arrival to the residency whose own key matches
-			// `initial`, on startup, so this action is reachable only through
-			// the real "off -toggle> on" row.
 			on: ({ from }) => {
-				expectTypeOf(from).toEqualTypeOf<'off'>()
-				from.length // not a compile error: `from` is never `undefined` here
+				expectTypeOf(from).toEqualTypeOf<'off' | undefined>()
+				// @ts-expect-error - `from` is `undefined` on the shared arrival member
+				from.length
 			},
 		},
 	})
 	const host = doc.start()
 
-	// `observe`'s residency form admits the arrival regardless: a late
-	// registration can find "on" already occupied too, initial state or not.
+	// `observe`'s residency form narrows to the exact same union.
 	host.observe('on', ({ from }) => {
 		expectTypeOf(from).toEqualTypeOf<'off' | undefined>()
 		// @ts-expect-error - `from` is `undefined` on the synthetic arrival
 		from.length
+	})
+})
+
+test('a residency action naming a noninitial state with no incoming row is a compile-time registration error: neither a real transition nor the startup arrival can ever reach it (#100)', () => {
+	machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States & { ghost: undefined }>(),
+		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
+		actions: {
+			// "ghost" is declared, but no row reaches it and it is not `initial`.
+			// @ts-expect-error - no row matches 'ghost'
+			ghost: () => {},
+		},
+	})
+})
+
+test('a residency action declared on the initial state remains valid with no incoming row at all: the startup arrival alone makes it eligible (#100)', () => {
+	machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		// Nothing transitions into "off"; only "on" is reached, and only by it.
+		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
+		actions: {
+			off: ({ to, toData, send }) => {
+				expectTypeOf(to).toEqualTypeOf<'off'>()
+				expectTypeOf(toData).toEqualTypeOf<undefined>()
+				expectTypeOf(send).not.toBeAny()
+			},
+		},
 	})
 })
 
@@ -203,6 +230,20 @@ test('an undeclared input in an edge trigger is rejected', () => {
 		actions: {
 			// @ts-expect-error - "nope" is not a declared input
 			'off -nope> on': () => {},
+		},
+	})
+})
+
+test('an edge trigger naming only declared state/input names, but no declared row, is rejected (#100)', () => {
+	machine({
+		initial: 'off',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
+		actions: {
+			// "gone", "toggle" and "off" are all declared, but no row pairs them.
+			// @ts-expect-error - no row matches 'gone -toggle> off'
+			'gone -toggle> off': () => {},
 		},
 	})
 })

@@ -56,6 +56,25 @@ test('unknown names in a pattern are rejected', () => {
 	host.observe('* -nope> *', () => {})
 })
 
+test('an exact edge naming valid state and input names, but no declared row, is a compile-time registration error rather than a listener silently typed with `never` (#100)', () => {
+	const host = doc.start()
+
+	// "empty", "cancel" and "draft" are all declared, but no row pairs them.
+	// @ts-expect-error - no row matches 'empty -cancel> draft'
+	host.observe('empty -cancel> draft', () => {})
+})
+
+test('a broad edge pattern with no matching row is rejected the same way, wildcard source and wildcard target alike (#100)', () => {
+	const host = doc.start()
+
+	// "review" has no outgoing row at all.
+	// @ts-expect-error - no row matches 'review -> *'
+	host.observe('review -> *', () => {})
+	// nothing reaches "review" by "cancel".
+	// @ts-expect-error - no row matches '* -cancel> review'
+	host.observe('* -cancel> review', () => {})
+})
+
 test('there is no -*> form; the wildcard appears only in state positions', () => {
 	const host = doc.start()
 
