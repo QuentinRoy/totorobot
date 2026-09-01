@@ -277,12 +277,21 @@ since; treat it as the reason the shape was chosen, not as a current number.
   where the closure would have been the only argument at that call site: the
   required form is 8 B larger (775 vs 767), so it loses on size as well as on
   allocation, and the optional parameter stays.
+- **The transition record respelled, not spread from the handler's argument.**
+  The two share four fields, so hoisting them into a `facts` object and spreading
+  it into both is 27 B smaller raw — and 6 B larger brotli, which arbitrates
+  ([I15](#i15)): a repeated object shape is what the compressor already knows.
 - **The departure loop over `[acts, listeners]`, not a `leave` helper called
   twice.** The two-element array literal plus one nested loop measures smaller
   than factoring the row scan into a named function and calling it once per row
   array (1,790 B vs 1,810 B raw, pre-golf).
 
 ### <a id="i17"></a>I17 — The empty-payload encoding is tagged, not an index signature
+
+> **Retired by #98.** A payload-free state declares `undefined`, so a handler's
+> return is `undefined` rather than an object minus a tag and never reduces to
+> `{}`. `EmptyObject` is gone from the source; the finding is kept because the
+> `{}` hazard it records applies to any type that reduces a target to `{}`.
 
 A payload-free target reduces to `{}` under the bare `Omit<S, 'name'>` form, and
 `{}` accepts every object literal — TypeScript's weak-type and excess-property
@@ -316,17 +325,15 @@ A wrong-shaped handler return, checked through a named alias parameterized over
 the state vocabulary, produces an error naming the **whole** vocabulary:
 
 ```
-… but required in type 'Data<{ name: "empty" } | { name: "draft"; … } |
-{ name: "review"; … }, "review">'
+… but required in type 'Data<{ empty: undefined; draft: … ; review: … }, "review">'
 ```
 
 Resolving the same computation **inline** reports against the one state the row
-targets — `Omit<{ name: "review"; text: string; by: string }, "name">` — and this
-holds with `S` as a real type parameter. This is the highest-traffic error in the
-library, so the rule earns its residual cost: the `Omit<…, 'name'>` wrapper in
-the message. The variant with perfect messages, keeping the tag in the handler's
-return, was rejected for costing the arrow test
-([design record §5](design-record.md#revision-the-shape-of-a-named-thing)).
+targets — `{ text: string; by: string }` — and this holds with `S` as a real type
+parameter. This is the highest-traffic error in the library, so `Table` spells
+`S[To<P> & keyof S]` out rather than reaching for the `Payload<V, N>` alias its
+parameters use. Since #98 the message carries no wrapper at all: the payload is
+what the vocabulary declares, not an `Omit` of it.
 
 ### <a id="i19"></a>I19 — An invalid inference candidate falls back to the constraint, not to the default
 
@@ -374,10 +381,10 @@ after which each derived type indexes the result rather than repeating the match
 The runtime was written against `type Unchecked = any`, on the sound argument that
 the type layer above had already checked those positions. But an alias does not
 narrow `any`; what the name bought was that `any` stopped answering to a search for
-it. Nothing there needs it: `current` and a handler's `state` are read for
-`.name`, the input name is a string, `inputData` passes through unchanged, and a
-handler result is only spread. `StateVocab`, `string | undefined`, `unknown`, and
-`object` type the whole runtime with no cast added and a byte-identical bundle.
+it. Nothing there needs it: dispatch reads three names, all strings, and every
+payload passes through untouched — since #98 a handler's result is not even
+spread. `string | undefined`, `unknown` and `object` type the whole runtime with
+no cast added and a byte-identical bundle.
 
 The golfed runtime reintroduced three, and none of them survived either, at a
 byte-identical bundle: an item that is read for both `run` and a call is an
@@ -398,6 +405,13 @@ to the declared one would hand callers `any` rather than merely losing
 precision.
 
 ### <a id="i24"></a>I24 — A generic call in a table value cannot see a vocabulary that arrives as a default
+
+> **Measured on the tagged vocabulary, and no longer reproducible in the
+> miniature.** With name-to-payload maps, `explorations/wrapper-inference.ts`
+> section 3 narrows under both tiers: an indexed access degrades to `never` where
+> `Omit<Extract<…>>` degraded to `{}`, and the contextual return type now recovers
+> the row key with the tier in place. A wrapper still fails against the shipped
+> signature, by alias identity ([I25](#i25)) rather than by the tier.
 
 `machine` resolves the vocabulary in two tiers: `RawI`/`RawS` infer from the
 `inputs`/`states` properties, and `I`/`S` are defaulted type parameters computed
@@ -453,8 +467,11 @@ ordinary no-teardown action failed under `undefined | Teardown` alone, though th
 identical body typechecks given straight to a variable of that type. It holds even
 with `inputs`/`states` declared, so it is not [I24](#i24)'s defaulting tier.
 
-The fix is a wider signature, the shape `Table` already uses for a payload-free
-target: union `| void` in. That does not reopen the hole plain `undefined` was
+The fix is a wider signature, the shape `Table` uses wherever the destination's
+payload admits `undefined`: union `| void` in. Since #98 that arm is conditional
+— `undefined extends Payload ? Payload | void : Payload` — so a destination that
+carries something still rejects a handler with nothing to return, and `void` is
+never a way to _declare_ a payload-free state. That does not reopen the hole plain `undefined` was
 chosen to close, because void-return bivariance fires only when a return type
 **is** `void`; as one arm of a union, a wrong-shaped return, a stray `Teardown` on
 an edge, and an `async` body's `Promise` are all still rejected. Keep `undefined`
@@ -486,10 +503,26 @@ union-valued payload. Narrowing the name first selects one tuple and permits
 forwarding. A generic `(name: N, data: I[N])` accepts mismatched unions and is
 therefore too broad.
 
-### <a id="i30"></a>I30 — Input maps need a separate shape check
+### <a id="i30"></a>I30 — Vocabulary maps need a separate shape check
 
 The generic constraint is `object` because interfaces do not satisfy a
 `Record<string, unknown>` constraint without an index signature. That broad
-constraint also admits arrays, functions, and unions, so the `inputs` property
-checks those shapes separately. `AnyInputs` uses `Record<string, unknown>` only
-as the default for APIs with no declared vocabulary to inspect.
+constraint also admits arrays, functions, and unions, so the `inputs` and
+`states` properties check those shapes separately, through `VocabMap`. A
+rejected `states` leaves no state name behind, so `initial` stops resolving too;
+that second error is the collapse, not a separate fault. `AnyVocab` uses
+`Record<string, unknown>` only as the default for APIs with no declared
+vocabulary to inspect.
+
+### <a id="i31"></a>I31 — A name narrows the payload beside it only through a union of records
+
+Two sibling fields, `from` and `fromData`, correlate only if the record is a
+union with one member per pairing: TypeScript narrows a discriminant against the
+union it is a member of, and nothing else. So `Transition` is the product of the
+sources, destinations and inputs its pattern admits — the same |states|² ×
+|inputs| the key union already costs — and a check on any one of the three names
+narrows all six fields. Intersecting the shared half onto each member (`X &
+{ … }`, where `X` is `{ send }` or `{}`) keeps that narrowing intact, which is
+what lets one type serve a committed record and a restart predicate's facts.
+#99 filters the product against the table; until then it carries pairings no row
+declares.

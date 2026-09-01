@@ -20,7 +20,7 @@ be optional everywhere and checked everywhere.
 
 A definition is inert data. `.start()` hands you a running host to send inputs to
 and observe, and that host is the only thing that ever changes. The whole library
-is 1.5 kB minified, 767 bytes over the wire, with no dependencies.
+is 1.5 kB minified, 787 bytes over the wire, with no dependencies.
 
 The design keeps asking one question: how much state-machine correctness can
 TypeScript enforce while the creation API stays small enough to hold in your
@@ -49,12 +49,12 @@ export const publication = machine({
 		cancel: undefined
 	}>(),
 
-	states: type<
-		| { name: 'empty' }
-		| { name: 'draft'; text: string; revision: number }
-		| { name: 'review'; text: string; revision: number; reviewer: string }
-		| { name: 'published'; text: string; revision: number }
-	>(),
+	states: type<{
+		empty: undefined
+		draft: { text: string; revision: number }
+		review: { text: string; revision: number; reviewer: string }
+		published: { text: string; revision: number }
+	}>(),
 
 	initial: 'empty',
 
@@ -63,17 +63,17 @@ export const publication = machine({
 			text: inputData.text,
 			revision: 0,
 		}),
-		'draft -submit> review': ({ state, inputData }) => ({
-			...state,
+		'draft -submit> review': ({ fromData, inputData }) => ({
+			...fromData,
 			reviewer: inputData.reviewer,
 		}),
-		'review -publish> published': ({ state }) => ({
-			text: state.text,
-			revision: state.revision,
+		'review -publish> published': ({ fromData }) => ({
+			text: fromData.text,
+			revision: fromData.revision,
 		}),
-		'review -expireReview> draft': ({ state }) => ({
-			text: state.text,
-			revision: state.revision,
+		'review -expireReview> draft': ({ fromData }) => ({
+			text: fromData.text,
+			revision: fromData.revision,
 		}),
 		'draft -cancel> empty': () => {},
 	},
@@ -87,7 +87,7 @@ export const publication = machine({
 })
 
 const doc = publication.start()
-doc.observe('* -> published', (e) => notify(e.to))
+doc.observe('* -> published', (e) => notify(e.toData))
 doc.send('open', { text: 'hello' })
 doc.send('submit', { reviewer: 'Quentin' })
 ```
@@ -104,7 +104,7 @@ with the caller, attached through `observe`.
 - [Example](#example)
 - [The surface](#the-surface)
 - [`inputs` and `states`: the vocabulary](#inputs-and-states-the-vocabulary)
-  - [Migrating inputs](#migrating-inputs)
+  - [Migrating from the tagged shape](#migrating-from-the-tagged-shape)
 - [`initial`: where a host starts](#initial-where-a-host-starts)
 - [`transitions`: the table](#transitions-the-table)
   - [The key language](#the-key-language)
@@ -145,33 +145,48 @@ Everything the package exports:
 
 ```ts
 inputs: type<{ submit: { reviewer: string }; cancel: undefined }>(),
-states: type<{ name: 'empty' } | { name: 'draft'; text: string; revision: number }>(),
+states: type<{ empty: undefined; draft: { text: string; revision: number } }>(),
 ```
 
-Inputs are a name-to-payload map. States remain a `name`-tagged union. Use
-`undefined` for an input with no data. A payload can be any value, including an
-object with `name` or `type` properties; Totorobot preserves it unchanged.
+Both are a name-to-payload map, and `undefined` is the payload of a name that
+carries nothing. A payload can be **any** value — a primitive, a function, a
+`Map`, an object with its own `name` or `type` property — and Totorobot stores
+what it is handed, unchanged: it never spreads, clones, freezes or validates a
+payload. Mutating an object you passed in is therefore visible through older
+snapshots too.
 
 `type<T>()` only carries `T`. It returns `undefined`, and nothing reads it.
 Either vocabulary can be named, exported, imported, generated, or declared
-inline. `InputsOf<typeof publication>` extracts the input map;
-`StatesOf<typeof publication>` extracts the state union. Omitting either key
-infers its names from `transitions`, with `unknown` payloads.
+inline. `InputsOf<typeof publication>` and `StatesOf<typeof publication>`
+extract the two maps. Omitting either key infers its names from `transitions`,
+with `unknown` payloads.
 
-### Migrating inputs
+### Migrating from the tagged shape
 
-Replace a tagged input union with a map, pass the name and payload separately,
-and read callback data from `inputData`:
+Both vocabularies used to be `type`/`name`-tagged unions. Replace each with a
+map, pass a name and its payload separately, and read the payload from the
+`…Data` field beside each name:
 
 ```ts
 // before
 type Inputs = { type: 'open'; text: string } | { type: 'cancel' }
+type States = { name: 'empty' } | { name: 'draft'; text: string }
 host.send({ type: 'open', text: 'hello' })
+host.current.text
+'empty -open> draft': ({ state, input }) => ({ text: input.text }),
 
 // after
 type Inputs = { open: { text: string }; cancel: undefined }
+type States = { empty: undefined; draft: { text: string } }
 host.send('open', { text: 'hello' })
+host.current.data.text
+'empty -open> draft': ({ inputData }) => inputData,
 ```
+
+A handler now returns its destination's payload alone, so a target carrying
+nothing takes an empty body and a target carrying data returns that data
+directly. A handler that used to end in `return cleanUp()`, where `cleanUp`
+returns `void`, has to call it and return separately.
 
 ## `initial`: where a host starts
 
@@ -223,32 +238,33 @@ JavaScript, where nothing else checks what was written.
 
 ### The handler decides and projects
 
-A handler receives the source state whole under `state`, plus the input name and
-its `inputData`. It returns the target state's payload with its tag left off. The
-library adds the tag back:
+A handler receives the three names its row already spells — `from`, `input`,
+`to` — beside `fromData` and `inputData`. It returns the destination's payload,
+and nothing else:
 
 ```ts
 'empty -open> draft': ({ inputData }) => ({ text: inputData.text, revision: 0 }),
 ```
 
-The tag lets a handler shared across several rows tell which state it is leaving:
-`state.name` narrows `state` the same way narrowing `current` does. It also makes
-it safe to spread the source into a target payload, because the library spreads
-the target's tag in last, so a source tag caught up in the spread never survives
-onto the committed state.
+**The row is the authority for the destination name.** A returned payload with
+its own `name` property is ordinary domain data; it cannot redirect the hop. A
+destination carrying nothing takes a handler with an empty body, and one whose
+payload is exactly the source's takes `({ fromData }) => fromData` — the same
+reference, stored as handed over.
 
 ### Declining, and row precedence
 
 `skip()` declines the row, and the next row declared for the same source and
-input is tried. **Declaration order is priority order.** That is how one input
+input is tried. What it returns is a module-private symbol, and it is the one
+value a payload cannot be: every other symbol is ordinary data. **Declaration order is priority order.** That is how one input
 reaches two states:
 
 ```ts
-'draft -submit> review': ({ state, inputData, skip }) =>
-	inputData.reviewer ? { ...state, reviewer: inputData.reviewer } : skip(),
-'draft -submit> published': ({ state }) => ({
-	text: state.text,
-	revision: state.revision,
+'draft -submit> review': ({ fromData, inputData, skip }) =>
+	inputData.reviewer ? { ...fromData, reviewer: inputData.reviewer } : skip(),
+'draft -submit> published': ({ fromData }) => ({
+	text: fromData.text,
+	revision: fromData.revision,
 }),
 ```
 
@@ -264,10 +280,10 @@ A row that always declines under some condition is an ordinary way to express
 "this input does not apply right now":
 
 ```ts
-'draft -revise> draft': ({ state, inputData, skip }) =>
-	inputData.text === state.text
+'draft -revise> draft': ({ fromData, inputData, skip }) =>
+	inputData.text === fromData.text
 		? skip()
-		: { text: inputData.text, revision: state.revision + 1 },
+		: { text: inputData.text, revision: fromData.revision + 1 },
 ```
 
 That row is also a **self-transition**, a row whose target is its source. It
@@ -280,10 +296,10 @@ in declaration order alongside every other immediate row declared for that
 state:
 
 ```ts
-'draft -submit> checking': ({ inputData }) => ({ quota: inputData.quota }),
-'checking -> allowed': ({ state, skip }) =>
-	state.quota > 0 ? { quota: state.quota } : skip(),
-'checking -> denied': ({ state }) => ({ quota: state.quota }),
+'draft -submit> checking': ({ inputData }) => inputData,
+'checking -> allowed': ({ fromData, skip }) =>
+	fromData.quota > 0 ? fromData : skip(),
+'checking -> denied': ({ fromData }) => fromData,
 ```
 
 Sending `submit` from `draft` lands in `checking`, which tries its own rows at
@@ -339,9 +355,9 @@ const profile = machine({
 	// ... a `loading` state carrying an `id`, and `loaded` / `failed` inputs
 	actions: {
 		loading: {
-			run: ({ to, send }) => {
+			run: ({ toData, send }) => {
 				const ctrl = new AbortController()
-				fetchUser(to.id, ctrl.signal).then(
+				fetchUser(toData.id, ctrl.signal).then(
 					(user) => send('loaded', { user }),
 					(reason) => send('failed', { reason }),
 				)
@@ -349,7 +365,7 @@ const profile = machine({
 			},
 			restart: false, // survives re-entry; a fetch already in flight keeps running
 		},
-		'draft -submit> review': (e) => track('submitted', e.to.text),
+		'draft -submit> review': (e) => track('submitted', e.toData.text),
 	},
 })
 ```
@@ -360,12 +376,12 @@ once per matching transition, in the same [pattern language](#observing) —
 wildcards included.
 
 **Every action receives the transition record**,
-`{ input, inputData, from, to, send }`, whichever kind of trigger fired it and
-identical to what a matching
-[listener](#observing) gets. A residency is an arrival, so its `to` is the
-resident state. On the initial state, which no transition caused, `from` and
-`input` and `inputData` are `undefined`, so reading `from` needs a narrowing
-first.
+`{ input, inputData, from, fromData, to, toData, send }`, whichever kind of
+trigger fired it and identical to what a matching [listener](#observing) gets. A
+residency is an arrival, so its `to` is the resident state. On an arrival no
+transition caused — the initial state, or a residency registered while the host
+already occupies its state — `input`, `inputData`, `from` and `fromData` are all
+`undefined`, so reading `from` needs a narrowing first.
 
 **Starting a host runs a declared residency on the initial state, never an
 edge action.** Entering the initial state is not a transition, so no edge
@@ -386,9 +402,10 @@ state can hold opposite policies.
 **A self-transition tears down and sets up again by default**, exactly as the
 [caller-side recipe](#residency) does, and residency runs on every hop of an
 immediate chain — including a state entered and left within one drain.
-`restart: false` survives it instead: no teardown, no second setup. A predicate,
-`(from, to) => boolean`, decides case by case from the resident data either
-side. `restart` is consulted only on a self-transition — a genuine departure
+`restart: false` survives it instead: no teardown, no second setup. A predicate
+decides case by case: it receives the same six transition facts, without `send`,
+and returns a boolean —
+`({ fromData, toData }) => fromData.id !== toData.id`. `restart` is consulted only on a self-transition — a genuine departure
 always tears down — and is a compile error on an edge, since an edge has
 nothing to restart. Each residency's predicate runs once per self-transition;
 the same decision governs both the teardown and the setup that follows it.
@@ -409,7 +426,7 @@ definition share no state and no listeners, and neither mutates the definition.
 | member                            | is                                                                  |
 | --------------------------------- | ------------------------------------------------------------------- |
 | `definition.start(data?)`         | creates a host; `data` follows the declared initial state's payload |
-| `host.current`                    | the current state, tag included                                     |
+| `host.current`                    | `{ name, data }`: where the host is, and what that state carries    |
 | `host.send(input, inputData?)`    | a dispatch; returns nothing                                         |
 | `host.observe(pattern, listener)` | a subscription; returns an unsubscribe function                     |
 
@@ -417,24 +434,25 @@ definition share no state and no listeners, and neither mutates the definition.
 const doc = publication.start() // `empty` carries no payload, so no argument
 doc.send('open', { text: 'hello' })
 
-doc.current // { name: 'draft', text: 'hello', revision: 0 }
+doc.current // { name: 'draft', data: { text: 'hello', revision: 0 } }
 ```
 
 ### Reading
 
-`current` is the state itself, plain data, tag included. **A value read from it
-stays valid and unchanged across later transitions**, which is what makes it
-safe to compare, serialise, or hold in component state. Nothing is frozen:
-immutability is `readonly` in the types plus a promise not to mutate, not a
-runtime guard.
+`current` is the state's name beside the payload it carries, and a state
+carrying nothing still has `data`, valued `undefined`. **The snapshot read
+before a transition stays valid and unchanged after it**, which is what makes it
+safe to compare, serialise, or hold in component state. The payload inside it is
+the value you handed over, not a copy: nothing is frozen, and mutating that
+value is visible through every snapshot holding it.
 
-Narrowing `current` on its tag narrows its fields with it, which is the half of
-typestate the project claims:
+Checking `name` narrows `data` with it, which is the half of typestate the
+project claims:
 
 ```ts
 const now = doc.current
 if (now.name === 'draft') {
-	now.revision // number, with no nullable padding
+	now.data.revision // number, with no nullable padding
 }
 ```
 
@@ -475,7 +493,7 @@ variant stays addable later without breaking anything
 ### Observing
 
 ```ts
-const off = doc.observe('* -> published', (e) => notify(e.to))
+const off = doc.observe('* -> published', (e) => notify(e.toData))
 doc.observe('draft -cancel> *', () => track('cancelled'))
 ```
 
@@ -483,11 +501,12 @@ Listeners go on the host, never on the definition, which is inert. `observe()`
 returns an unsubscribe function.
 
 **The listener receives the transition record**,
-`{ input, inputData, from, to, send }`, discriminated by `input`; its correlated
-payload is `inputData`. `e.from` and `e.to` are the states at each end, tags
-included, so narrowing on `e.from.name` or `e.to.name` narrows their fields the
-way `current` does. An immediate transition carries `input: undefined` and
-`inputData: undefined`.
+`{ input, inputData, from, fromData, to, toData, send }`: three names, each
+beside the payload it carries. Checking any one name narrows the payload next to
+it, the way checking `current.name` does — `if (e.from === 'draft')` narrows
+`e.fromData`. An immediate transition carries `input: undefined` and
+`inputData: undefined`, while a payload-free named input keeps its name and
+carries `inputData: undefined`.
 
 **`e.send` is the host's own `send`**, so a reaction drives the machine without
 closing over the host it was registered on:
@@ -527,7 +546,7 @@ takes:
 
 ```ts
 const off = doc.observe('draft', {
-	run: ({ to }) => track(to.text),
+	run: ({ toData }) => track(toData.text),
 	restart: false,
 })
 ```
@@ -546,8 +565,8 @@ the two-pattern recipe below, offered directly instead of assembled by hand.
 Observe `'draft -> *'` to tear down and `'* -> draft'` to set up, exit listener
 registered **first** so a self-transition tears down before it sets up again,
 and run the setup once at registration if the host is already in the state.
-`persistent` is `if (e.to.name !== e.from.name)` in the exit handler; `keyed`
-compares a key computed from each end. The full recipe, with the argument for
+`persistent` is `if (e.to !== e.from)` in the exit handler; `keyed` compares a
+key computed from each end. The full recipe, with the argument for
 leaving residency to the caller rather than the host, is in
 [rationale §11](docs/design-record.md#residency-is-derivable-not-a-host-feature),
 and `tests/helpers.ts` carries it as working code.
@@ -599,45 +618,45 @@ const search = machine({
 		clear: undefined
 	}>(),
 
-	states: type<
-		| { name: 'idle'; nextId: number }
-		| { name: 'running'; id: number; query: string; nextId: number }
-		| { name: 'done'; hits: string[]; nextId: number }
-		| { name: 'failed'; reason: string; nextId: number }
-	>(),
+	states: type<{
+		idle: { nextId: number }
+		running: { id: number; query: string; nextId: number }
+		done: { hits: string[]; nextId: number }
+		failed: { reason: string; nextId: number }
+	}>(),
 
 	initial: 'idle',
 
 	transitions: {
-		'idle -run> running': ({ state, inputData }) => ({
-			id: state.nextId,
+		'idle -run> running': ({ fromData, inputData }) => ({
+			id: fromData.nextId,
 			query: inputData.query,
-			nextId: state.nextId + 1,
+			nextId: fromData.nextId + 1,
 		}),
-		'running -run> running': ({ state, inputData }) => ({
-			id: state.nextId,
+		'running -run> running': ({ fromData, inputData }) => ({
+			id: fromData.nextId,
 			query: inputData.query,
-			nextId: state.nextId + 1,
+			nextId: fromData.nextId + 1,
 		}),
-		'running -resolved> done': ({ state, inputData, skip }) =>
-			inputData.id === state.id
-				? { hits: inputData.hits, nextId: state.nextId }
+		'running -resolved> done': ({ fromData, inputData, skip }) =>
+			inputData.id === fromData.id
+				? { hits: inputData.hits, nextId: fromData.nextId }
 				: skip(),
-		'running -rejected> failed': ({ state, inputData, skip }) =>
-			inputData.id === state.id
-				? { reason: inputData.reason, nextId: state.nextId }
+		'running -rejected> failed': ({ fromData, inputData, skip }) =>
+			inputData.id === fromData.id
+				? { reason: inputData.reason, nextId: fromData.nextId }
 				: skip(),
-		'done -clear> idle': ({ state }) => ({ nextId: state.nextId }),
-		'failed -clear> idle': ({ state }) => ({ nextId: state.nextId }),
+		'done -clear> idle': ({ fromData }) => ({ nextId: fromData.nextId }),
+		'failed -clear> idle': ({ fromData }) => ({ nextId: fromData.nextId }),
 	},
 
 	actions: {
-		running: ({ to, send }) => {
+		running: ({ toData, send }) => {
 			const controller = new AbortController()
 
-			void api.search(to.query, controller.signal).then(
-				(hits) => send('resolved', { id: to.id, hits }),
-				(reason) => send('rejected', { id: to.id, reason: String(reason) }),
+			void api.search(toData.query, controller.signal).then(
+				(hits) => send('resolved', { id: toData.id, hits }),
+				(reason) => send('rejected', { id: toData.id, reason: String(reason) }),
 			)
 
 			return () => controller.abort()
@@ -646,26 +665,26 @@ const search = machine({
 })
 
 const box = search.start({ nextId: 0 })
-box.observe('* -> failed', (e) => console.error(e.to.reason))
+box.observe('* -> failed', (e) => console.error(e.toData.reason))
 box.send('run', { query: 'totoro' })
 ```
 
 The `running` action starts the request and returns its teardown. Sending another
 `run` takes the self-transition, aborts the old request, and starts a new one.
 The two `skip()` rows cover the race where an old promise settles despite being
-aborted: its id no longer matches, so it does nothing. `e.to.reason` is readable
-in the listener because the pattern pins the target to `failed`.
+aborted: its id no longer matches, so it does nothing. `e.toData.reason` is
+readable in the listener because the pattern pins the target to `failed`.
 
 ## What the types check
 
-- **Per-state data.** Narrowing the state narrows its data, with no nullable
-  padding in states that logically guarantee a field.
+- **Per-state data.** Checking a state's name narrows the payload beside it,
+  with no nullable padding in states that logically guarantee a field.
 - Unknown state or input names anywhere in a transition key, a pattern, or an
   `actions` trigger.
-- **A handler returning the wrong shape for its target state, with no
-  exceptions.** A target with no payload accepts only nothing or `{}`. A fresh
-  literal with extra properties, a wider-typed variable, an interface-typed
-  value, and a spread of a wider state are all rejected.
+- **A handler returning the wrong payload for its target state, with no
+  exceptions.** A target carrying nothing accepts only a handler that returns
+  nothing; a fresh literal with extra properties, a wider-typed variable, an
+  interface-typed value, and a spread of a wider payload are all rejected.
 - Reads of source data the source state does not have.
 - Malformed keys, wrong spacing included, reported as `not a transition: '…'` on
   the offending line.
@@ -720,11 +739,10 @@ const toggle = machine({
 })
 ```
 
-Omitting a vocabulary infers **names** from `transitions`, never data. The names
-become exactly the ones the table mentions rather than widening to `string`.
-Inferred input data is `unknown`; inferred state fields are `unknown`. Declaring
-one vocabulary and omitting the other checks that half and reads the other's
-names off the table.
+Omitting a vocabulary infers **names** from `transitions`, never payloads. The
+names become exactly the ones the table mentions rather than widening to
+`string`, and every inferred payload is `unknown`. Declaring one vocabulary and
+omitting the other checks that half and reads the other's names off the table.
 
 **The key grammar is enforced either way**, and a malformed key still lands on
 its own row. What inference will not accept is a name a key cannot round-trip.

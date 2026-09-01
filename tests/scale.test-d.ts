@@ -9,7 +9,7 @@
  * argument**. TypeScript types a handler that reads nothing from its arguments
  * before it has inferred `states:` from the sibling property, so that handler's
  * return has no contextual type yet and its `'s00'` widens to `string`. Every
- * handler that destructures `state` or `input` is deferred until after the
+ * handler that destructures its argument is deferred until after the
  * vocabulary is known and keeps its literals with no annotation — which is why
  * the wrong-literal assertion at the bottom of this file still bites. The
  * limitation is recorded on `Table` in `src/totorobot.ts`.
@@ -20,111 +20,112 @@ import { expectTypeOf, test } from 'vitest'
 import { machine, type, type Handled } from 'totorobot'
 
 type Inputs = { next: { delta: number }; reset: undefined; skip: undefined }
-type States =
-	| { name: 's00'; visits: number; owner: 's00' }
-	| { name: 's01'; visits: number; owner: 's01' }
-	| { name: 's02'; visits: number; owner: 's02' }
-	| { name: 's03'; visits: number; owner: 's03' }
-	| { name: 's04'; visits: number; owner: 's04' }
-	| { name: 's05'; visits: number; owner: 's05' }
-	| { name: 's06'; visits: number; owner: 's06' }
-	| { name: 's07'; visits: number; owner: 's07' }
-	| { name: 's08'; visits: number; owner: 's08' }
-	| { name: 's09'; visits: number; owner: 's09' }
-	| { name: 's10'; visits: number; owner: 's10' }
-	| { name: 's11'; visits: number; owner: 's11' }
-	| { name: 's12'; visits: number; owner: 's12' }
-	| { name: 's13'; visits: number; owner: 's13' }
-	| { name: 's14'; visits: number; owner: 's14' }
-	| { name: 's15'; visits: number; owner: 's15' }
-	| { name: 's16'; visits: number; owner: 's16' }
-	| { name: 's17'; visits: number; owner: 's17' }
-	| { name: 's18'; visits: number; owner: 's18' }
-	| { name: 's19'; visits: number; owner: 's19' }
+type States = {
+	s00: { visits: number; owner: 's00' }
+	s01: { visits: number; owner: 's01' }
+	s02: { visits: number; owner: 's02' }
+	s03: { visits: number; owner: 's03' }
+	s04: { visits: number; owner: 's04' }
+	s05: { visits: number; owner: 's05' }
+	s06: { visits: number; owner: 's06' }
+	s07: { visits: number; owner: 's07' }
+	s08: { visits: number; owner: 's08' }
+	s09: { visits: number; owner: 's09' }
+	s10: { visits: number; owner: 's10' }
+	s11: { visits: number; owner: 's11' }
+	s12: { visits: number; owner: 's12' }
+	s13: { visits: number; owner: 's13' }
+	s14: { visits: number; owner: 's14' }
+	s15: { visits: number; owner: 's15' }
+	s16: { visits: number; owner: 's16' }
+	s17: { visits: number; owner: 's17' }
+	s18: { visits: number; owner: 's18' }
+	s19: { visits: number; owner: 's19' }
+}
 
 const stress = machine({
 	initial: 's00',
 	inputs: type<Inputs>(),
 	states: type<States>(),
 	transitions: {
-		's00 -next> s01': ({ state, inputData }) => ({
-			visits: state.visits + inputData.delta,
+		's00 -next> s01': ({ fromData, inputData }) => ({
+			visits: fromData.visits + inputData.delta,
 			owner: 's01',
 		}),
-		's01 -next> s02': ({ state, inputData }) => ({
-			visits: state.visits + inputData.delta,
+		's01 -next> s02': ({ fromData, inputData }) => ({
+			visits: fromData.visits + inputData.delta,
 			owner: 's02',
 		}),
-		's02 -next> s03': ({ state, inputData }) => ({
-			visits: state.visits + inputData.delta,
+		's02 -next> s03': ({ fromData, inputData }) => ({
+			visits: fromData.visits + inputData.delta,
 			owner: 's03',
 		}),
-		's03 -next> s04': ({ state, inputData }) => ({
-			visits: state.visits + inputData.delta,
+		's03 -next> s04': ({ fromData, inputData }) => ({
+			visits: fromData.visits + inputData.delta,
 			owner: 's04',
 		}),
-		's04 -next> s05': ({ state, inputData }) => ({
-			visits: state.visits + inputData.delta,
+		's04 -next> s05': ({ fromData, inputData }) => ({
+			visits: fromData.visits + inputData.delta,
 			owner: 's05',
 		}),
-		's05 -next> s06': ({ state, inputData }) => ({
-			visits: state.visits + inputData.delta,
+		's05 -next> s06': ({ fromData, inputData }) => ({
+			visits: fromData.visits + inputData.delta,
 			owner: 's06',
 		}),
-		's06 -next> s07': ({ state, inputData }) => ({
-			visits: state.visits + inputData.delta,
+		's06 -next> s07': ({ fromData, inputData }) => ({
+			visits: fromData.visits + inputData.delta,
 			owner: 's07',
 		}),
-		's07 -next> s08': ({ state, inputData }) => ({
-			visits: state.visits + inputData.delta,
+		's07 -next> s08': ({ fromData, inputData }) => ({
+			visits: fromData.visits + inputData.delta,
 			owner: 's08',
 		}),
-		's08 -next> s09': ({ state, inputData }) => ({
-			visits: state.visits + inputData.delta,
+		's08 -next> s09': ({ fromData, inputData }) => ({
+			visits: fromData.visits + inputData.delta,
 			owner: 's09',
 		}),
-		's09 -next> s10': ({ state, inputData }) => ({
-			visits: state.visits + inputData.delta,
+		's09 -next> s10': ({ fromData, inputData }) => ({
+			visits: fromData.visits + inputData.delta,
 			owner: 's10',
 		}),
-		's10 -next> s11': ({ state, inputData }) => ({
-			visits: state.visits + inputData.delta,
+		's10 -next> s11': ({ fromData, inputData }) => ({
+			visits: fromData.visits + inputData.delta,
 			owner: 's11',
 		}),
-		's11 -next> s12': ({ state, inputData }) => ({
-			visits: state.visits + inputData.delta,
+		's11 -next> s12': ({ fromData, inputData }) => ({
+			visits: fromData.visits + inputData.delta,
 			owner: 's12',
 		}),
-		's12 -next> s13': ({ state, inputData }) => ({
-			visits: state.visits + inputData.delta,
+		's12 -next> s13': ({ fromData, inputData }) => ({
+			visits: fromData.visits + inputData.delta,
 			owner: 's13',
 		}),
-		's13 -next> s14': ({ state, inputData }) => ({
-			visits: state.visits + inputData.delta,
+		's13 -next> s14': ({ fromData, inputData }) => ({
+			visits: fromData.visits + inputData.delta,
 			owner: 's14',
 		}),
-		's14 -next> s15': ({ state, inputData }) => ({
-			visits: state.visits + inputData.delta,
+		's14 -next> s15': ({ fromData, inputData }) => ({
+			visits: fromData.visits + inputData.delta,
 			owner: 's15',
 		}),
-		's15 -next> s16': ({ state, inputData }) => ({
-			visits: state.visits + inputData.delta,
+		's15 -next> s16': ({ fromData, inputData }) => ({
+			visits: fromData.visits + inputData.delta,
 			owner: 's16',
 		}),
-		's16 -next> s17': ({ state, inputData }) => ({
-			visits: state.visits + inputData.delta,
+		's16 -next> s17': ({ fromData, inputData }) => ({
+			visits: fromData.visits + inputData.delta,
 			owner: 's17',
 		}),
-		's17 -next> s18': ({ state, inputData }) => ({
-			visits: state.visits + inputData.delta,
+		's17 -next> s18': ({ fromData, inputData }) => ({
+			visits: fromData.visits + inputData.delta,
 			owner: 's18',
 		}),
-		's18 -next> s19': ({ state, inputData }) => ({
-			visits: state.visits + inputData.delta,
+		's18 -next> s19': ({ fromData, inputData }) => ({
+			visits: fromData.visits + inputData.delta,
 			owner: 's19',
 		}),
-		's19 -next> s00': ({ state, inputData }) => ({
-			visits: state.visits + inputData.delta,
+		's19 -next> s00': ({ fromData, inputData }) => ({
+			visits: fromData.visits + inputData.delta,
 			owner: 's00',
 		}),
 		's00 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
@@ -147,20 +148,20 @@ const stress = machine({
 		's17 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
 		's18 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
 		's19 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
-		's00 -skip> s05': ({ state }) => ({
-			visits: state.visits + 1,
+		's00 -skip> s05': ({ fromData }) => ({
+			visits: fromData.visits + 1,
 			owner: 's05',
 		}),
-		's05 -skip> s10': ({ state }) => ({
-			visits: state.visits + 1,
+		's05 -skip> s10': ({ fromData }) => ({
+			visits: fromData.visits + 1,
 			owner: 's10',
 		}),
-		's10 -skip> s15': ({ state }) => ({
-			visits: state.visits + 1,
+		's10 -skip> s15': ({ fromData }) => ({
+			visits: fromData.visits + 1,
 			owner: 's15',
 		}),
-		's15 -skip> s00': ({ state }) => ({
-			visits: state.visits + 1,
+		's15 -skip> s00': ({ fromData }) => ({
+			visits: fromData.visits + 1,
 			owner: 's00',
 		}),
 	},
@@ -216,31 +217,31 @@ test('skip is only available from s00, s05, s10 and s15', () => {
 	expectTypeOf<Handled<M, 's19'>>().toEqualTypeOf<'next' | 'reset'>()
 })
 
-test('handler state and input are inferred with no annotations, at this scale', () => {
+test('handler payloads are inferred with no annotations, at this scale', () => {
 	machine({
 		initial: 's00',
 		inputs: type<Inputs>(),
 		states: type<States>(),
 		transitions: {
-			's00 -next> s01': ({ state, inputData }) => {
-				expectTypeOf(state).toEqualTypeOf<{
-					name: 's00'
+			's00 -next> s01': ({ fromData, inputData }) => {
+				expectTypeOf(fromData).toEqualTypeOf<{
 					visits: number
 					owner: 's00'
 				}>()
 				expectTypeOf(inputData).toEqualTypeOf<{ delta: number }>()
-				return { visits: state.visits + inputData.delta, owner: 's01' }
+				return { visits: fromData.visits + inputData.delta, owner: 's01' }
 			},
-			's19 -next> s00': ({ state, inputData }) => {
-				expectTypeOf(state).toEqualTypeOf<{
-					name: 's19'
+			's19 -next> s00': ({ fromData, inputData }) => {
+				expectTypeOf(fromData).toEqualTypeOf<{
 					visits: number
 					owner: 's19'
 				}>()
-				return { visits: state.visits + inputData.delta, owner: 's00' }
+				return { visits: fromData.visits + inputData.delta, owner: 's00' }
 			},
-			's00 -skip> s05': ({ state, skip }) =>
-				state.visits < 0 ? skip() : { visits: state.visits + 1, owner: 's05' },
+			's00 -skip> s05': ({ fromData, skip }) =>
+				fromData.visits < 0
+					? skip()
+					: { visits: fromData.visits + 1, owner: 's05' },
 		},
 	})
 })
@@ -251,8 +252,8 @@ test('a wrong owner literal is still rejected at this scale', () => {
 		inputs: type<Inputs>(),
 		states: type<States>(),
 		transitions: {
-			's00 -next> s01': ({ state, inputData }) => ({
-				visits: state.visits + inputData.delta,
+			's00 -next> s01': ({ fromData, inputData }) => ({
+				visits: fromData.visits + inputData.delta,
 				// @ts-expect-error - s01's owner literal is "s01", not "s00"
 				owner: 's00',
 			}),

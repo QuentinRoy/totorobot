@@ -43,16 +43,12 @@ type AsyncInputs = {
 	cancel: undefined
 	reset: undefined
 }
-type AsyncStates =
-	| { name: 'idle'; nextRequestId: number }
-	| {
-			name: 'loading'
-			requestId: number
-			nextRequestId: number
-			progress: number
-	  }
-	| { name: 'success'; result: string; nextRequestId: number }
-	| { name: 'failure'; error: string; nextRequestId: number }
+type AsyncStates = {
+	idle: { nextRequestId: number }
+	loading: { requestId: number; nextRequestId: number; progress: number }
+	success: { result: string; nextRequestId: number }
+	failure: { error: string; nextRequestId: number }
+}
 
 /** One deferred per request, set by the residency, settled by a test. */
 const requests = new Map<number, ReturnType<typeof deferred<string>>>()
@@ -62,44 +58,44 @@ const asyncRequest = machine({
 	inputs: type<AsyncInputs>(),
 	states: type<AsyncStates>(),
 	transitions: {
-		'idle -start> loading': ({ state }) => ({
-			requestId: state.nextRequestId,
-			nextRequestId: state.nextRequestId + 1,
+		'idle -start> loading': ({ fromData }) => ({
+			requestId: fromData.nextRequestId,
+			nextRequestId: fromData.nextRequestId + 1,
 			progress: 0,
 		}),
-		'loading -progress> loading': ({ state, inputData, skip }) =>
-			inputData.requestId === state.requestId
-				? { ...state, progress: inputData.value }
+		'loading -progress> loading': ({ fromData, inputData, skip }) =>
+			inputData.requestId === fromData.requestId
+				? { ...fromData, progress: inputData.value }
 				: skip(),
-		'loading -succeed> success': ({ state, inputData, skip }) =>
-			inputData.requestId === state.requestId
-				? { result: inputData.result, nextRequestId: state.nextRequestId }
+		'loading -succeed> success': ({ fromData, inputData, skip }) =>
+			inputData.requestId === fromData.requestId
+				? { result: inputData.result, nextRequestId: fromData.nextRequestId }
 				: skip(),
-		'loading -fail> failure': ({ state, inputData, skip }) =>
-			inputData.requestId === state.requestId
-				? { error: inputData.error, nextRequestId: state.nextRequestId }
+		'loading -fail> failure': ({ fromData, inputData, skip }) =>
+			inputData.requestId === fromData.requestId
+				? { error: inputData.error, nextRequestId: fromData.nextRequestId }
 				: skip(),
 		// nextRequestId was already incremented on entering `loading`
-		'loading -cancel> idle': ({ state }) => ({
-			nextRequestId: state.nextRequestId,
+		'loading -cancel> idle': ({ fromData }) => ({
+			nextRequestId: fromData.nextRequestId,
 		}),
-		'success -reset> idle': ({ state }) => ({
-			nextRequestId: state.nextRequestId,
+		'success -reset> idle': ({ fromData }) => ({
+			nextRequestId: fromData.nextRequestId,
 		}),
-		'failure -reset> idle': ({ state }) => ({
-			nextRequestId: state.nextRequestId,
+		'failure -reset> idle': ({ fromData }) => ({
+			nextRequestId: fromData.nextRequestId,
 		}),
 	},
 	actions: {
 		loading: {
-			run: ({ to, send }) => {
+			run: ({ toData, send }) => {
 				const ctrl = new AbortController()
 				const work = deferred<string>()
-				requests.set(to.requestId, work)
+				requests.set(toData.requestId, work)
 				work.promise.then(
-					(result) => send('succeed', { requestId: to.requestId, result }),
+					(result) => send('succeed', { requestId: toData.requestId, result }),
 					(error) =>
-						send('fail', { requestId: to.requestId, error: String(error) }),
+						send('fail', { requestId: toData.requestId, error: String(error) }),
 				)
 				return () => ctrl.abort()
 			},
@@ -119,21 +115,25 @@ describe('acceptance: asynchronous request race', () => {
 		doc.send('progress', { requestId: 0, value: 0.5 })
 		expect(doc.current).toEqual({
 			name: 'loading',
-			requestId: 0,
-			nextRequestId: 1,
-			progress: 0.5,
+			data: {
+				requestId: 0,
+				nextRequestId: 1,
+				progress: 0.5,
+			},
 		})
 
 		requests.get(0)!.reject('boom')
 		await requests.get(0)!.promise.catch(() => {})
 		expect(doc.current).toEqual({
 			name: 'failure',
-			error: 'boom',
-			nextRequestId: 1,
+			data: {
+				error: 'boom',
+				nextRequestId: 1,
+			},
 		})
 
 		doc.send('reset')
-		expect(doc.current).toEqual({ name: 'idle', nextRequestId: 1 })
+		expect(doc.current).toEqual({ name: 'idle', data: { nextRequestId: 1 } })
 	})
 
 	test('the required race: a stale success for a cancelled request is free, and the live request still succeeds', async () => {
@@ -144,22 +144,26 @@ describe('acceptance: asynchronous request race', () => {
 		doc.send('start') // 1. start request 0
 		expect(doc.current).toEqual({
 			name: 'loading',
-			requestId: 0,
-			nextRequestId: 1,
-			progress: 0,
+			data: {
+				requestId: 0,
+				nextRequestId: 1,
+				progress: 0,
+			},
 		})
 		const request0 = requests.get(0)!
 
 		doc.send('cancel') // 2. cancel request 0: teardown aborts it
-		expect(doc.current).toEqual({ name: 'idle', nextRequestId: 1 })
+		expect(doc.current).toEqual({ name: 'idle', data: { nextRequestId: 1 } })
 		expect(abort).toHaveBeenCalledOnce()
 
 		doc.send('start') // 3. start request 1
 		expect(doc.current).toEqual({
 			name: 'loading',
-			requestId: 1,
-			nextRequestId: 2,
-			progress: 0,
+			data: {
+				requestId: 1,
+				nextRequestId: 2,
+				progress: 0,
+			},
 		})
 
 		// 4. request 0 still settles after cancellation — `abort()` does not
@@ -169,9 +173,11 @@ describe('acceptance: asynchronous request race', () => {
 		await request0.promise
 		expect(doc.current).toEqual({
 			name: 'loading',
-			requestId: 1,
-			nextRequestId: 2,
-			progress: 0,
+			data: {
+				requestId: 1,
+				nextRequestId: 2,
+				progress: 0,
+			},
 		})
 
 		// 5. receive success for request 1: enters success with its result
@@ -179,8 +185,10 @@ describe('acceptance: asynchronous request race', () => {
 		await requests.get(1)!.promise
 		expect(doc.current).toEqual({
 			name: 'success',
-			result: 'fresh',
-			nextRequestId: 2,
+			data: {
+				result: 'fresh',
+				nextRequestId: 2,
+			},
 		})
 	})
 })

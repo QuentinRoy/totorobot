@@ -9,23 +9,23 @@
  * inference site, not whether the value is a call. `observe` is clear of it
  * entirely, since a started host's vocabulary is already concrete.
  *
- * **A wrapper needs the vocabulary before the table is contextually typed, and
- * the shipped signature does not have it yet.** `machine` resolves the
- * vocabulary in two tiers: `RawI`/`RawS` infer from the `inputs`/`states`
- * properties, and `I`/`S` are *defaulted* type parameters computed off them
- * through `Declared`. A default is resolved after inference, so when a row's
- * generic call is checked `I` and `S` are not there yet, the call's own `P`
- * falls back to its constraint, and every row is rejected as
- * `not a transition: '…'`, well formed or not. Section 3 isolates this to the tier alone: the
- * same alias and the same call pass on one tier and fail on two. Collapsing the
- * pair is not available, per [I19](../docs/implementation-record.md#i19).
- *
- * **And `P` is recovered by alias identity, not structurally.** Even on one
- * tier, the wrapper works only while the table's row type and the wrapper's
- * signature name the *same* alias. Write the identical expression out twice and
- * `P` falls back to `string` (section 4). Factoring the row behind an alias to
+ * **`P` is recovered by alias identity, not structurally.** The wrapper works
+ * only while the table's row type and the wrapper's signature name the *same*
+ * alias. Write the identical expression out twice and `P` falls back to its
+ * constraint, taking every parameter down to `never` with it (section 4, and
+ * section 2 against the shipped signature). Factoring the row behind an alias to
  * satisfy that is what [I18](../docs/implementation-record.md#i18) warns against,
  * since it costs the per-row diagnostics the notation exists to give.
+ *
+ * **The two-tier vocabulary used to block it on its own, and no longer does.**
+ * `machine` resolves the vocabulary in two tiers: `RawI`/`RawS` infer from the
+ * `inputs`/`states` properties, and `I`/`S` are *defaulted* type parameters
+ * computed off them through `Declared`. On the tagged vocabulary that alone was
+ * enough to collapse every row
+ * ([I24](../docs/implementation-record.md#i24)); on the name-to-payload maps
+ * this repository ships now, section 3's miniature narrows under both tiers.
+ * Collapsing the pair is still not available, per
+ * [I19](../docs/implementation-record.md#i19).
  *
  * A wrapper that infers the vocabulary from its own context, rather than being
  * handed it, is unsound as well as inconvenient. It reopens the table as an
@@ -49,20 +49,20 @@ import { machine, type, type Skip } from '../src/totorobot.ts'
 import { assertType, type Equal } from './config-object-kit.ts'
 
 type InputVocab = Record<string, unknown>
-type StateVocab = { readonly name: string }
+type StateVocab = Record<string, unknown>
 type From<K> = K extends `${infer F} -${string}> ${string}` ? F : never
 type Label<K> = K extends `${string} -${infer L}> ${string}` ? L : never
 type To<K> = K extends `${string} -${string}> ${infer T}` ? T : never
 
 /**
- * Every state carries a payload, so the empty-payload arm of the real `Table`
- * ([I17](../docs/implementation-record.md#i17)) never comes up and a row type can
- * be written out below without reaching for its tag.
+ * Both vocabularies are name-to-payload maps, so a row type below is an indexed
+ * access and nothing here needs the empty-payload arm the tagged shape had.
  */
 type In = { open: { text: string }; submit: { reviewer: string } }
-type St =
-	| { name: 'draft'; text: string }
-	| { name: 'review'; text: string; reviewer: string }
+type St = {
+	draft: { text: string }
+	review: { text: string; reviewer: string }
+}
 
 const inputs = type<In>()
 const states = type<St>()
@@ -76,9 +76,9 @@ machine({
 	states,
 	initial: 'draft',
 	transitions: {
-		'draft -submit> review': ({ state, inputData }) => {
-			assertType<Equal<typeof state, { name: 'draft'; text: string }>>()
-			return { text: state.text, reviewer: inputData.reviewer }
+		'draft -submit> review': ({ fromData, inputData }) => {
+			assertType<Equal<typeof fromData, { text: string }>>()
+			return { text: fromData.text, reviewer: inputData.reviewer }
 		},
 	},
 })
@@ -111,17 +111,17 @@ machine({
 declare function kit<I extends InputVocab, S extends StateVocab>(): {
 	transition: <P extends string>(
 		fn: (args: {
-			readonly state: NoInfer<Extract<S, { name: From<P> }>>
+			readonly fromData: NoInfer<S[From<P> & keyof S]>
 			readonly input: NoInfer<Label<P> & string>
 			readonly inputData: NoInfer<I[Label<P> & keyof I]>
 			readonly skip: () => Skip
-		}) => Omit<Extract<S, { name: To<P> }>, 'name'> | Skip,
+		}) => S[To<P> & keyof S] | Skip,
 	) => (args: {
-		readonly state: NoInfer<Extract<S, { name: From<P> }>>
+		readonly fromData: NoInfer<S[From<P> & keyof S]>
 		readonly input: NoInfer<Label<P> & string>
 		readonly inputData: NoInfer<I[Label<P> & keyof I]>
 		readonly skip: () => Skip
-	}) => Omit<Extract<S, { name: To<P> }>, 'name'> | Skip
+	}) => S[To<P> & keyof S] | Skip
 }
 
 const { transition } = kit<In, St>()
@@ -129,12 +129,13 @@ const { transition } = kit<In, St>()
 machine({
 	inputs,
 	states,
-	// @ts-expect-error - the collapse does not stay on the row: with `S` gone,
-	// `StateName<NoInfer<S>>` is `never` and the initial state stops resolving too
+	// Once both vocabularies are maps, the collapse stays on the row: `initial`
+	// resolves against the declared names as usual.
 	initial: 'draft',
 	transitions: {
-		// @ts-expect-error - `I` and `S` are defaults, unresolved when this call is
-		// checked, so `P` falls back to `string` and the row reads as malformed
+		// @ts-expect-error - the kit spells the row's handler out longhand rather
+		// than naming `Table`'s own row type, so `P` falls back to its constraint
+		// and every parameter collapses to `never` (I25)
 		'draft -submit> review': transition(() => ({ text: '', reviewer: '' })),
 	},
 })
@@ -146,15 +147,15 @@ machine({
 // ---------------------------------------------------------------------------
 
 type MiniHandler<I extends InputVocab, S extends StateVocab, P> = (args: {
-	readonly state: NoInfer<Extract<S, { name: From<P> }>>
+	readonly fromData: NoInfer<S[From<P> & keyof S]>
 	readonly input: NoInfer<Label<P> & string>
 	readonly inputData: NoInfer<I[Label<P> & keyof I]>
-}) => Omit<Extract<S, { name: To<P> }>, 'name'> | void
+}) => S[To<P> & keyof S] | void
 
 type MiniKey<
 	I extends InputVocab,
 	S extends StateVocab,
-> = `${S['name']} -${keyof I & string}> ${S['name']}`
+> = `${keyof S & string} -${keyof I & string}> ${keyof S & string}`
 
 type MiniTable<I extends InputVocab, S extends StateVocab, K extends string> = {
 	readonly [P in K]: P extends MiniKey<I, S>
@@ -164,8 +165,8 @@ type MiniTable<I extends InputVocab, S extends StateVocab, K extends string> = {
 
 type Declared<Raw, Default> = Raw extends undefined ? Default : Raw
 type StatesFromKeys<K extends string> = {
-	[N in From<K> | To<K>]: { readonly name: N }
-}[From<K> | To<K>]
+	[N in From<K> | To<K>]: unknown
+}
 type InputsFromKeys<K extends string> = {
 	[N in Label<K>]: unknown
 }
@@ -186,11 +187,19 @@ declare function oneTier<
  * is the difference section 6 turns on.
  */
 type MiniAct<S extends StateVocab, N> = (args: {
-	readonly data: NoInfer<Extract<S, { name: N }>>
+	readonly data: NoInfer<S[N & keyof S]>
 }) => void
 
-type MiniActions<S extends StateVocab> = {
-	readonly [N in S['name']]?: MiniAct<S, N>
+/**
+ * Keyed off its own `A`, the way the shipped `Actions` is, rather than off
+ * `keyof S`: a homomorphic mapped type over the vocabulary would make the block
+ * a reverse-mapped inference site ([I10](../docs/implementation-record.md#i10)),
+ * which is exactly the property section 6 is here to say it does not have.
+ */
+type MiniActions<S extends StateVocab, A extends string> = {
+	readonly [N in A]: N extends keyof S & string
+		? MiniAct<S, N>
+		: `not a trigger: '${N}'`
 }
 
 declare function twoTier<
@@ -199,11 +208,12 @@ declare function twoTier<
 	RawS extends StateVocab | undefined = undefined,
 	I extends InputVocab = Declared<RawI, InputsFromKeys<K>>,
 	S extends StateVocab = Declared<RawS, StatesFromKeys<K>>,
+	A extends string = never,
 >(d: {
 	readonly inputs?: RawI | undefined
 	readonly states?: RawS | undefined
 	readonly transitions: MiniTable<I, S, K>
-	readonly actions?: MiniActions<S> | undefined
+	readonly actions?: MiniActions<S, A> | undefined
 }): void
 
 declare function miniKit<I extends InputVocab, S extends StateVocab>(): {
@@ -223,23 +233,33 @@ oneTier({
 	inputs,
 	states,
 	transitions: {
-		'draft -submit> review': mini(({ state, inputData }) => {
-			assertType<Equal<typeof state, { name: 'draft'; text: string }>>()
+		'draft -submit> review': mini(({ fromData, inputData }) => {
+			assertType<Equal<typeof fromData, { text: string }>>()
 			assertType<Equal<typeof inputData, { reviewer: string }>>()
-			return { text: state.text, reviewer: inputData.reviewer }
+			return { text: fromData.text, reviewer: inputData.reviewer }
 		}),
 		// @ts-expect-error - no space after '>', so this is not a transition
 		'draft -submit>review': mini(() => ({ text: '', reviewer: '' })),
 	},
 })
 
-/** The same alias and the same call, with `I`/`S` moved behind a `Raw` pair. */
+/**
+ * The same alias and the same call, with `I`/`S` moved behind a `Raw` pair —
+ * and, on map-shaped vocabularies, **it now passes**. The row's return is
+ * checked against `review`'s payload, so `P` came back from the contextual type
+ * with the tier in place. The tier obstacle
+ * ([I24](../docs/implementation-record.md#i24)) was measured on the tagged
+ * vocabulary this migration replaced; the miniature no longer reproduces it, and
+ * the wrapper's remaining obstacle against the shipped signature is alias
+ * identity (section 4), not the tier.
+ */
 twoTier({
 	inputs,
 	states,
 	transitions: {
-		// @ts-expect-error - the tier is the whole difference from the row above
-		'draft -submit> review': mini(() => ({ text: '', reviewer: '' })),
+		// @ts-expect-error - `review` carries a `reviewer` too: `P` came back from
+		// the row, so the wrapper's return is checked against it
+		'draft -submit> review': mini(() => ({ text: '' })),
 	},
 })
 
@@ -251,15 +271,15 @@ twoTier({
 declare function longhandKit<I extends InputVocab, S extends StateVocab>(): {
 	transition: <P extends string>(
 		fn: (args: {
-			readonly state: NoInfer<Extract<S, { name: From<P> }>>
+			readonly fromData: NoInfer<S[From<P> & keyof S]>
 			readonly input: NoInfer<Label<P> & string>
 			readonly inputData: NoInfer<I[Label<P> & keyof I]>
-		}) => Omit<Extract<S, { name: To<P> }>, 'name'> | void,
+		}) => S[To<P> & keyof S] | void,
 	) => (args: {
-		readonly state: NoInfer<Extract<S, { name: From<P> }>>
+		readonly fromData: NoInfer<S[From<P> & keyof S]>
 		readonly input: NoInfer<Label<P> & string>
 		readonly inputData: NoInfer<I[Label<P> & keyof I]>
-	}) => Omit<Extract<S, { name: To<P> }>, 'name'> | void
+	}) => S[To<P> & keyof S] | void
 }
 
 const longhand = longhandKit<In, St>().transition
@@ -332,8 +352,8 @@ twoTier({
 	inputs,
 	states,
 	transitions: {
-		'draft -submit> review': ({ state, inputData }) => ({
-			text: state.text,
+		'draft -submit> review': ({ fromData, inputData }) => ({
+			text: fromData.text,
 			reviewer: inputData.reviewer,
 		}),
 	},
@@ -354,8 +374,8 @@ twoTier({
 	inputs,
 	states,
 	transitions: {
-		'draft -submit> review': ({ state, inputData }) => ({
-			text: state.text,
+		'draft -submit> review': ({ fromData, inputData }) => ({
+			text: fromData.text,
 			reviewer: inputData.reviewer,
 		}),
 	},
@@ -369,9 +389,11 @@ twoTier({
 
 /**
  * The kit is still doing the work, though. Without a vocabulary handed in, the
- * wrapper's own parameters fall back and `data` is `never`. The trigger key is
- * still constrained by the mapped type, so a probe that only checks whether bad
- * keys are rejected will report success here.
+ * wrapper's **return** type names `S` from the block, which reopens the whole
+ * call's vocabulary: `S` falls back to its constraint, `data` widens to
+ * `unknown`, and the transitions row below loses its narrowing too. The trigger
+ * key is still constrained by the mapped type, so a probe that only checks
+ * whether bad keys are rejected will report success here.
  */
 declare function persistentFree<S extends StateVocab, N extends string>(
 	fn: MiniAct<S, N>,
@@ -381,14 +403,11 @@ twoTier({
 	inputs,
 	states,
 	transitions: {
-		'draft -submit> review': ({ state, inputData }) => ({
-			text: state.text,
-			reviewer: inputData.reviewer,
-		}),
+		'draft -submit> review': () => ({ text: '', reviewer: '' }),
 	},
 	actions: {
 		draft: persistentFree(({ data }) => {
-			// @ts-expect-error - `data` is `never`: nothing handed this one the
+			// @ts-expect-error - `data` is `unknown`: nothing handed this one the
 			// vocabulary, so its own parameters fell back
 			void data.text
 		}),

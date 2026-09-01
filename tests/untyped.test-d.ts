@@ -13,11 +13,10 @@
  * An omitted half now defaults to `StatesFromKeys<K>` / `InputsFromKeys<K>`:
  * every name `transitions` itself mentions. For inputs, the *names* narrow to
  * what the table says instead of widening to `string`, but the *data* each one
- * carries stays `unknown`, since nothing declares it one way or the other. For
- * states, each inferred member keeps its `name` tag exact and widens every
- * other field to `unknown` the same way — there is no separate `data` bag to
- * widen instead. A name the table never mentions — in a row, or in `initial` —
- * is rejected.
+ * carries stays `unknown`, since nothing declares it one way or the other.
+ * States are read off both ends of every key the same way, and each name's
+ * payload is `unknown` for the same reason. A name the table never mentions —
+ * in a row, or in `initial` — is rejected.
  *
  * Three things make that safe rather than a repeat of the `initial` cliff:
  *
@@ -48,14 +47,14 @@ test('a well-formed table compiles with no vocabulary declared', () => {
 	const untyped = machine({
 		initial: 'off',
 		transitions: {
-			'off -toggle> on': ({ state, input, inputData }) => {
+			'off -toggle> on': ({ from, fromData, input, inputData }) => {
 				// `not.toBeAny()` is load-bearing: `toEqualTypeOf<unknown>()` alone
 				// passes against `any` too, which is exactly the historical "any
 				// leak" this design must not repeat.
-				expectTypeOf(state.name).not.toBeAny()
-				expectTypeOf(state.name).toEqualTypeOf<'off'>()
-				expectTypeOf(state['anything']).not.toBeAny()
-				expectTypeOf(state['anything']).toEqualTypeOf<unknown>()
+				expectTypeOf(from).not.toBeAny()
+				expectTypeOf(from).toEqualTypeOf<'off'>()
+				expectTypeOf(fromData).not.toBeAny()
+				expectTypeOf(fromData).toEqualTypeOf<unknown>()
 				expectTypeOf(input).not.toBeAny()
 				expectTypeOf(input).toEqualTypeOf<'toggle'>()
 				expectTypeOf(inputData).not.toBeAny()
@@ -67,8 +66,8 @@ test('a well-formed table compiles with no vocabulary declared', () => {
 	const host = untyped.start()
 	expectTypeOf<InputsOf<typeof untyped>>().toEqualTypeOf<{ toggle: unknown }>()
 	expectTypeOf(host.current.name).toEqualTypeOf<'off' | 'on'>()
-	expectTypeOf(host.current['anything']).not.toBeAny()
-	expectTypeOf(host.current['anything']).toEqualTypeOf<unknown>()
+	expectTypeOf(host.current.data).not.toBeAny()
+	expectTypeOf(host.current.data).toEqualTypeOf<unknown>()
 	expectTypeOf(host.send).parameter(0).toEqualTypeOf<'toggle'>()
 })
 
@@ -100,7 +99,7 @@ test('initial must be a state transitions mentions when no states are declared',
 })
 
 test('initial is checked against the declared states and never infers them', () => {
-	type States = { name: 'off' } | { name: 'on' }
+	type States = { off: undefined; on: undefined }
 
 	machine({
 		initial: 'off',
@@ -214,9 +213,9 @@ test('start() takes an optional, unknown payload for an inferred initial state',
 		},
 	})
 
-	// 'off' has no declared data, so it widens to unknown fields rather than
-	// being assumed payload-free — both an omitted and a present payload are
-	// legal.
+	// 'off' has no declared payload, so it widens to `unknown` rather than
+	// being assumed payload-free — and `unknown` admits `undefined`, so both an
+	// omitted and a present payload are legal.
 	untyped.start()
 	untyped.start({ anything: true })
 
@@ -253,15 +252,15 @@ test('declaring inputs and omitting states checks inputs and infers states from 
 		initial: 'off',
 		inputs: type<Inputs>(),
 		transitions: {
-			'off -toggle> on': ({ state, inputData }) => {
+			'off -toggle> on': ({ from, fromData, inputData }) => {
 				// The declared half is checked; the omitted half is read off the
 				// table, with unknown (not `any` — see `not.toBeAny()` above)
-				// fields since nothing declares what they are.
+				// payloads since nothing declares what they are.
 				expectTypeOf(inputData).toEqualTypeOf<undefined>()
-				expectTypeOf(state.name).not.toBeAny()
-				expectTypeOf(state.name).toEqualTypeOf<'off'>()
-				expectTypeOf(state['anything']).not.toBeAny()
-				expectTypeOf(state['anything']).toEqualTypeOf<unknown>()
+				expectTypeOf(from).not.toBeAny()
+				expectTypeOf(from).toEqualTypeOf<'off'>()
+				expectTypeOf(fromData).not.toBeAny()
+				expectTypeOf(fromData).toEqualTypeOf<unknown>()
 			},
 			// @ts-expect-error - 'bogus' is not a declared input
 			'off -bogus> on': () => {},
@@ -274,17 +273,17 @@ test('declaring inputs and omitting states checks inputs and infers states from 
 })
 
 test('declaring states and omitting inputs checks states and infers inputs from the table', () => {
-	type States = { name: 'off' } | { name: 'on' }
+	type States = { off: undefined; on: undefined }
 
 	const half = machine({
 		initial: 'off',
 		states: type<States>(),
 		transitions: {
-			'off -toggle> on': ({ state, input, inputData }) => {
-				// The declared half is checked, so `state` is exactly what was
+			'off -toggle> on': ({ fromData, input, inputData }) => {
+				// The declared half is checked, so `fromData` is exactly what was
 				// declared for 'off'; the omitted half is read off the table, with
 				// unknown (not `any`) data since nothing declares what it is.
-				expectTypeOf(state).toEqualTypeOf<{ name: 'off' }>()
+				expectTypeOf(fromData).toEqualTypeOf<undefined>()
 				expectTypeOf(input).not.toBeAny()
 				expectTypeOf(input).toEqualTypeOf<'toggle'>()
 				expectTypeOf(inputData).not.toBeAny()
@@ -359,11 +358,11 @@ test('passing the marker explicitly as undefined behaves as omitting the propert
 		inputs: undefined,
 		states: undefined,
 		transitions: {
-			'off -toggle> on': ({ state, input, inputData }) => {
-				expectTypeOf(state.name).not.toBeAny()
-				expectTypeOf(state.name).toEqualTypeOf<'off'>()
-				expectTypeOf(state['anything']).not.toBeAny()
-				expectTypeOf(state['anything']).toEqualTypeOf<unknown>()
+			'off -toggle> on': ({ from, fromData, input, inputData }) => {
+				expectTypeOf(from).not.toBeAny()
+				expectTypeOf(from).toEqualTypeOf<'off'>()
+				expectTypeOf(fromData).not.toBeAny()
+				expectTypeOf(fromData).toEqualTypeOf<unknown>()
 				expectTypeOf(input).not.toBeAny()
 				expectTypeOf(input).toEqualTypeOf<'toggle'>()
 				expectTypeOf(inputData).not.toBeAny()

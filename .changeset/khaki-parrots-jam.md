@@ -6,7 +6,10 @@
 `{ run, restart }` record `actions` takes:
 
 ```ts
-doc.observe('loading', { run: ({ to }) => subscribe(to.url), restart: false })
+doc.observe('loading', {
+	run: ({ toData }) => subscribe(toData.url),
+	restart: false,
+})
 ```
 
 Already resident when observed, it runs immediately. Unsubscribing tears down

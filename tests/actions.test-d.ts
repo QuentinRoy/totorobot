@@ -8,10 +8,10 @@ import { expectTypeOf, test } from 'vitest'
 import { machine, type } from 'totorobot'
 
 type Inputs = { toggle: undefined; go: undefined }
-type States = { name: 'off' } | { name: 'on'; count: number } | { name: 'gone' }
+type States = { off: undefined; on: { count: number }; gone: undefined }
 type Send = (...args: ['toggle', undefined?] | ['go', undefined?]) => void
 
-test("a residency trigger's arrival narrows `to` to that trigger's own state, tag included, whichever way the state was entered", () => {
+test("a residency trigger's arrival narrows `to` to that trigger's own state, and `toData` to what it carries, whichever way the state was entered", () => {
 	machine({
 		initial: 'off',
 		inputs: type<Inputs>(),
@@ -21,8 +21,9 @@ test("a residency trigger's arrival narrows `to` to that trigger's own state, ta
 			'on -toggle> off': () => {},
 		},
 		actions: {
-			on: ({ to }) => {
-				expectTypeOf(to).toEqualTypeOf<{ name: 'on'; count: number }>()
+			on: ({ to, toData }) => {
+				expectTypeOf(to).toEqualTypeOf<'on'>()
+				expectTypeOf(toData).toEqualTypeOf<{ count: number }>()
 			},
 		},
 	})
@@ -38,8 +39,9 @@ test("a residency trigger's `from` covers every state that can reach it, plus `u
 			'on -toggle> off': () => {},
 		},
 		actions: {
-			on: ({ from }) => {
-				expectTypeOf(from).toEqualTypeOf<States | undefined>()
+			on: ({ from, fromData }) => {
+				expectTypeOf(from).toEqualTypeOf<keyof States | undefined>()
+				expectTypeOf(fromData).toEqualTypeOf<States[keyof States] | undefined>()
 			},
 		},
 	})
@@ -54,7 +56,7 @@ test('a residency action reading `from` without narrowing away the initial arriv
 		actions: {
 			on: ({ from }) => {
 				// @ts-expect-error - `from` is `undefined` on the initial arrival
-				from.name
+				from.length
 			},
 		},
 	})
@@ -71,11 +73,10 @@ test("an edge trigger's argument narrows the transition exactly the way a listen
 		},
 		actions: {
 			'off -toggle> on': (transition) => {
-				expectTypeOf(transition.from).toEqualTypeOf<{ name: 'off' }>()
-				expectTypeOf(transition.to).toEqualTypeOf<{
-					name: 'on'
-					count: number
-				}>()
+				expectTypeOf(transition.from).toEqualTypeOf<'off'>()
+				expectTypeOf(transition.fromData).toEqualTypeOf<undefined>()
+				expectTypeOf(transition.to).toEqualTypeOf<'on'>()
+				expectTypeOf(transition.toData).toEqualTypeOf<{ count: number }>()
 				expectTypeOf(transition.input).toEqualTypeOf<'toggle'>()
 				expectTypeOf(transition.inputData).toEqualTypeOf<undefined>()
 				expectTypeOf(transition.send).toEqualTypeOf<Send>()
@@ -174,11 +175,11 @@ test('a plain block body with nothing to tear down is accepted on both a residen
 		states: type<States>(),
 		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
 		actions: {
-			on: ({ to }) => {
-				to.count // no return statement at all: infers as `void`, not `undefined`
+			on: ({ toData }) => {
+				toData.count // no return statement at all: infers as `void`, not `undefined`
 			},
-			'off -toggle> on': ({ to }) => {
-				to.count // no return statement at all: infers as `void`, not `undefined`
+			'off -toggle> on': ({ toData }) => {
+				toData.count // no return statement at all: infers as `void`, not `undefined`
 			},
 		},
 	})
@@ -238,7 +239,7 @@ test('a residency or edge action may be an array of bare functions and records',
 	})
 })
 
-test('a residency record accepts `restart` as a boolean or a predicate over the narrowed state either side', () => {
+test('a residency record accepts `restart` as a boolean or a predicate over the transition facts', () => {
 	machine({
 		initial: 'off',
 		inputs: type<Inputs>(),
@@ -248,9 +249,11 @@ test('a residency record accepts `restart` as a boolean or a predicate over the 
 			on: { run: () => {}, restart: false },
 			gone: {
 				run: () => {},
-				restart: (from, to) => {
-					expectTypeOf(from).toEqualTypeOf<{ name: 'gone' }>()
-					expectTypeOf(to).toEqualTypeOf<{ name: 'gone' }>()
+				restart: ({ from, fromData, to, toData }) => {
+					expectTypeOf(from).toEqualTypeOf<'gone'>()
+					expectTypeOf(fromData).toEqualTypeOf<undefined>()
+					expectTypeOf(to).toEqualTypeOf<'gone'>()
+					expectTypeOf(toData).toEqualTypeOf<undefined>()
 					return true
 				},
 			},

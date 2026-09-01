@@ -26,11 +26,12 @@ type Inputs = {
 	results: { items: readonly string[] }
 }
 
-type States =
-	| { name: 'idle' }
-	| { name: 'typing'; query: string }
-	| { name: 'loading'; query: string }
-	| { name: 'results'; query: string; items: readonly string[] }
+type States = {
+	idle: undefined
+	typing: { query: string }
+	loading: { query: string }
+	results: { query: string; items: readonly string[] }
+}
 
 const DEBOUNCE_MS = 40
 
@@ -55,11 +56,9 @@ export const searchBox = machine({
 		// dropped rather than racing the next one.
 		'loading -type> typing': ({ inputData }) => ({ query: inputData.text }),
 
-		'typing -debounceElapsed> loading': ({ state }) => ({
-			query: state.query,
-		}),
-		'loading -results> results': ({ state, inputData }) => ({
-			query: state.query,
+		'typing -debounceElapsed> loading': ({ fromData }) => fromData,
+		'loading -results> results': ({ fromData, inputData }) => ({
+			query: fromData.query,
 			items: inputData.items,
 		}),
 	},
@@ -72,9 +71,9 @@ export const searchBox = machine({
 			return () => clearTimeout(timer)
 		},
 
-		loading: ({ to, send }) => {
+		loading: ({ toData, send }) => {
 			let live = true
-			void fakeSearch(to.query).then((items) => {
+			void fakeSearch(toData.query).then((items) => {
 				if (live) send('results', { items })
 			})
 			return () => {
@@ -91,7 +90,7 @@ export function nextResults(
 	return new Promise((resolve) => {
 		const stop = host.observe('* -> results', (e) => {
 			stop()
-			resolve(e.to.items)
+			resolve(e.toData.items)
 		})
 	})
 }

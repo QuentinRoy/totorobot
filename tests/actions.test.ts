@@ -10,7 +10,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ toggle: undefined }>(),
-			states: type<{ name: 'off' } | { name: 'on' }>(),
+			states: type<{ off: undefined; on: undefined }>(),
 			transitions: {
 				'off -toggle> on': () => {},
 				'on -toggle> off': () => {},
@@ -31,7 +31,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ toggle: undefined }>(),
-			states: type<{ name: 'off' } | { name: 'on' }>(),
+			states: type<{ off: undefined; on: undefined }>(),
 			transitions: {
 				'off -toggle> on': () => {},
 				'on -toggle> off': () => {},
@@ -53,7 +53,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ toggle: undefined }>(),
-			states: type<{ name: 'off' } | { name: 'on' }>(),
+			states: type<{ off: undefined; on: undefined }>(),
 			transitions: {
 				'off -toggle> on': () => {},
 				'on -toggle> off': () => {},
@@ -73,7 +73,7 @@ describe('actions', () => {
 		const pinger = machine({
 			initial: 'idle',
 			inputs: type<{ ping: undefined }>(),
-			states: type<{ name: 'idle' }>(),
+			states: type<{ idle: undefined }>(),
 			transitions: {
 				'idle -ping> idle': () => {},
 			},
@@ -99,7 +99,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'idle',
 			inputs: type<{ ping: undefined }>(),
-			states: type<{ name: 'idle' }>(),
+			states: type<{ idle: undefined }>(),
 			transitions: { 'idle -ping> idle': () => {} },
 			actions: {
 				idle: {
@@ -123,7 +123,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ ping: undefined; toggle: undefined }>(),
-			states: type<{ name: 'off' } | { name: 'on' }>(),
+			states: type<{ off: undefined; on: undefined }>(),
 			transitions: {
 				'off -toggle> on': () => {},
 				'on -ping> on': () => {},
@@ -154,17 +154,17 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'idle',
 			inputs: type<{ set: { id: number } }>(),
-			states: type<{ name: 'idle'; id: number }>(),
+			states: type<{ idle: { id: number } }>(),
 			transitions: {
 				'idle -set> idle': ({ inputData }) => ({ id: inputData.id }),
 			},
 			actions: {
 				idle: {
-					run: ({ to }) => {
-						log(`setup:${to.id}`)
+					run: ({ toData }) => {
+						log(`setup:${toData.id}`)
 						return () => log('teardown')
 					},
-					restart: (from, to) => from.id !== to.id,
+					restart: ({ fromData, toData }) => fromData.id !== toData.id,
 				},
 			},
 		}).start({ id: 0 })
@@ -184,7 +184,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'idle',
 			inputs: type<{ ping: undefined }>(),
-			states: type<{ name: 'idle' }>(),
+			states: type<{ idle: undefined }>(),
 			transitions: { 'idle -ping> idle': () => {} },
 			actions: {
 				idle: { run: () => {}, restart }, // no teardown returned: still active for the next decision
@@ -204,7 +204,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'idle',
 			inputs: type<{ ping: undefined }>(),
-			states: type<{ name: 'idle' }>(),
+			states: type<{ idle: undefined }>(),
 			transitions: { 'idle -ping> idle': () => {} },
 			actions: {
 				idle: [
@@ -224,7 +224,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'idle',
 			inputs: type<{ ping: undefined }>(),
-			states: type<{ name: 'idle' }>(),
+			states: type<{ idle: undefined }>(),
 			transitions: { 'idle -ping> idle': () => {} },
 			actions: {
 				idle: [
@@ -243,7 +243,7 @@ describe('actions', () => {
 		// teardown completes before the first action's predicate throws.
 		expect(() => doc.send('ping')).toThrow('boom')
 		expect(log).toHaveBeenCalledExactlyOnceWith('teardown')
-		expect(doc.current).toEqual({ name: 'idle' })
+		expect(doc.current.name).toBe('idle')
 	})
 
 	test('a key containing -> is an edge: it fires once per matching transition', () => {
@@ -251,7 +251,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ toggle: undefined }>(),
-			states: type<{ name: 'off' } | { name: 'on' }>(),
+			states: type<{ off: undefined; on: undefined }>(),
 			transitions: {
 				'off -toggle> on': () => {},
 				'on -toggle> off': () => {},
@@ -272,7 +272,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'a',
 			inputs: type<{ x: undefined; y: undefined }>(),
-			states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
+			states: type<{ a: undefined; b: undefined; c: undefined }>(),
 			transitions: {
 				'a -x> b': () => {},
 				'a -y> c': () => {},
@@ -292,7 +292,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ toggle: undefined }>(),
-			states: type<{ name: 'off' } | { name: 'on' }>(),
+			states: type<{ off: undefined; on: undefined }>(),
 			transitions: {
 				'off -toggle> on': () => {},
 				'on -toggle> off': () => {},
@@ -317,7 +317,7 @@ describe('actions', () => {
 		machine({
 			initial: 'a',
 			inputs: type<{ x: undefined }>(),
-			states: type<{ name: 'a' } | { name: 'b' }>(),
+			states: type<{ a: undefined; b: undefined }>(),
 			transitions: { 'a -x> b': () => {} },
 			actions: {
 				'* -> a': wildcardSource,
@@ -338,7 +338,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ toggle: undefined }>(),
-			states: type<{ name: 'off' } | { name: 'on' }>(),
+			states: type<{ off: undefined; on: undefined }>(),
 			transitions: {
 				'off -toggle> on': () => {},
 			},
@@ -351,8 +351,10 @@ describe('actions', () => {
 		expect(action).toHaveBeenCalledExactlyOnceWith({
 			input: 'toggle',
 			inputData: undefined,
-			from: { name: 'off' },
-			to: { name: 'on' },
+			from: 'off',
+			fromData: undefined,
+			to: 'on',
+			toData: undefined,
 			send: expect.any(Function),
 		})
 		expect(action.mock.calls[0]?.[0].send).toBe(doc.send)
@@ -363,7 +365,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ toggle: undefined }>(),
-			states: type<{ name: 'off' } | { name: 'on' }>(),
+			states: type<{ off: undefined; on: undefined }>(),
 			transitions: {
 				'off -toggle> on': () => {},
 			},
@@ -376,7 +378,9 @@ describe('actions', () => {
 			input: undefined,
 			inputData: undefined,
 			from: undefined,
-			to: { name: 'off' },
+			fromData: undefined,
+			to: 'off',
+			toData: undefined,
 			send: expect.any(Function),
 		})
 		expect(action.mock.calls[0]?.[0].send).toBe(doc.send)
@@ -387,7 +391,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ toggle: undefined }>(),
-			states: type<{ name: 'off' } | { name: 'on' }>(),
+			states: type<{ off: undefined; on: undefined }>(),
 			transitions: {
 				'off -toggle> on': () => {},
 			},
@@ -400,8 +404,10 @@ describe('actions', () => {
 		expect(action).toHaveBeenCalledExactlyOnceWith({
 			input: 'toggle',
 			inputData: undefined,
-			from: { name: 'off' },
-			to: { name: 'on' },
+			from: 'off',
+			fromData: undefined,
+			to: 'on',
+			toData: undefined,
 			send: expect.any(Function),
 		})
 		expect(action.mock.calls[0]?.[0].send).toBe(doc.send)
@@ -411,14 +417,14 @@ describe('actions', () => {
 		const log = vi.fn()
 		const doc = machine({
 			initial: 'a',
-			states: type<{ name: 'a' } | { name: 'b' }>(),
+			states: type<{ a: undefined; b: undefined }>(),
 			transitions: { 'a -> b': () => {} },
 			actions: {
 				a: () => {
 					log('residency a')
 				},
 				'a -> b': ({ from }) => {
-					log(`edge a -> b, from ${from.name}`)
+					log(`edge a -> b, from ${from}`)
 				},
 				b: () => {
 					log('residency b')
@@ -430,7 +436,7 @@ describe('actions', () => {
 		expect(log).toHaveBeenNthCalledWith(1, 'residency a')
 		expect(log).toHaveBeenNthCalledWith(2, 'edge a -> b, from a')
 		expect(log).toHaveBeenNthCalledWith(3, 'residency b')
-		expect(doc.current).toEqual({ name: 'b' })
+		expect(doc.current.name).toBe('b')
 	})
 
 	test('residency runs on every hop of an immediate chain, including a state entered and left within one drain', () => {
@@ -442,7 +448,7 @@ describe('actions', () => {
 		expect(setup).toHaveBeenCalledOnce()
 		expect(teardown).toHaveBeenCalledOnce()
 		expect(setup).toHaveBeenCalledBefore(teardown)
-		expect(doc.current).toEqual({ name: 'd' })
+		expect(doc.current.name).toBe('d')
 	})
 
 	test('a declared residency produces the same log as the residency recipe documented in the README', () => {
@@ -475,7 +481,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ toggle: undefined }>(),
-			states: type<{ name: 'off' } | { name: 'on' }>(),
+			states: type<{ off: undefined; on: undefined }>(),
 			transitions: {
 				'off -toggle> on': () => {},
 				'on -toggle> off': () => {},
@@ -505,7 +511,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ toggle: undefined }>(),
-			states: type<{ name: 'off' } | { name: 'on' }>(),
+			states: type<{ off: undefined; on: undefined }>(),
 			transitions: {
 				'off -toggle> on': () => {},
 				'on -toggle> off': () => {},
@@ -521,13 +527,13 @@ describe('actions', () => {
 		doc.observe('* -> *', listener) // must never run either
 
 		expect(() => doc.send('toggle')).toThrow('boom')
-		expect(doc.current).toEqual({ name: 'on' }) // the transition itself stays committed
+		expect(doc.current.name).toBe('on') // the transition itself stays committed
 		expect(setup).not.toHaveBeenCalled()
 		expect(listener).not.toHaveBeenCalled()
 
 		// the host is usable afterwards
 		doc.send('toggle')
-		expect(doc.current).toEqual({ name: 'off' })
+		expect(doc.current.name).toBe('off')
 	})
 
 	test('an array of actions on one trigger sets up in declaration order and tears down in reverse', () => {
@@ -535,7 +541,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ toggle: undefined }>(),
-			states: type<{ name: 'off' } | { name: 'on' }>(),
+			states: type<{ off: undefined; on: undefined }>(),
 			transitions: {
 				'off -toggle> on': () => {},
 				'on -toggle> off': () => {},
@@ -571,7 +577,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ toggle: undefined }>(),
-			states: type<{ name: 'off' } | { name: 'on' }>(),
+			states: type<{ off: undefined; on: undefined }>(),
 			transitions: { 'off -toggle> on': () => {} },
 			actions: {
 				'off -toggle> on': [
@@ -592,7 +598,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'on',
 			inputs: type<{ ping: undefined }>(),
-			states: type<{ name: 'on' }>(),
+			states: type<{ on: undefined }>(),
 			transitions: { 'on -ping> on': () => {} },
 			actions: {
 				on: [
@@ -627,7 +633,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ toggle: undefined }>(),
-			states: type<{ name: 'off' } | { name: 'on' }>(),
+			states: type<{ off: undefined; on: undefined }>(),
 			transitions: {
 				'off -toggle> on': () => {},
 				'on -toggle> off': () => {},
@@ -653,7 +659,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ toggle: undefined }>(),
-			states: type<{ name: 'off' } | { name: 'on' }>(),
+			states: type<{ off: undefined; on: undefined }>(),
 			transitions: {
 				'off -toggle> on': () => {},
 				'on -toggle> off': () => {},
@@ -680,7 +686,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ toggle: undefined }>(),
-			states: type<{ name: 'off' } | { name: 'on' }>(),
+			states: type<{ off: undefined; on: undefined }>(),
 			transitions: {
 				'off -toggle> on': () => {},
 				'on -toggle> off': () => {},
@@ -697,7 +703,7 @@ describe('actions', () => {
 		expect(() =>
 			machine({
 				initial: 'off',
-				states: type<{ name: 'off' } | { name: 'on' }>(),
+				states: type<{ off: undefined; on: undefined }>(),
 				transitions: { 'off -toggle> on': () => {} },
 				actions: { nonexistent: () => {} } as never,
 			}).start(),
@@ -709,7 +715,7 @@ describe('actions', () => {
 		const doc = machine({
 			initial: 'a',
 			inputs: type<{ go: undefined; next: undefined }>(),
-			states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
+			states: type<{ a: undefined; b: undefined; c: undefined }>(),
 			transitions: {
 				'a -go> b': () => {},
 				'b -next> c': () => {},
@@ -726,7 +732,7 @@ describe('actions', () => {
 				},
 			},
 		}).start()
-		doc.observe('* -> *', (e) => log(`listener: -> ${e.to.name}`))
+		doc.observe('* -> *', (e) => log(`listener: -> ${e.to}`))
 
 		doc.send('go')
 
@@ -737,6 +743,6 @@ describe('actions', () => {
 		expect(log).toHaveBeenNthCalledWith(4, 'b teardown')
 		expect(log).toHaveBeenNthCalledWith(5, 'c setup')
 		expect(log).toHaveBeenNthCalledWith(6, 'listener: -> c')
-		expect(doc.current).toEqual({ name: 'c' })
+		expect(doc.current.name).toBe('c')
 	})
 })

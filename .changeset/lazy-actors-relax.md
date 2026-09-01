@@ -7,8 +7,8 @@ travels with the definition instead of being bookkeeping every caller writes:
 
 ```ts
 actions: {
-	connected: ({ to }) => {
-		const socket = connect(to.url)
+	connected: ({ toData }) => {
+		const socket = connect(toData.url)
 		return () => socket.close()
 	},
 }

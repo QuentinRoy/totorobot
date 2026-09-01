@@ -32,23 +32,27 @@ describe('observing', () => {
 		expect(first).toHaveBeenCalledBefore(second)
 	})
 
-	test("inside a listener, the record's target end deep-equals current", () => {
+	test("inside a listener, the record's target end agrees with current", () => {
 		const doc = toggle.start()
 		const observer = vi.fn()
 
 		doc.observe('* -> *', (e) => {
-			observer(e.to, doc.current)
+			observer(e.to, e.toData, doc.current)
 		})
 
 		doc.send('toggle')
-		expect(observer).toHaveBeenCalledExactlyOnceWith(doc.current, doc.current)
+		expect(observer).toHaveBeenCalledExactlyOnceWith(
+			doc.current.name,
+			doc.current.data,
+			doc.current,
+		)
 	})
 
 	test('* matches any state, an unlabelled arrow matches any input, and a labelled one matches only that input', () => {
 		const fork = machine({
 			initial: 'a',
 			inputs: type<{ x: undefined; y: undefined }>(),
-			states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
+			states: type<{ a: undefined; b: undefined; c: undefined }>(),
 			transitions: {
 				'a -x> b': () => {},
 				'a -y> c': () => {},
@@ -121,22 +125,28 @@ describe('observing', () => {
 		expect(observer).toHaveBeenNthCalledWith(1, {
 			input: 'submit',
 			inputData: { quota: 1 },
-			from: { name: 'draft' },
-			to: { name: 'checking', quota: 1 },
+			from: 'draft',
+			fromData: undefined,
+			to: 'checking',
+			toData: { quota: 1 },
 			send: expect.any(Function),
 		})
 		expect(observer).toHaveBeenNthCalledWith(2, {
 			input: undefined,
 			inputData: undefined,
-			from: { name: 'checking', quota: 1 },
-			to: { name: 'allowed', quota: 1 },
+			from: 'checking',
+			fromData: { quota: 1 },
+			to: 'allowed',
+			toData: { quota: 1 },
 			send: expect.any(Function),
 		})
 		expect(observer).toHaveBeenNthCalledWith(3, {
 			input: 'reset',
 			inputData: undefined,
-			from: { name: 'allowed', quota: 1 },
-			to: { name: 'draft' },
+			from: 'allowed',
+			fromData: { quota: 1 },
+			to: 'draft',
+			toData: undefined,
 			send: expect.any(Function),
 		})
 		expect(observer.mock.calls[0]?.[0].send).toBe(host.send)
@@ -169,8 +179,8 @@ describe('observing', () => {
 		const seen = vi.fn()
 		host.observe('* -> *', (e) => {
 			seen({
-				to: e.to.name,
-				agreesWithCurrent: e.to.name === host.current.name,
+				to: e.to,
+				agreesWithCurrent: e.to === host.current.name,
 			})
 		})
 
@@ -286,10 +296,36 @@ describe('observing', () => {
 			input: undefined,
 			inputData: undefined,
 			from: undefined,
-			to: { name: 'on' },
+			fromData: undefined,
+			to: 'on',
+			toData: undefined,
 			send: expect.any(Function),
 		})
 		expect(setup.mock.calls[0]?.[0].send).toBe(host.send)
+	})
+
+	test("a registration arrival carries the current state data, not a previous transition's", () => {
+		const setter = machine({
+			initial: 'idle',
+			inputs: type<{ set: { id: number } }>(),
+			states: type<{ idle: { id: number }; done: { id: number } }>(),
+			transitions: { 'idle -set> done': ({ inputData }) => inputData },
+		})
+		const host = setter.start({ id: 0 })
+		host.send('set', { id: 7 })
+
+		const setup = vi.fn()
+		host.observe('done', setup)
+
+		expect(setup).toHaveBeenCalledExactlyOnceWith({
+			input: undefined,
+			inputData: undefined,
+			from: undefined,
+			fromData: undefined,
+			to: 'done',
+			toData: { id: 7 },
+			send: expect.any(Function),
+		})
 	})
 
 	test('a residency attached while resident receives an arrival with no source or input, the same as machine startup', () => {
@@ -302,7 +338,9 @@ describe('observing', () => {
 			input: undefined,
 			inputData: undefined,
 			from: undefined,
-			to: { name: 'off' },
+			fromData: undefined,
+			to: 'off',
+			toData: undefined,
 			send: expect.any(Function),
 		})
 		expect(observer.mock.calls[0]?.[0].send).toBe(host.send)
@@ -336,7 +374,7 @@ describe('observing', () => {
 		const pinger = machine({
 			initial: 'idle',
 			inputs: type<{ ping: undefined }>(),
-			states: type<{ name: 'idle' }>(),
+			states: type<{ idle: undefined }>(),
 			transitions: { 'idle -ping> idle': () => {} },
 		})
 		const host = pinger.start()
@@ -359,7 +397,7 @@ describe('observing', () => {
 		const pinger = machine({
 			initial: 'idle',
 			inputs: type<{ ping: undefined }>(),
-			states: type<{ name: 'idle' }>(),
+			states: type<{ idle: undefined }>(),
 			transitions: { 'idle -ping> idle': () => {} },
 		})
 		const host = pinger.start()
@@ -381,7 +419,7 @@ describe('observing', () => {
 		const setter = machine({
 			initial: 'idle',
 			inputs: type<{ set: { id: number } }>(),
-			states: type<{ name: 'idle'; id: number }>(),
+			states: type<{ idle: { id: number } }>(),
 			transitions: {
 				'idle -set> idle': ({ inputData }) => ({ id: inputData.id }),
 			},
@@ -391,10 +429,10 @@ describe('observing', () => {
 
 		host.observe('idle', {
 			run: (e) => {
-				log(`setup:${e.to.id}`)
-				return () => log(`teardown:${e.to.id}`)
+				log(`setup:${e.toData.id}`)
+				return () => log(`teardown:${e.toData.id}`)
 			},
-			restart: (from, to) => from.id !== to.id,
+			restart: ({ fromData, toData }) => fromData.id !== toData.id,
 		})
 
 		host.send('set', { id: 0 }) // same id: no restart
@@ -427,7 +465,7 @@ describe('observing', () => {
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ toggle: undefined }>(),
-			states: type<{ name: 'off' } | { name: 'on' }>(),
+			states: type<{ off: undefined; on: undefined }>(),
 			transitions: {
 				'off -toggle> on': () => {},
 				'on -toggle> off': () => {},
@@ -459,7 +497,7 @@ describe('observing', () => {
 		const pinger = machine({
 			initial: 'idle',
 			inputs: type<{ ping: undefined }>(),
-			states: type<{ name: 'idle' }>(),
+			states: type<{ idle: undefined }>(),
 			transitions: {
 				'idle -ping> idle': () => {},
 			},
@@ -493,7 +531,7 @@ describe('observing', () => {
 		const relay = machine({
 			initial: 'a',
 			inputs: type<{ x: undefined; y: undefined }>(),
-			states: type<{ name: 'a' } | { name: 'b' } | { name: 'c' }>(),
+			states: type<{ a: undefined; b: undefined; c: undefined }>(),
 			transitions: {
 				'a -x> b': () => {},
 				'b -y> c': () => {},
@@ -515,14 +553,14 @@ describe('observing', () => {
 		expect(log).toHaveBeenCalledTimes(2)
 		expect(log).toHaveBeenNthCalledWith(1, 'fired in b')
 		expect(log).toHaveBeenNthCalledWith(2, 'after send, still b')
-		expect(host.current).toEqual({ name: 'c' })
+		expect(host.current.name).toBe('c')
 	})
 
 	test('a send from a listener is read at drain time, so it may correctly find no row', () => {
 		const fork = machine({
 			initial: 'a',
 			inputs: type<{ x: undefined; z: undefined }>(),
-			states: type<{ name: 'a' } | { name: 'b' } | { name: 'd' }>(),
+			states: type<{ a: undefined; b: undefined; d: undefined }>(),
 			transitions: {
 				'a -x> b': () => {},
 				'a -z> d': () => {},
@@ -531,7 +569,7 @@ describe('observing', () => {
 
 		const host = fork.start()
 		const observer = vi.fn()
-		host.observe('* -> *', (e) => observer(e.to.name))
+		host.observe('* -> *', (e) => observer(e.to))
 
 		// `z` is a row on `a`, the state the listener is told about — but the
 		// machine is in `b` by the time the queue reads it, and `b` has no rows.
@@ -539,7 +577,7 @@ describe('observing', () => {
 		host.send('x')
 
 		expect(observer).toHaveBeenCalledExactlyOnceWith('b')
-		expect(host.current).toEqual({ name: 'b' })
+		expect(host.current.name).toBe('b')
 	})
 
 	test('a listener that sends its own trigger is not re-entered within the dispatch that notified it', () => {
@@ -562,6 +600,6 @@ describe('observing', () => {
 		// off -> on -> off -> on: three transitions, each notified at depth 1.
 		expect(observer).toHaveBeenCalledTimes(3)
 		expect(maxDepth).toBe(1)
-		expect(host.current).toEqual({ name: 'on' })
+		expect(host.current.name).toBe('on')
 	})
 })

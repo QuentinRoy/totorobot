@@ -447,9 +447,11 @@ used and that was verified to work. The keys happen to be compound strings, and
 
 ## 5. The declared vocabulary
 
-> **Declaring is upheld; the shape below is superseded by
-> [the revision at the end of this section](#revision-the-shape-of-a-named-thing).**
-> The vocabulary becomes a tagged union rather than a map, and `void` leaves it. The
+> **Declaring is upheld, and so is the map — with `undefined` where `void` is
+> written below.** The tagged union
+> [the revision at the end of this section](#revision-the-shape-of-a-named-thing)
+> adopted was itself reversed by #97 and #98; a vocabulary is a name-to-payload
+> map again, and `undefined` is the payload of a name that carries nothing. The
 > argument for declaring at all, what it closed and what it costs, is unaffected
 > and is why it is kept here as written.
 
@@ -714,15 +716,18 @@ way, and the context member is `input` rather than `event`.
 
 ### Revision: the shape of a named thing
 
-> **Superseded for inputs by #97.** Inputs are again a name-to-payload map, and
-> sending takes `send(name, payload?)`. The tagged form reserved `type` and forced
-> every payload into an object. Separate arguments leave payloads unchanged, so
-> primitives, functions, maps, and objects with their own `type` field all work.
-> A tuple union keeps each name paired with its payload type. Handlers and
-> transition records expose the name as `input` and the value as `inputData`.
-> Omission follows whether the payload type admits `undefined`. States remain
-> tagged by `name`. The tagged-input argument below records the decision this
-> revision replaced.
+> **Superseded by #97 and #98.** Both vocabularies are again a name-to-payload
+> map. The tagged form reserved `type` and `name` inside domain data and forced
+> every payload into an object; separate names leave payloads unchanged, so
+> primitives, functions, maps, and objects with their own `type` or `name` field
+> all work, and a payload is stored exactly as supplied rather than spread into a
+> tagged object. Sending takes `send(name, payload?)`, `start` takes the initial
+> state's payload under the same omission rule, and `current` is
+> `{ name, data }`. Handlers take `from`/`fromData`, `input`/`inputData` and `to`,
+> and return the destination's payload alone; actions, observers and restart
+> predicates take the same six facts flat. Omission everywhere follows whether the
+> payload type admits `undefined`. The tagged argument below records the decision
+> these revisions replaced.
 
 > **A late revision, merged here from what was §17 of the chronological record.**
 > Decided alongside [§10's composition boundary](#revision-the-composition-boundary),
@@ -870,6 +875,12 @@ infer, which is why it does not bite.
 
 #### The empty-payload encoding: closing the negative result
 
+> **Superseded by #98.** A payload-free state is declared `undefined`, not an
+> empty object, so a handler's return no longer reduces to `{}` and there is
+> nothing left for `EmptyObject` to close. The encoding and its measurement are
+> kept as the record of why the tagged form was needed while a payload was an
+> object minus a tag.
+
 The negative result above is real, and it is not the tagged union's fault: any
 form that reduces a payload-free target to `{}` inherits it, because `{}` is the one
 object type that accepts every object literal: TypeScript's weak-type check and
@@ -920,10 +931,10 @@ nothing or `{}`, are both accepted.
 
 #### Why the handler's `state` parameter uses `NoInfer`
 
-The shape argued for here only infers because the handler's `state` parameter is
-wrapped in `NoInfer`, which is a fact about the type layer rather than about the
-API: it is invisible to a caller, and it is recorded in
-[implementation record I14](implementation-record.md#i14).
+The shape argued for here only infers because the handler's source parameter —
+`state` then, `fromData` since #98 — is wrapped in `NoInfer`, which is a fact
+about the type layer rather than about the API: it is invisible to a caller, and
+it is recorded in [implementation record I14](implementation-record.md#i14).
 
 ## 6. Immediate transitions
 

@@ -1,0 +1,20 @@
+---
+'totorobot': major
+---
+
+State names are now top-level too, so a state vocabulary is a name-to-payload
+map like the input one, and every callback record is flat: `input`, `inputData`,
+`from`, `fromData`, `to`, `toData`. Checking a name narrows the payload beside
+it, in a record and in `host.current` alike.
+
+Change `type States = { name: 'empty' } | { name: 'draft'; text: string }` to
+`type States = { empty: undefined; draft: { text: string } }`. Read
+`host.current.data` rather than fields on `host.current`, and `fromData` rather
+than `state` in a handler. A handler returns the destination's payload alone,
+which the row's own target name can no longer be confused with; a restart
+predicate takes one record of the same six facts instead of two states.
+
+Payloads are stored as supplied, so any value works — including a primitive, a
+function, or an object with its own `name` or `type` field — and mutating one
+is visible through older snapshots. A handler returning a helper typed
+`void` now has to call it and return separately.
