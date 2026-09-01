@@ -11,6 +11,12 @@ type Inputs = {
 	submit: { route: 'review' | 'publish' }
 	cancel: undefined
 }
+type Send = (
+	...args:
+		| ['open', { text: string }]
+		| ['submit', { route: 'review' | 'publish' }]
+		| ['cancel', undefined?]
+) => void
 type States =
 	| { name: 'empty' }
 	| { name: 'draft'; text: string }
@@ -206,14 +212,7 @@ test('the record carries a send typed with the whole declared vocabulary, howeve
 
 	host.observe('draft -submit> review', (e) => {
 		expectTypeOf(e.send).not.toBeAny()
-		expectTypeOf(e.send).toEqualTypeOf<
-			(
-				...args:
-					| ['open', { text: string }]
-					| ['submit', { route: 'review' | 'publish' }]
-					| ['cancel', undefined?]
-			) => void
-		>()
+		expectTypeOf(e.send).toEqualTypeOf<Send>()
 
 		// The pattern still narrows both ends: `send` is additive.
 		expectTypeOf(e.from).toEqualTypeOf<{ name: 'draft'; text: string }>()
@@ -236,15 +235,7 @@ test('the record carries a send typed with the whole declared vocabulary, howeve
 	// An immediate arm carries it too, and it is the host's own signature.
 	host.observe('* -> *', (e) => {
 		expectTypeOf(e.send).toEqualTypeOf<typeof host.send>()
-		if (!e.input)
-			expectTypeOf(e.send).toEqualTypeOf<
-				(
-					...args:
-						| ['open', { text: string }]
-						| ['submit', { route: 'review' | 'publish' }]
-						| ['cancel', undefined?]
-				) => void
-			>()
+		if (!e.input) expectTypeOf(e.send).toEqualTypeOf<Send>()
 	})
 })
 

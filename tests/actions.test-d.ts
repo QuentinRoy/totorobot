@@ -9,6 +9,7 @@ import { machine, type } from 'totorobot'
 
 type Inputs = { toggle: undefined; go: undefined }
 type States = { name: 'off' } | { name: 'on'; count: number } | { name: 'gone' }
+type Send = (...args: ['toggle', undefined?] | ['go', undefined?]) => void
 
 test("a residency trigger's arrival narrows `to` to that trigger's own state, tag included, whichever way the state was entered", () => {
 	machine({
@@ -76,9 +77,7 @@ test("an edge trigger's argument narrows the transition exactly the way a listen
 					count: number
 				}>()
 				expectTypeOf(transition.inputData).toEqualTypeOf<undefined>()
-				expectTypeOf(transition.send).toEqualTypeOf<
-					(...args: ['toggle', undefined?] | ['go', undefined?]) => void
-				>()
+				expectTypeOf(transition.send).toEqualTypeOf<Send>()
 			},
 		},
 	})
@@ -309,7 +308,5 @@ test('the block declares no vocabulary of its own: a definition with actions is 
 	})
 
 	expectTypeOf(withActions).toEqualTypeOf<typeof bare>()
-	expectTypeOf(withActions.start().send).toEqualTypeOf<
-		(...args: ['toggle', undefined?] | ['go', undefined?]) => void
-	>()
+	expectTypeOf(withActions.start().send).toEqualTypeOf<Send>()
 })
