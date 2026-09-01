@@ -2,11 +2,10 @@
 
 [![Bundle size](https://deno.bundlejs.com/?q=totorobot&badge=detailed)](https://bundlejs.com/?q=totorobot)
 
-Totorobot is a small TypeScript state-machine library with a strong focus on
-developer experience and readable definitions. Its types catch invalid
-transitions, state data, and handler return values on the line where you write
-them. The published JavaScript is 1,580 bytes minified and 797 bytes with
-Brotli, with no runtime dependencies.
+Totorobot combines clean, readable definitions with precise types. Its API reads
+like a transition graph, and TypeScript checks the details around it. The
+published JavaScript is 1,580 bytes minified and 797 bytes with Brotli, with no
+runtime dependencies.
 
 Each line in the transition table looks like the edge it declares:
 
