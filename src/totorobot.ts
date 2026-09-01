@@ -433,11 +433,18 @@ export type Sources<M, S extends string> = From<
 // The definition
 // ---------------------------------------------------------------------------
 
-/** One shape for every handler; input data is opaque to dispatch (I23). */
-type UncheckedHandler = (args: {
-	readonly state: StateVocab
+type UncheckedInput = {
 	readonly input: string | undefined
 	readonly inputData: unknown
+}
+type UncheckedSend = (
+	input: Exclude<UncheckedInput['input'], undefined>,
+	inputData?: UncheckedInput['inputData'],
+) => void
+
+/** One shape for every handler; input data is opaque to dispatch (I23). */
+type UncheckedHandler = (args: UncheckedInput & {
+	readonly state: StateVocab
 	readonly skip: () => Skip
 }) => object | undefined | Skip
 
@@ -445,7 +452,7 @@ type Row = readonly [to: string, handler: UncheckedHandler]
 
 interface UncheckedHost {
 	readonly current: StateVocab
-	readonly send: (input: string, inputData?: unknown) => void
+	readonly send: UncheckedSend
 	readonly observe: (
 		pattern: string,
 		action: Listener | ActionItem,
@@ -636,8 +643,8 @@ export let machine: <
 				// the chain below, or splitting a `commit` out of it, measured larger (I16).
 				let step = (
 					rows: Row[] = [],
-					input?: string,
-					inputData?: unknown,
+					input?: UncheckedInput['input'],
+					inputData?: UncheckedInput['inputData'],
 				): boolean => {
 					for (let [to, handler] of rows) {
 						let payload = handler({ state: current, input, inputData, skip })
@@ -711,7 +718,7 @@ export let machine: <
 				// carries it; the host below re-exports this binding. The work is queued
 				// rather than run, wherever the call came from. Pushed before `dispatch`
 				// rather than inside a `work` closure, which measures smaller (I16).
-				let send = (input: string, inputData?: unknown): void => {
+				let send: UncheckedSend = (input, inputData) => {
 					queue.push(() => {
 						// Read at drain time, so a queued send may correctly find no row.
 						if (
@@ -776,12 +783,10 @@ export let machine: <
  * only an action can see that one, since a missing `from` matches no edge (§9
  * Actions).
  */
-type Arrival = {
-	readonly input: string | undefined
-	readonly inputData: unknown
+type Arrival = UncheckedInput & {
 	readonly from: StateVocab | undefined
 	readonly to: StateVocab
-	readonly send: (input: string, inputData?: unknown) => void
+	readonly send: UncheckedSend
 }
 
 /**
