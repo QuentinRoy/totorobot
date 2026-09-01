@@ -39,8 +39,8 @@ test("a residency trigger's `from` covers only the states declared to reach it, 
 			'on -toggle> off': () => {},
 		},
 		actions: {
-			// "gone" is declared but no row reaches "off": excluded from `from`,
-			// unlike every name the table's own rows admit.
+			// Narrowed to the states this table's own rows declare reaching "off"
+			// ("on" alone), not to every name `States` declares.
 			off: ({ from, fromData }) => {
 				expectTypeOf(from).toEqualTypeOf<'on' | undefined>()
 				expectTypeOf(fromData).toEqualTypeOf<{ count: number } | undefined>()
