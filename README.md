@@ -4,6 +4,7 @@
 
 Totorobot combines clean, readable definitions with precise types. Its API reads
 like a transition graph, and TypeScript checks the details around it.
+It is tiny and has no runtime dependencies. We work to keep it that way.
 
 Each line in the transition table looks like the edge it declares:
 
