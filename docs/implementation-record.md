@@ -572,5 +572,44 @@ sources, destinations and inputs its pattern admits — the same |states|² ×
 narrows all six fields. Intersecting the shared half onto each member (`X &
 { … }`, where `X` is `{ send }` or `{}`) keeps that narrowing intact, which is
 what lets one type serve a committed record and a restart predicate's facts.
-#99 filters the product against the table; until then it carries pairings no row
-declares.
+[#99](#i32) filters the product against the table, which this entry described
+before that filtering existed.
+
+### <a id="i32"></a>I32 — Filtering the product against the table is a mapped type over the row union
+
+[I31](#i31) built `Transition` as the product of a _pattern's_ own wildcards —
+every source, destination and input the pattern admits, whether or not the
+_table_ declares that pairing. #99 filters it: `Transition<I, S, K, P>` maps
+over the declared rows `K`, keeping only those a pattern's `From`, `Label` and
+`To` each individually admit (`MatchingRows`), then builds one record per
+surviving row from that row's own three coordinates — never from the
+pattern's. A mapped type distributes over a union of string-literal keys, so
+each surviving row keeps its coordinates correlated for free; the per-coordinate
+`Select` machinery I31 described, which independently widened each position to
+"every declared name," is gone with it.
+
+An omitted pattern label matches any row's label, named or absent alike — the
+same rule the runtime's own comparison already used (`l === '' || l ===
+e.input`, in `fire`); a specific label matches only its own name. Residency and
+restart facts reuse `Transition` rather than widening their own coordinates
+(`Residency<I, S, K, N>`, unioned with the arrival `Transition` never carries).
+
+**A hop no declared row supports resolves to `never`, not to a widened guess.**
+A `restart` predicate for a state with no self-transition row, or a residency
+read against a table with no row reaching it, now takes `never`: every field
+read off it is then a type error, rather than silently admitting the whole
+vocabulary. Existing tests that attached such a predicate, or read such a
+residency's `from`, had exploited I31's over-permissiveness; they now either
+declare the missing row or expect the narrower union
+(`tests/patterns.test-d.ts`, `tests/actions.test-d.ts`,
+`tests/state-data.test-d.ts`).
+
+Measured: the emitted bundle is byte-identical (`pnpm size`, before and after —
+types are erased). The suite's combined runtime-plus-type check stays in the
+same tens-to-few-hundred-millisecond range, the twenty-state/forty-four-row
+fixture (`tests/scale.test-d.ts`) included — expected, since a union of
+forty-four declared rows is smaller than the |states|² × |inputs| product it
+replaces. `scripts/measure-completions.mjs` exercises the table's own
+key-completion candidates, a different surface than `Transition`/`Actions`; no
+completion or hover instrument covers this one, so no new number is recorded
+for it.

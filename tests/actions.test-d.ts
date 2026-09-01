@@ -29,7 +29,7 @@ test("a residency trigger's arrival narrows `to` to that trigger's own state, an
 	})
 })
 
-test("a residency trigger's `from` covers every state that can reach it, plus `undefined` for the initial arrival no transition caused", () => {
+test("a residency trigger's `from` covers only the states declared to reach it, plus `undefined` for the initial arrival no transition caused (#99)", () => {
 	machine({
 		initial: 'off',
 		inputs: type<Inputs>(),
@@ -39,9 +39,11 @@ test("a residency trigger's `from` covers every state that can reach it, plus `u
 			'on -toggle> off': () => {},
 		},
 		actions: {
+			// "gone" is declared but no row reaches "on": excluded from `from`,
+			// unlike every name the table's own rows admit.
 			on: ({ from, fromData }) => {
-				expectTypeOf(from).toEqualTypeOf<keyof States | undefined>()
-				expectTypeOf(fromData).toEqualTypeOf<States[keyof States] | undefined>()
+				expectTypeOf(from).toEqualTypeOf<'off' | undefined>()
+				expectTypeOf(fromData).toEqualTypeOf<undefined>()
 			},
 		},
 	})
@@ -244,7 +246,12 @@ test('a residency record accepts `restart` as a boolean or a predicate over the 
 		initial: 'off',
 		inputs: type<Inputs>(),
 		states: type<States>(),
-		transitions: { 'off -toggle> on': () => ({ count: 0 }) },
+		transitions: {
+			'off -toggle> on': () => ({ count: 0 }),
+			// A self-transition is what `restart`'s facts describe (#99): without
+			// one declared for "gone", the predicate below would take `never`.
+			'gone -> gone': () => {},
+		},
 		actions: {
 			on: { run: () => {}, restart: false },
 			gone: {

@@ -37,6 +37,7 @@ const doc = machine({
 		'draft -submit> published': ({ fromData, inputData, skip }) =>
 			inputData.route === 'publish' ? fromData : skip(),
 		'draft -cancel> empty': () => {},
+		'draft -> draft': ({ fromData }) => fromData,
 	},
 })
 
@@ -79,15 +80,19 @@ test('a bare key means residency, typed as the same record `actions` takes (#76)
 	host.observe('nope', () => {})
 })
 
-test("observe's residency shares actions' arrival-capable type: `from` is `undefined` on registration's synthetic arrival (#92)", () => {
+test("observe's residency shares actions' arrival-capable type: `from` is `undefined` on registration's synthetic arrival, and narrowed to only the sources the table declares otherwise (#92, #99)", () => {
 	const host = doc.start()
 
 	host.observe('draft', ({ from, fromData }) => {
-		expectTypeOf(from).toEqualTypeOf<keyof States | undefined>()
+		// "empty" reaches "draft" by `open`, "draft" reaches itself by the
+		// self-loop above; "review" and "published" never do, so they are
+		// excluded even though they too are declared states.
+		expectTypeOf(from).toEqualTypeOf<'empty' | 'draft' | undefined>()
 		// @ts-expect-error - `from` is `undefined` on the synthetic arrival
 		from.length
-		// and so is its data, whatever the states either side carry
-		expectTypeOf(fromData).toEqualTypeOf<States[keyof States] | undefined>()
+		// A name check narrows the data beside it, "empty"'s own `undefined`
+		// included, rather than every state's payload.
+		expectTypeOf(fromData).toEqualTypeOf<{ text: string } | undefined>()
 	})
 })
 
@@ -207,6 +212,24 @@ test('an immediate transition is distinguished from a payload-free input by inpu
 	host.observe('* -open> *', (e) => {
 		expectTypeOf(e.inputData).not.toBeAny()
 		expectTypeOf(e.inputData).toEqualTypeOf<{ text: string }>()
+	})
+})
+
+test('an incoming wildcard narrows the source to what actually reaches the input, and an outgoing wildcard narrows the destination to what the source actually reaches (#99)', () => {
+	const host = doc.start()
+
+	// "open" only ever fires from "empty", to "draft": narrowed to those alone,
+	// not every declared state either side.
+	host.observe('* -open> *', (e) => {
+		expectTypeOf(e.from).toEqualTypeOf<'empty'>()
+		expectTypeOf(e.to).toEqualTypeOf<'draft'>()
+	})
+
+	// "empty" only ever reaches "draft": narrowed there, not to "review" or
+	// "published", which "empty" cannot reach directly.
+	host.observe('empty -> *', (e) => {
+		expectTypeOf(e.to).toEqualTypeOf<'draft'>()
+		expectTypeOf(e.toData).toEqualTypeOf<{ text: string }>()
 	})
 })
 
