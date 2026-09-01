@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/totorobot-mascot-lozenge-portrait.png" alt="Totorobot mascot playing an electric guitar" width="240">
+  <img src="assets/totorobot.svg" alt="Totorobot mascot playing an electric guitar" width="240">
 </p>
 
 <h1 align="center">Totorobot</h1>
