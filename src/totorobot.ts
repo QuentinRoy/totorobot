@@ -188,9 +188,9 @@ type Select<Coordinate extends string, All extends string> = [
  * `send` is the whole declared vocabulary from every state, never narrowed to
  * what `from` or `to` handles: a queued input is read at drain time, by which
  * point the machine has moved, so the normal reaction sends something the state
- * it was notified about does not handle (§12 Sending inputs). Spelled into both
- * arms rather than intersected onto the union, so a discriminant still narrows
- * the record.
+ * it was notified about does not handle (§12 Sending inputs). A tuple union
+ * keeps each input name paired with its data when callers hold unions of both
+ * fields (I29).
  */
 type Send<I extends InputVocab> = (
 	...args: {
