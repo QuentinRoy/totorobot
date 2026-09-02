@@ -978,9 +978,9 @@ O extends Vocab = Declared<
 `RawI` and `RawS` are the raw `inputs`/`states` parameters, both already
 inferred by the time this default resolves — the same "constrained default that
 reads a sibling, not the argument itself" construction
-[I19](#i19) established, one parameter further along. The tuple wrapper is load
-bearing: `RawI extends undefined ? …` distributes over a union, and the pair has
-to be tested as a pair.
+[I19](#i19) established, one parameter further along. The tuple wrapper is
+required: `RawI extends undefined ? …` distributes over a union, and the pair
+has to be tested as a pair.
 
 The rejection this produces is by arity, not by name. `Emit<{}>` resolves its
 rest parameter through a mapped type over `never`, so its argument list is

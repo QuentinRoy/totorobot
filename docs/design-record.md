@@ -2288,8 +2288,8 @@ declared should not be usable by accident.
 
 So the default reads its siblings: the any-vocabulary default when neither `inputs` nor
 `states` was declared, and the empty vocabulary otherwise, which leaves `emit` and `on`
-with no name they accept. This is the one place a vocabulary's default is not simply the
-widest thing available, and it is because omission means two different things depending
+with no name they accept. This is the one place a vocabulary's default is not the widest
+thing available, and it is because omission means two different things depending
 on the company it keeps. The compiler mechanics are in
 [implementation-record.md, I41](implementation-record.md#i41).
 

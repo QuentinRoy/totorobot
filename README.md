@@ -464,15 +464,15 @@ m.on('opened', ({ data }) => widget.show(data.center))
 ```
 
 The point is what the consumer had to know. Without `opened`, learning that the
-menu opened means subscribing to the edges that reach `novice` — so renaming
+menu opened means subscribing to the edges that reach `novice`, so renaming
 `novice`, splitting it in two, or rerouting an edge breaks every consumer, even
 though nothing they care about changed. With it, the consumer names the thing
 that happened.
 
 Nothing is hidden. `current` is still readable and `observe` still sees every
-transition. This is a channel added, not a feed withdrawn: openness is
-recoverable in userland and encapsulation is not, so the library keeps the open
-host and splits the two channels by name. The argument is in
+transition. Openness is recoverable in userland and encapsulation is not, so the
+library keeps the open host and splits the two channels by name. The argument is
+in
 [rationale §10](docs/design-record.md#revision-what-the-channel-is-actually-made-of).
 
 `outputs` is declared like `inputs` and `states`, and it is optional. A machine
@@ -499,7 +499,7 @@ actions: {
 ```
 
 `emit` is gated on nothing. A residency action can capture it and call it much
-later — from a timer, or from a subscription it opened — including after its own
+later (from a timer, or from a subscription it opened), including after its own
 teardown has run, exactly as it can with `send`.
 
 Two places do not get `emit`. A `transitions` handler cannot emit, because a
@@ -542,24 +542,24 @@ out.
 
 ### When a listener runs
 
-Listeners fire **inline, at the `emit` call**, not on the queue. `emit` is
+Listeners fire inline, at the `emit` call, not on the queue. `emit` is
 post-commit by construction, so a listener already sees a committed machine;
 queueing the call would deliver the announcement after the machine had left the
 state that announced it, with no way for the listener to tell.
 
 Several listeners on one output fire in registration order. The list is
 copy-on-write, so a listener registered during an emit of that output does not
-run in that pass, and one unsubscribed during it still does — the same rule
-`observe` follows. An output with no listeners is a silent no-op, so a machine
+run in that pass, and one unsubscribed during it still does; `observe` follows
+the same rule. An output with no listeners is a silent no-op, so a machine
 is usable before anything subscribes.
 
 A listener's own `send` is queued under the same drain every other send uses, so
 the reentrancy rules under [commit ordering](#commit-ordering) hold across an
 output-driven wiring exactly as they do across an observed one, cross-host case
-included. Where no drain is open — a captured `emit` called from a timer is the
-only way to reach a listener from outside one — `emit` opens the window itself,
-the way a top-level `send` does. Delivery is still inline either way; only the
-queue waits.
+included. A captured `emit` called from a timer is the only way to reach a
+listener from outside a drain, and there `emit` opens the window itself, the way
+a top-level `send` does. Delivery is still inline either way; only the queue
+waits.
 
 A listener is therefore never re-entered by a send. It can still re-enter itself
 by calling a captured `emit` directly, which is ordinary recursion in your own
@@ -571,11 +571,11 @@ before you meet it: a listener throwing out of a **residency** action's `emit`
 interrupts that action mid-setup, so its teardown is never registered and
 whatever it opened is stranded. Emit after your setup finishes.
 
-**Outputs emitted during `start()` reach nobody.** Residency actions on the
-initial state run inside `start`'s dispatch, before the host is returned, so no
-`on` call can have happened yet. Nothing is buffered and nothing is replayed —
-an output's delivery time must not depend on when someone subscribed. This is
-the sibling of the existing rule that `observe` is unreachable until `start`
+Outputs emitted during `start()` reach nobody. Residency actions on the initial
+state run inside `start`'s dispatch, before the host is returned, so no `on` call
+can have happened yet. Nothing is buffered and nothing is replayed, because an
+output's delivery time must not depend on when someone subscribed. This is the
+sibling of the existing rule that `observe` is unreachable until `start`
 returns.
 
 ### Wiring two machines together
