@@ -145,12 +145,12 @@ through `observe`.
 
 Everything the package exports:
 
-| export                                                                    | is                                                               |
-| ------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `machine({ inputs?, states?, initial, transitions, actions? })`           | a definition: inert data, never mutated                          |
-| `type<T>()`                                                               | a declaration carrying `T`; returns `undefined` at runtime       |
-| `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>` `Patterns<M>` | derived types, over `M = typeof publication`                     |
-| `Skip`                                                                    | what `skip()` returns; it appears in every handler's return type |
+| export                                                                                     | is                                                               |
+| ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| `machine({ inputs?, states?, initial, transitions, actions? })`                            | a definition: inert data, never mutated                          |
+| `type<T>()`                                                                                | a declaration carrying `T`; returns `undefined` at runtime       |
+| `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>` `Patterns<M>` `Listener<M, P>` | derived types, over `M = typeof publication`                     |
+| `Skip`                                                                                     | what `skip()` returns; it appears in every handler's return type |
 
 ## `inputs` and `states`: the vocabulary
 
@@ -560,9 +560,24 @@ This checks table membership only, never reachability: a row unreachable from
 
 Completion in an editor offers only matchable patterns — the row keys
 themselves and their wildcard generalizations — instead of every name-valid
-combination. `Patterns<typeof publication>` names that same set, for a helper
-that wraps `observe` and wants the same constraint on its own pattern
-argument.
+combination. `Patterns<typeof publication>` names that set, and
+`Listener<typeof publication>` names what goes beside it, so a helper wrapping
+`observe` can type both of its arguments:
+
+```ts
+const watch = (
+	pattern: Patterns<typeof publication>,
+	listener: Listener<typeof publication>,
+) => doc.observe(pattern, listener)
+```
+
+Given a pattern, `Listener<typeof publication, 'draft -submit> review'>` narrows
+the record to that row's facts, the way `observe` narrows it from the pattern
+you pass. Written without one, the listener takes every row the table can fire,
+which is what a helper like `watch` needs. A wrapper cannot do better than the
+union: `observe`'s pattern parameter is a conditional on the pattern itself,
+which an unresolved type parameter does not satisfy, so a helper generic in `P`
+cannot forward that `P` to `observe`.
 
 ### Residency
 

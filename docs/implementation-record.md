@@ -764,12 +764,29 @@ the conditional's own shape, so [I36](#i36)'s repro and every existing
 acceptance/rejection case (`tests/patterns.test-d.ts`) needed no update.
 
 This settles #116's own experiment in favor of the non-breaking shape: the
-type parameter's constraint, `P extends Pattern<I, S>`, is untouched, so a
-caller's helper generic over it keeps compiling. `Patterns<M>`, `Carried<M>`
-applied to `MatchedPattern`, ships as the convenience the issue's other
-branch would have made mandatory — a public constraint matching what
-`observe` accepts, for a caller who cannot otherwise name `Pattern` or
-`Host` (both module-local).
+type parameter's constraint, `P extends Pattern<I, S>`, is untouched, so
+existing code keeps compiling. `Patterns<M>`, `Carried<M>` applied to
+`MatchedPattern`, ships as the convenience the issue's other branch would
+have made mandatory — a public constraint matching what `observe` accepts,
+for a caller who cannot otherwise name `Pattern` or `Host` (both
+module-local). `Listener<M, P>` is the same move on the second argument:
+`EdgeListener`'s four parameters collapse to two, since `Carried<M>` supplies
+three of them, and `P` defaults to the whole `Patterns<M>` union, which
+`Matches` admits every row against.
+
+An earlier draft of this entry claimed that a caller's helper _generic over
+`P`_ keeps compiling. It does not, and never did — the claim was about the
+constraint, and was never measured against a forwarding call. `observe`'s
+edge overload takes a deferred conditional on `P` ([I36](#i36)); an
+unresolved type parameter satisfies neither branch, so the call falls through
+to the bare state key overload and is rejected against `Name<S>`. Adding
+`Listener<M, P>` does not change this, and neither alias caused it: a helper
+generic in its pattern cannot forward that pattern to `observe` with or
+without them. A wrapper compiles by taking the unions instead
+(`Patterns<M>`, `Listener<M>`), which costs the per-pattern narrowing at the
+wrapper boundary but not inside a listener written for one pattern. Both the
+working shape and the rejected one are asserted in
+`tests/patterns.test-d.ts`.
 
 A genuinely widened `K` (`string extends K`) falls back to `Pattern<I, S>`
 unfiltered, the same gate [I34](#i34)'s `Transition` fallback and

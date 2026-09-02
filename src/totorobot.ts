@@ -325,7 +325,7 @@ type Transition<
 			}
 		}[MatchingRows<K, P>]
 
-type Listener<
+type EdgeListener<
 	I extends Vocab = AnyVocab,
 	S extends Vocab = AnyVocab,
 	K extends string = string,
@@ -568,7 +568,7 @@ interface Host<
 			pattern: NoMatch<K, P> extends true
 				? `no row matches '${P}'`
 				: P & MatchedPattern<I, S, K>,
-			listener: Listener<I, S, K, P>,
+			listener: EdgeListener<I, S, K, P>,
 		): () => void
 		<N extends Name<S>>(
 			pattern: N,
@@ -632,6 +632,21 @@ export type Patterns<M> = MatchedPattern<
 	Carried<M>['keys']
 >
 
+/**
+ * What `observe` takes beside one of those patterns, for the same caller: the
+ * public face of `EdgeListener`, which is module-local like the rest (I37).
+ * Three of that alias's four parameters live in `M`, so only the pattern is
+ * left, and omitting it covers every row the table can fire.
+ */
+export type Listener<M, P extends Patterns<M> = Patterns<M>> = (
+	transition: Transition<
+		Carried<M>['inputs'],
+		Carried<M>['states'],
+		Carried<M>['keys'],
+		P
+	>,
+) => void
+
 // ---------------------------------------------------------------------------
 // The definition
 // ---------------------------------------------------------------------------
@@ -668,7 +683,7 @@ interface UncheckedHost {
 	readonly send: UncheckedSend
 	readonly observe: (
 		pattern: string,
-		action: Listener | ActionItem,
+		action: EdgeListener | ActionItem,
 	) => () => void
 }
 
@@ -975,7 +990,7 @@ export let machine: <
 
 					observe: (
 						pattern: string,
-						action: Listener | ActionItem,
+						action: EdgeListener | ActionItem,
 					): (() => void) => {
 						// `toRow` reads a bare `pattern` as residency on that state, the same
 						// as a bare key in `actions`, so the two share one parser (§11 The

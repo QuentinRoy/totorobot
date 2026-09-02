@@ -4,7 +4,7 @@
 
 import { expectTypeOf, test } from 'vitest'
 
-import { machine, type, type Patterns } from 'totorobot'
+import { machine, type, type Listener, type Patterns } from 'totorobot'
 
 type Inputs = {
 	open: { text: string }
@@ -401,6 +401,85 @@ test('`Patterns<M>` matches what `observe` itself accepts and rejects (#116)', (
 	// @ts-expect-error - "empty -cancel> draft" is not in `Patterns<typeof doc>`
 	const dead: Patterns<typeof doc> = 'empty -cancel> draft'
 	void dead
+})
+
+test('`Listener<M, P>` is what `observe` accepts for that pattern (#116)', () => {
+	// The seam is the package's own export surface: `EdgeListener` is
+	// module-local, and `observe`'s overloads collapse
+	// `Parameters<typeof host.observe>` to the bare state key form, so this
+	// alias is the only way to annotate the second argument from outside.
+	const onSubmit: Listener<typeof doc, 'draft -submit> review'> = () => {}
+	doc.start().observe('draft -submit> review', onSubmit)
+})
+
+test('`Listener<M, P>` narrows the record the same way the pattern does (#116)', () => {
+	const onSubmit: Listener<typeof doc, 'draft -submit> review'> = (e) => {
+		expectTypeOf(e.to).toEqualTypeOf<'review'>()
+		expectTypeOf(e.toData).toEqualTypeOf<{ text: string; reviewer: string }>()
+		expectTypeOf(e.from).toEqualTypeOf<'draft'>()
+		expectTypeOf(e.input).toEqualTypeOf<'submit'>()
+	}
+	void onSubmit
+})
+
+test('`Listener<M>` written without a pattern covers every declared row (#116)', () => {
+	const anywhere: Listener<typeof doc> = (e) => {
+		expectTypeOf(e.to).toEqualTypeOf<
+			'draft' | 'review' | 'published' | 'empty'
+		>()
+	}
+	doc.start().observe('* -> *', anywhere)
+
+	// The narrow one is a member of that set, not a substitute for it: it
+	// declines the rows it was not written for.
+	const narrow: Listener<typeof doc, 'draft -submit> review'> = () => {}
+	// @ts-expect-error - a 'draft -submit> review' listener does not take every row
+	const widened: Listener<typeof doc> = narrow
+	void widened
+})
+
+test('`Listener<M, P>` rejects a pattern no declared row can fire (#116)', () => {
+	// The constraint `Patterns<M>` puts on `observe`'s pattern argument, on
+	// the listener's own parameter. Annotated as a value rather than declared
+	// as a type alias: an unused alias is itself an error, and would satisfy
+	// the assertion below whether or not the constraint rejected anything.
+	// @ts-expect-error - no row matches 'empty -cancel> draft'
+	const dead: Listener<typeof doc, 'empty -cancel> draft'> = () => {}
+	void dead
+
+	const live: Listener<typeof doc, 'draft -submit> review'> = () => {}
+	void live
+})
+
+test('a helper wrapping `observe` types both arguments with the two aliases (#116)', () => {
+	const watch = (
+		host: ReturnType<typeof doc.start>,
+		pattern: Patterns<typeof doc>,
+		listener: Listener<typeof doc>,
+	) => host.observe(pattern, listener)
+
+	const off = watch(doc.start(), 'draft -submit> review', (e) => {
+		expectTypeOf(e.to).not.toBeAny()
+	})
+	expectTypeOf(off).toEqualTypeOf<() => void>()
+
+	// @ts-expect-error - no row matches 'empty -cancel> draft'
+	watch(doc.start(), 'empty -cancel> draft', () => {})
+})
+
+test('a wrapper generic in its pattern cannot forward it to `observe`, with or without the listener alias (#116)', () => {
+	// A limitation of `observe` itself, not of either alias. Its edge overload
+	// takes a deferred conditional on `P` (I36), which an unresolved type
+	// parameter does not satisfy, so the call falls through to the bare state
+	// key overload and is rejected there. The helper above pays for compiling
+	// by taking the whole union, which costs the per-pattern narrowing.
+	const watch = <P extends Patterns<typeof doc>>(
+		host: ReturnType<typeof doc.start>,
+		pattern: P,
+		listener: Listener<typeof doc, P>,
+		// @ts-expect-error - `P` is not assignable to either overload's pattern
+	) => host.observe(pattern, listener)
+	void watch
 })
 
 test('the listener callback still infers its argument with no parameter annotation (#116)', () => {
