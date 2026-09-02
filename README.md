@@ -514,9 +514,10 @@ later (from a timer, or from a subscription it opened), including after its own
 teardown has run, exactly as it can with `send`.
 
 Two places do not get `emit`. A `transitions` handler cannot emit, because a
-transition is pure. An `observe` callback cannot emit either, because it is
-outside the machine and this channel is the machine speaking for itself. Both
-are compile errors.
+transition is pure. An `observe` callback cannot emit either, because it runs
+outside the machine's own definition: if it could, there would be no way to
+tell from the declaration alone whether an output came from the machine or
+from something reacting to it. Both are compile errors.
 
 If you declare `inputs` or `states` and leave `outputs` out, `emit` and `on`
 accept no name at all: a channel you never declared is not usable by accident.
