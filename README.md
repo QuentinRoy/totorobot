@@ -34,8 +34,9 @@ anywhere but `review` is a compile error. Most libraries share one context
 object across every state, which forces any field that only some states carry to
 be optional everywhere and checked everywhere.
 
-A definition is inert data. `.start()` creates a running host that accepts inputs
-and notifies observers. The host is the only mutable part.
+A definition is inert data. `.start()` creates a running host that accepts
+inputs, notifies observers, and announces outputs. The host is the only
+mutable part.
 
 ## Install
 
@@ -67,6 +68,8 @@ export const publication = machine({
 		published: { text: string; revision: number }
 	}>(),
 
+	outputs: type<{ reviewRequested: { reviewer: string } }>(),
+
 	initial: 'empty',
 
 	transitions: {
@@ -90,7 +93,8 @@ export const publication = machine({
 	},
 
 	actions: {
-		review: ({ send }) => {
+		review: ({ toData, send, emit }) => {
+			emit('reviewRequested', { reviewer: toData.reviewer })
 			const timer = setTimeout(() => send('expireReview'), 30_000)
 			return () => clearTimeout(timer)
 		},
@@ -98,16 +102,22 @@ export const publication = machine({
 })
 
 const doc = publication.start()
-doc.observe('* -> published', (e) => notify(e.toData))
+doc.observe('draft -submit> review', (e) => console.log(e))
+doc.on('reviewRequested', ({ data }) => notifyReviewer(data.reviewer))
 doc.send('open', { text: 'hello' })
 doc.send('submit', { reviewer: 'Quentin' })
 ```
 
 `reviewer` exists only on `review`. `draft` does not have it yet, `published` no
 longer needs it, and neither carries a nullable placeholder. While the document
-is in review, the action schedules an input on the same host. Its teardown clears
-the timer if review ends first. The caller registers publication notifications
-through `observe`.
+is in review, the action schedules an input on the same host and emits
+`reviewRequested`; its teardown clears the timer if review ends first.
+
+The two subscriptions cover different ground.
+`observe('draft -submit> review', ...)` names the source, the input, and the
+target to get the whole transition record back. [`on`](#on-on-the-host) needs
+only the output's name: `reviewRequested` says what happened without saying
+which edge caused it.
 
 ## Contents
 
@@ -449,6 +459,7 @@ const menu = machine({
 	transitions: {
 		'idle -press> startup': ({ inputData }) => ({ at: inputData.at }),
 		'startup -release> idle': () => {},
+		'novice -release> idle': () => {},
 		// ... a timeout row into `novice`
 	},
 	actions: {
@@ -503,10 +514,8 @@ later (from a timer, or from a subscription it opened), including after its own
 teardown has run, exactly as it can with `send`.
 
 Two places do not get `emit`. A `transitions` handler cannot emit, because a
-handler may `skip()` and declaration order is priority order, so it would
-announce a hop that then loses. An `observe` callback cannot emit, because it is
-outside the machine and this channel is the machine speaking for itself. Both
-are compile errors.
+transition is pure. An `observe` callback cannot emit either, because it runs
+outside the machine's own definition. Both are compile errors.
 
 If you declare `inputs` or `states` and leave `outputs` out, `emit` and `on`
 accept no name at all: a channel you never declared is not usable by accident.
@@ -547,29 +556,27 @@ post-commit by construction, so a listener already sees a committed machine;
 queueing the call would deliver the announcement after the machine had left the
 state that announced it, with no way for the listener to tell.
 
-Several listeners on one output fire in registration order. The list is
-copy-on-write, so a listener registered during an emit of that output does not
-run in that pass, and one unsubscribed during it still does; `observe` follows
-the same rule. An output with no listeners is a silent no-op, so a machine
-is usable before anything subscribes.
+Several listeners on one output fire in registration order. A listener
+registered during an emit of that output does not run in that pass, and one
+unsubscribed during it still does; `observe` follows the same rule. An output
+with no listeners is a silent no-op, so a machine is usable before anything
+subscribes.
 
 A listener's own `send` is queued under the same drain every other send uses, so
-the reentrancy rules under [commit ordering](#commit-ordering) hold across an
-output-driven wiring exactly as they do across an observed one, cross-host case
-included. A captured `emit` called from a timer is the only way to reach a
-listener from outside a drain, and there `emit` opens the window itself, the way
-a top-level `send` does. Delivery is still inline either way; only the queue
-waits.
+the [reentrancy rules](#commit-ordering) hold across an output-driven wiring
+exactly as they do across an observed one, cross-host included. The only way to
+reach a listener from outside a drain is a captured `emit` called later — from a
+timer, say — and there `emit` opens the drain itself, the way a top-level
+`send` does. Delivery stays inline either way; only the queue waits.
 
 A listener is therefore never re-entered by a send. It can still re-enter itself
 by calling a captured `emit` directly, which is ordinary recursion in your own
 code: `emit` is not an input and is not queued.
 
 A listener that throws propagates out of the `emit` call, like a throwing
-observer. That costs more here than it does there, and it is worth knowing
-before you meet it: a listener throwing out of a **residency** action's `emit`
-interrupts that action mid-setup, so its teardown is never registered and
-whatever it opened is stranded. Emit after your setup finishes.
+observer, but costs more: a listener throwing out of a residency action's
+`emit` interrupts that action mid-setup, so its teardown is never registered
+and whatever it opened is stranded. Emit after your setup finishes.
 
 Outputs emitted during `start()` reach nobody. Residency actions on the initial
 state run inside `start`'s dispatch, before the host is returned, so no `on` call
@@ -590,13 +597,14 @@ menu.start().on('opened', ({ data }) => canvas.send('showMenu', data))
 One call, and a topology refactor inside the menu does not break the wiring.
 What this does _not_ do is settle peer orchestration: the wiring still lives
 outside both definitions, as imperative calls a caller has to remember to make.
-Declared outputs improve that convention's vocabulary without closing it.
+Declared outputs make that wiring easier to write; they don't replace it.
 
 ## The host
 
 `definition.start(data)` returns the stateful thing that owns the current state
-and dispatches to observers. One host per independent use: two hosts over one
-definition share no state and no observers, and neither mutates the definition.
+and dispatches to observers and listeners. One host per independent use: two
+hosts over one definition share no state, no observers, and no listeners, and
+neither mutates the definition.
 
 | member                            | is                                                                   |
 | --------------------------------- | -------------------------------------------------------------------- |
@@ -896,6 +904,7 @@ readable in the observer because the pattern pins the target to `failed`.
   with no nullable padding in states that logically guarantee a field.
 - Unknown state or input names anywhere in a transition key, a pattern, or an
   `actions` trigger.
+- Unknown output names, and mismatched payloads, in `emit` or `on`.
 - A pattern or trigger built from declared names but matching no declared row —
   by table membership, not reachability. A bare-state observer is the one
   exception: it stays valid with no incoming row, since a late registration can
