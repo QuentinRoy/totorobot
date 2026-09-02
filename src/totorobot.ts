@@ -194,6 +194,46 @@ type Send<I extends Vocab> = (
 ) => void
 
 /**
+ * What an action announces through, structurally `Send`'s twin today, optional
+ * payload rule included. Declared apart rather than aliased: `send` names a
+ * capability a state permits, which is the wrong story for an output, and two
+ * declarations can drift without a rename (§10 Composition).
+ */
+type Emit<O extends Vocab> = (
+	...args: {
+		[N in Name<O>]: undefined extends O[N]
+			? [output: N, data?: O[N]]
+			: [output: N, data: O[N]]
+	}[Name<O>]
+) => void
+
+/**
+ * What every declared action carries beyond the facts: the host's `send`, which
+ * an observer gets too, and `emit`, which only an action does. A handler may
+ * `skip()`, so a handler that emitted would announce a hop that then loses; an
+ * `observe` callback is outside the machine, and the channel is the machine
+ * speaking for itself (§10 Composition).
+ */
+type Capabilities<I extends Vocab, O extends Vocab> = {
+	readonly send: Send<I>
+	readonly emit: Emit<O>
+}
+
+/**
+ * What a listener is handed: the output's name, what it carried, and the
+ * emitting host's own `send`, so a reaction drives the machine back without
+ * closing over a host reference. One member per name, so a name check narrows
+ * the payload beside it, the same construction `Current` uses (I31).
+ */
+type Announcement<I extends Vocab, O extends Vocab, N extends string> = {
+	[M in N]: {
+		readonly output: M
+		readonly data: Payload<O, M>
+		readonly send: Send<I>
+	}
+}[N]
+
+/**
  * A declared row matches a pattern when every coordinate agrees: `*` in a
  * pattern's state position admits any name; a pattern's label position has no
  * wildcard spelling (line 127) — the omitted, unlabelled form is the broad one
@@ -359,14 +399,13 @@ type Teardown = () => void
  * share: `input: undefined` already discriminates an immediate hop, so
  * `from: undefined` extends that vocabulary instead of inventing a second one.
  */
-type Arrived<I extends Vocab, S extends Vocab, N extends string> = {
+type Arrived<S extends Vocab, N extends string, X extends object> = X & {
 	readonly input: undefined
 	readonly inputData: undefined
 	readonly from: undefined
 	readonly fromData: undefined
 	readonly to: NoInfer<N>
 	readonly toData: NoInfer<Payload<S, N>>
-	readonly send: Send<I>
 }
 
 /**
@@ -379,7 +418,8 @@ type Residency<
 	S extends Vocab,
 	K extends string,
 	N extends string,
-> = Transition<I, S, K, `* -> ${N}`> | Arrived<I, S, N>
+	X extends object = { readonly send: Send<I> },
+> = Transition<I, S, K, `* -> ${N}`, X> | Arrived<S, N, X>
 
 /**
  * What a declared action sees on its own bare state, as opposed to what
@@ -394,11 +434,12 @@ type ActionArrival<
 	I extends Vocab,
 	S extends Vocab,
 	K extends string,
+	O extends Vocab,
 	Init extends string,
 	N extends string,
 > = [N] extends [Init]
-	? Residency<I, S, K, N>
-	: Transition<I, S, K, `* -> ${N}`>
+	? Residency<I, S, K, N, Capabilities<I, O>>
+	: Transition<I, S, K, `* -> ${N}`, Capabilities<I, O>>
 
 /**
  * Fires on arrival at its state, by any route `* -> N` covers; the teardown it
@@ -427,8 +468,11 @@ type EdgeAction<
 	I extends Vocab,
 	S extends Vocab,
 	K extends string,
+	O extends Vocab,
 	P extends string,
-> = (transition: NoInfer<Transition<I, S, K, P>>) => undefined | void
+> = (
+	transition: NoInfer<Transition<I, S, K, P, Capabilities<I, O>>>,
+) => undefined | void
 
 /**
  * An action is its run function alone, a record with `run`, or an array of
@@ -500,6 +544,7 @@ type Actions<
 	I extends Vocab,
 	S extends Vocab,
 	K extends string,
+	O extends Vocab,
 	Init extends string,
 	A extends string,
 > = {
@@ -507,12 +552,12 @@ type Actions<
 		? P extends Pattern<I, S>
 			? NoMatch<K, P> extends true
 				? `no row matches '${P}'`
-				: Action<EdgeAction<I, S, K, P>>
+				: Action<EdgeAction<I, S, K, O, P>>
 			: `not a trigger: '${P}'`
 		: P extends Name<S>
 			? Eligible<K, Init, P> extends true
 				? Action<
-						ResidencyAction<ActionArrival<I, S, K, Init, P>>,
+						ResidencyAction<ActionArrival<I, S, K, O, Init, P>>,
 						Restart<I, S, K, P>
 					>
 				: `no row matches '${P}'`
@@ -551,9 +596,18 @@ interface Host<
 	I extends Vocab = AnyVocab,
 	S extends Vocab = AnyVocab,
 	K extends string = string,
+	O extends Vocab = AnyVocab,
 > {
 	readonly current: Current<S>
 	readonly send: Send<I>
+	// Subscribe by output name, not by a place in the machine's topology. One
+	// coordinate, so no pattern language and nothing to wildcard; returns an
+	// idempotent unsubscribe, mirroring `observe` (§10 Composition). Generic in
+	// the name, so the record's payload is narrowed by it.
+	readonly on: <N extends Name<O>>(
+		output: N,
+		listener: (announcement: NoInfer<Announcement<I, O, N>>) => void,
+	) => () => void
 	// Generic in the pattern, so an observer's record is narrowed by it. A
 	// name-valid edge pattern with no declared row it could ever fire from is
 	// rejected the same way `Table` rejects a malformed key — the pattern
@@ -588,8 +642,13 @@ interface Host<
 
 /** Nothing at runtime; a function position keeps the three inferable together. */
 declare const vocabulary: unique symbol
-interface Vocabulary<I extends Vocab, S extends Vocab, K extends string> {
-	readonly [vocabulary]?: (declared: readonly [I, S, K]) => void
+interface Vocabulary<
+	I extends Vocab,
+	S extends Vocab,
+	K extends string,
+	O extends Vocab,
+> {
+	readonly [vocabulary]?: (declared: readonly [I, S, K, O]) => void
 }
 
 /** A declared machine. Inert, shareable, and never mutated by running one. */
@@ -598,8 +657,9 @@ interface Machine<
 	S extends Vocab = AnyVocab,
 	K extends string = string,
 	Init extends string = string,
-> extends Vocabulary<I, S, K> {
-	readonly start: (...data: Start<S, Init>) => Host<I, S, K>
+	O extends Vocab = AnyVocab,
+> extends Vocabulary<I, S, K, O> {
+	readonly start: (...data: Start<S, Init>) => Host<I, S, K, O>
 }
 
 // ---------------------------------------------------------------------------
@@ -608,8 +668,8 @@ interface Machine<
 
 /** All three at once, because matching `Machine` itself simply fails (I22). */
 type Carried<M> =
-	M extends Vocabulary<infer I, infer S, infer K>
-		? { inputs: I; states: S; keys: K }
+	M extends Vocabulary<infer I, infer S, infer K, infer O>
+		? { inputs: I; states: S; keys: K; outputs: O }
 		: never
 
 /** The input vocabulary a machine was declared with. */
@@ -617,6 +677,9 @@ export type InputsOf<M> = Carried<M>['inputs']
 
 /** The state vocabulary a machine was declared with. */
 export type StatesOf<M> = Carried<M>['states']
+
+/** The output vocabulary a machine was declared with. */
+export type OutputsOf<M> = Carried<M>['outputs']
 
 /** The inputs state `S` has rows for; `Exclude<…, ''>` drops immediate rows. */
 export type Handled<M, S extends string> = Exclude<
@@ -646,7 +709,7 @@ export type Patterns<M> = MatchedPattern<
  * public face of `EdgeObserver`, which is module-local like the rest (I37).
  * Three of that alias's four parameters live in `M`, so only the pattern is
  * left, and omitting it covers every row the table can fire. Named for
- * `observe` rather than called an observer, which the roadmap's `on` has the
+ * `observe` rather than called an observer, which `on`'s own `Listener` has the
  * better claim to: this one is handed a transition record, not an event (I40).
  */
 export type Observer<M, P extends Patterns<M> = Patterns<M>> = EdgeObserver<
@@ -655,6 +718,20 @@ export type Observer<M, P extends Patterns<M> = Patterns<M>> = EdgeObserver<
 	Carried<M>['keys'],
 	P
 >
+
+/**
+ * What `on` takes beside an output name: the reserved name spent at last, on
+ * the one channel that earned it (I40). A subscriber here is told that
+ * something happened and reads what it carried, which `observe`'s callback —
+ * handed the record of a committed transition — is not. The name defaults to
+ * every declared output, so `Listener<M>` covers the whole vocabulary.
+ */
+export type Listener<
+	M,
+	N extends Name<Carried<M>['outputs']> = Name<Carried<M>['outputs']>,
+> = (
+	announcement: Announcement<Carried<M>['inputs'], Carried<M>['outputs'], N>,
+) => void
 
 // ---------------------------------------------------------------------------
 // The definition
@@ -687,6 +764,11 @@ type Row = readonly [to: string, handler: UncheckedHandler]
 /** The snapshot, unchecked: the name dispatch keys on, and what it carries. */
 type Snapshot = { readonly name: string; readonly data: unknown }
 
+type UncheckedEmit = (output: string, data?: unknown) => void
+
+/** One row of the listener store: the name subscribed to, and what to run. */
+type Subscription = readonly [output: string, run: (a: unknown) => void]
+
 interface UncheckedHost {
 	readonly current: Snapshot
 	readonly send: UncheckedSend
@@ -694,6 +776,7 @@ interface UncheckedHost {
 		pattern: string,
 		action: EdgeObserver | ActionItem,
 	) => () => void
+	readonly on: (output: string, listener: (a: unknown) => void) => () => void
 }
 
 /**
@@ -773,14 +856,25 @@ let toRow = (key: string, item: UncheckedItem): Registration => {
  * with no second one beside it (I20). `A` is the same idea again for `actions`:
  * inferred from that block's own keys, contributing nothing back to `I`, `S` or
  * `K` (§9 Actions).
+ *
+ * `outputs` has no second inference site at all — nothing derives an output
+ * name the way `transitions` keys derive input and state names — so an omitted
+ * `outputs` widens only where widening is what the caller meant: to the
+ * any-vocabulary default when no vocabulary was declared either, and to the
+ * empty one, which leaves `emit` and `on` uncallable, when some was (I41).
  */
 export let machine: <
 	Init extends string,
 	K extends string,
 	RawI extends Vocab | undefined = undefined,
 	RawS extends Vocab | undefined = undefined,
+	RawO extends Vocab | undefined = undefined,
 	I extends Vocab = Declared<RawI, InputsFromKeys<K>>,
 	S extends Vocab = Declared<RawS, StatesFromKeys<K>>,
+	O extends Vocab = Declared<
+		RawO,
+		[RawI, RawS] extends [undefined, undefined] ? AnyVocab : {}
+	>,
 	A extends string = never,
 >(definition: {
 	readonly initial: Init & Name<NoInfer<S>>
@@ -788,9 +882,10 @@ export let machine: <
 	// out because `exactOptionalPropertyTypes` makes `?:` a different thing.
 	readonly inputs?: (RawI & VocabMap<Exclude<RawI, undefined>>) | undefined
 	readonly states?: (RawS & VocabMap<Exclude<RawS, undefined>>) | undefined
+	readonly outputs?: (RawO & VocabMap<Exclude<RawO, undefined>>) | undefined
 	readonly transitions: Table<I, S, K>
-	readonly actions?: Actions<I, S, K, Init, A> | undefined
-}) => Machine<I, S, K, Init> =
+	readonly actions?: Actions<I, S, K, O, Init, A> | undefined
+}) => Machine<I, S, K, Init, O> =
 	// The implementation, never seen by a caller through the annotation above.
 	// `unknown` because a row's value can be the poison string literal, which no
 	// concrete type implements (I23).
@@ -854,12 +949,17 @@ export let machine: <
 				// what it returns, and gates setup on a self-transition by `row[7]`, the
 				// decision `step` already made below: one call to `restart` serves both
 				// halves of the same residency's hop (§9 Actions).
-				let fire = (list: Registration[], facts: UncheckedFacts): void => {
-					// The facts plus the one capability a committed record carries: the
-					// same `send` the host exposes, so a reaction drives the machine
-					// without closing over the host it was registered on. Once per call,
-					// so the allocation stays off the path that runs most (I16).
-					let e: Arrival = { ...facts, send }
+				let fire = (
+					list: Registration[],
+					facts: UncheckedFacts,
+					extra?: object,
+				): void => {
+					// The facts plus the capabilities the record carries: the same `send`
+					// the host exposes, so a reaction drives the machine without closing
+					// over the host it was registered on, and — for an action alone —
+					// `emit`, passed in as `extra` (§10 Composition). Once per call, so
+					// the allocation stays off the path that runs most (I16).
+					let e: Arrival = { ...facts, send, ...extra }
 					for (let row of list) {
 						let [f, l, t, run, key] = row
 						if (
@@ -877,11 +977,15 @@ export let machine: <
 				// The arrival no transition caused: source and input are simply absent
 				// (§9 Actions). Shared by `start` and a bare-key `observe`, which goes
 				// through `fire` for the `to === state` test its third clause already does.
-				let enter = (list: Registration[]): void =>
-					fire(list, {
-						to: current.name,
-						toData: current.data,
-					} as UncheckedFacts)
+				let enter = (list: Registration[], extra?: object): void =>
+					fire(
+						list,
+						{
+							to: current.name,
+							toData: current.data,
+						} as UncheckedFacts,
+						extra,
+					)
 
 				// One scanning path for both kinds of transition: commit the first row
 				// that does not decline, report whether the machine moved. Fusing it with
@@ -939,7 +1043,7 @@ export let machine: <
 							current = { name: to, data: toData }
 
 							// Actions in declaration order, then observers (§9 Actions).
-							fire(acts, facts)
+							fire(acts, facts, out)
 							fire(observers, facts)
 							// One input yields at most one transition.
 							return true
@@ -981,6 +1085,31 @@ export let machine: <
 					dispatch()
 				}
 
+				// A flat list of `[name, listener]` rows scanned per emit, not a keyed
+				// store: `pnpm size` measured the keyed variant 25 raw and 3 gzipped
+				// bytes larger and 9 brotli bytes smaller, and this reuses the
+				// `observers` idiom verbatim. Listener counts are realistically
+				// single-digit, so the scan is not a concern. Copy-on-write for the
+				// same reason `observers` is: a listener registered during an emit must
+				// not join that pass, and one unsubscribed during it must still finish
+				// it (§10 Composition).
+				let listeners: Subscription[] = []
+
+				// Runs its listeners where it is called, opening no dispatch window of
+				// its own: `emit` is post-commit by construction, so a listener already
+				// sees a committed machine, and queueing the call would deliver the
+				// announcement after the machine had left the state that announced it
+				// (§10 Composition). A listener's own `send` takes the ordinary drain.
+				// A throwing listener propagates, like a throwing observer.
+				let emit: UncheckedEmit = (output, data) => {
+					let a = { output, data, send }
+					for (let [name, run] of listeners) if (name === output) run(a)
+				}
+
+				// The one capability an action carries and an observer does not, built
+				// once rather than per hop (I16).
+				let out = { emit }
+
 				// Under the drain `send` takes, so a send from one of these hops runs after
 				// the chain settles (§11 The host, "`start` settles under the drain").
 				// Entering `initial` is not a transition, so no `from` — which is what an
@@ -988,7 +1117,10 @@ export let machine: <
 				// startup slice"); `row[4]` is the teardown key only a residency row has,
 				// so filtering on it is what keeps startup residency-only.
 				dispatch(() => {
-					enter(acts.filter((row) => row[4]))
+					enter(
+						acts.filter((row) => row[4]),
+						out,
+					)
 					settle()
 				})
 
@@ -1019,6 +1151,20 @@ export let machine: <
 						}
 					},
 
+					// One coordinate, so the row is the name and what to run — no
+					// pattern to parse and nothing to wildcard. Idempotent unsubscribe,
+					// like `observe`'s (§10 Composition).
+					on: (
+						output: string,
+						listener: (a: unknown) => void,
+					): (() => void) => {
+						let subscription: Subscription = [output, listener]
+						listeners = [...listeners, subscription]
+						return () => {
+							listeners = listeners.filter((other) => other != subscription)
+						}
+					},
+
 					send,
 				}
 			},
@@ -1028,9 +1174,14 @@ export let machine: <
 /**
  * What `fire` hands whatever it matched. The transition record, except that the
  * source is absent on an arrival no transition caused; only a residency can see
- * that one, since a missing `from` matches no edge (§9 Actions).
+ * that one, since a missing `from` matches no edge (§9 Actions). `emit` is
+ * present only on a record built for an action: a handler may `skip()` and an
+ * observer is outside the machine, so neither may announce (§10 Composition).
  */
-type Arrival = UncheckedFacts & { readonly send: UncheckedSend }
+type Arrival = UncheckedFacts & {
+	readonly send: UncheckedSend
+	readonly emit?: UncheckedEmit
+}
 
 /**
  * One row shape for an observer, an edge action and a residency action alike: a

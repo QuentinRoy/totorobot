@@ -20,6 +20,7 @@ import { expectTypeOf, test } from 'vitest'
 import { machine, type, type Handled } from 'totorobot'
 
 type Inputs = { next: { delta: number }; reset: undefined; skip: undefined }
+type Outputs = { advanced: { visits: number }; wrapped: undefined }
 type States = {
 	s00: { visits: number; owner: 's00' }
 	s01: { visits: number; owner: 's01' }
@@ -47,6 +48,7 @@ const stress = machine({
 	initial: 's00',
 	inputs: type<Inputs>(),
 	states: type<States>(),
+	outputs: type<Outputs>(),
 	transitions: {
 		's00 -next> s01': ({ fromData, inputData }) => ({
 			visits: fromData.visits + inputData.delta,
@@ -165,6 +167,10 @@ const stress = machine({
 			owner: 's00',
 		}),
 	},
+	actions: {
+		s01: ({ toData, emit }) => emit('advanced', { visits: toData.visits }),
+		's19 -next> s00': ({ emit }) => emit('wrapped'),
+	},
 })
 
 test('the full twenty-state, forty-four-row table type-checks, and start() requires the initial data', () => {
@@ -260,4 +266,21 @@ test('a wrong owner literal is still rejected at this scale', () => {
 			's00 -reset> s00': () => ({ visits: 0, owner: 's00' as const }),
 		},
 	})
+})
+
+test('a fourth vocabulary is additive at this scale, not another cross-product', () => {
+	const host = stress.start({ visits: 0, owner: 's00' })
+
+	host.on('advanced', (announcement) => {
+		expectTypeOf(announcement).not.toBeAny()
+		expectTypeOf(announcement.output).toEqualTypeOf<'advanced'>()
+		expectTypeOf(announcement.data).toEqualTypeOf<{ visits: number }>()
+	})
+	host.on('wrapped', (announcement) => {
+		expectTypeOf(announcement).not.toBeAny()
+		expectTypeOf(announcement.data).toEqualTypeOf<undefined>()
+	})
+
+	// @ts-expect-error - not a declared output, at forty-four rows as at two
+	host.on('s01', () => {})
 })

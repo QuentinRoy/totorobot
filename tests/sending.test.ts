@@ -17,16 +17,22 @@ describe('sending', () => {
 
 		host.send('set', payload)
 
+		const facts = {
+			input: 'set',
+			inputData: payload,
+			from: 'idle',
+			fromData: undefined,
+			to: 'ready',
+			toData: undefined,
+			send: host.send,
+		}
+		// An action carries `emit` beside the facts; an observer does not.
+		expect(action).toHaveBeenCalledExactlyOnceWith({
+			...facts,
+			emit: expect.any(Function),
+		})
+		expect(observer).toHaveBeenCalledExactlyOnceWith(facts)
 		for (const callback of [action, observer]) {
-			expect(callback).toHaveBeenCalledExactlyOnceWith({
-				input: 'set',
-				inputData: payload,
-				from: 'idle',
-				fromData: undefined,
-				to: 'ready',
-				toData: undefined,
-				send: host.send,
-			})
 			expect(callback.mock.calls[0]![0].inputData).toBe(payload)
 		}
 	})

@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from 'vitest'
 
 import { machine, type } from 'totorobot'
-import { toggle } from './fixtures.ts'
+import { beacon, toggle } from './fixtures.ts'
 import { cloneDeep } from './helpers.ts'
 
 describe('construction', () => {
@@ -175,6 +175,18 @@ describe('construction', () => {
 		expect(observer).not.toHaveBeenCalled()
 	})
 
+	test('two hosts from one definition share no listeners', () => {
+		const hostA = beacon.start()
+		const hostB = beacon.start()
+
+		const listener = vi.fn()
+		hostA.on('opened', listener)
+
+		hostB.send('open', { at: 1 })
+
+		expect(listener).not.toHaveBeenCalled()
+	})
+
 	test('nothing ever mutates the definition', () => {
 		const before = cloneDeep(toggle)
 
@@ -184,5 +196,16 @@ describe('construction', () => {
 		host.send('toggle')
 
 		expect(toggle).toStrictEqual(before)
+	})
+
+	test('declaring outputs leaves the definition just as inert', () => {
+		const before = cloneDeep(beacon)
+
+		const host = beacon.start()
+		host.on('opened', () => {})
+		host.send('open', { at: 1 })
+		host.send('close')
+
+		expect(beacon).toStrictEqual(before)
 	})
 })

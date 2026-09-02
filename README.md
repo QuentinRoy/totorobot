@@ -124,6 +124,11 @@ through `observe`.
   - [Immediate transitions: an edge with no input](#immediate-transitions-an-edge-with-no-input)
   - [What the table gives you for free](#what-the-table-gives-you-for-free)
 - [`actions`: lifetime-scoped work](#actions-lifetime-scoped-work)
+- [`outputs`: what a machine announces](#outputs-what-a-machine-announces)
+  - [`emit`, from an action](#emit-from-an-action)
+  - [`on`, on the host](#on-on-the-host)
+  - [When a listener runs](#when-a-listener-runs)
+  - [Wiring two machines together](#wiring-two-machines-together)
 - [The host](#the-host)
   - [Reading](#reading)
   - [Sending](#sending)
@@ -145,12 +150,12 @@ through `observe`.
 
 Everything the package exports:
 
-| export                                                                                     | is                                                               |
-| ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
-| `machine({ inputs?, states?, initial, transitions, actions? })`                            | a definition: inert data, never mutated                          |
-| `type<T>()`                                                                                | a declaration carrying `T`; returns `undefined` at runtime       |
-| `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>` `Patterns<M>` `Observer<M, P>` | derived types, over `M = typeof publication`                     |
-| `Skip`                                                                                     | what `skip()` returns; it appears in every handler's return type |
+| export                                                                                                                     | is                                                               |
+| -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `machine({ inputs?, states?, outputs?, initial, transitions, actions? })`                                                  | a definition: inert data, never mutated                          |
+| `type<T>()`                                                                                                                | a declaration carrying `T`; returns `undefined` at runtime       |
+| `InputsOf<M>` `StatesOf<M>` `OutputsOf<M>` `Handled<M, S>` `Sources<M, S>` `Patterns<M>` `Observer<M, P>` `Listener<M, N>` | derived types, over `M = typeof publication`                     |
+| `Skip`                                                                                                                     | what `skip()` returns; it appears in every handler's return type |
 
 ## `inputs` and `states`: the vocabulary
 
@@ -383,9 +388,9 @@ entry, and the function it returns runs on exit. With `->` it is an edge, firing
 once per matching transition in the same [pattern language](#observing),
 including wildcards.
 
-Every action receives the same transition record as a matching
-[observer](#observing):
-`{ input, inputData, from, fromData, to, toData, send }`. A residency is an
+Every action receives the transition record a matching
+[observer](#observing) gets, plus `emit`:
+`{ input, inputData, from, fromData, to, toData, send, emit }`. A residency is an
 arrival, so its `to` is the resident state. On an arrival with no transition,
 either the initial state or a residency registered while the host already
 occupies its state, `input`, `inputData`, `from`, and `fromData` are `undefined`.
@@ -426,18 +431,173 @@ the error propagates and the rest of that commit does not run, just as with a
 throwing observer. If one of several teardowns on a trigger throws, the rest of
 the reverse-order teardown does not run.
 
+## `outputs`: what a machine announces
+
+A machine's states are its own business. `outputs` names what it announces to
+the outside, separately from what it _is_:
+
+```ts
+const menu = machine({
+	initial: 'idle',
+	inputs: type<{ press: { at: Point }; release: undefined }>(),
+	states: type<{
+		idle: undefined
+		startup: { at: Point }
+		novice: { at: Point }
+	}>(),
+	outputs: type<{ opened: { center: Point }; ended: undefined }>(),
+	transitions: {
+		'idle -press> startup': ({ inputData }) => ({ at: inputData.at }),
+		'startup -release> idle': () => {},
+		// ... a timeout row into `novice`
+	},
+	actions: {
+		novice: {
+			run: ({ toData, emit }) => emit('opened', { center: toData.at }),
+			restart: false,
+		},
+	},
+})
+
+const m = menu.start()
+m.on('opened', ({ data }) => widget.show(data.center))
+```
+
+The point is what the consumer had to know. Without `opened`, learning that the
+menu opened means subscribing to the edges that reach `novice` — so renaming
+`novice`, splitting it in two, or rerouting an edge breaks every consumer, even
+though nothing they care about changed. With it, the consumer names the thing
+that happened.
+
+Nothing is hidden. `current` is still readable and `observe` still sees every
+transition. This is a channel added, not a feed withdrawn: openness is
+recoverable in userland and encapsulation is not, so the library keeps the open
+host and splits the two channels by name. The argument is in
+[rationale §10](docs/design-record.md#revision-what-the-channel-is-actually-made-of).
+
+`outputs` is declared like `inputs` and `states`, and it is optional. A machine
+with nothing to announce leaves it out and is unchanged. An output name may
+collide with a state name or an input name; the three vocabularies are
+independent.
+
+### `emit`, from an action
+
+`emit` reaches the output vocabulary the way `send` reaches the input
+vocabulary, and it reads the same. `emit('ended')` takes no second argument when
+the output carries nothing; `emit('opened', { center })` requires the payload
+when the output declares one. An undeclared name is a compile error.
+
+It arrives on the same argument bag that already carries `send`, so there is one
+shape to learn rather than one per action kind, and it works from an edge action
+and a residency action alike:
+
+```ts
+actions: {
+	novice: ({ toData, emit }) => emit('opened', { center: toData.at }),
+	'novice -release> idle': ({ emit }) => emit('ended'),
+}
+```
+
+`emit` is gated on nothing. A residency action can capture it and call it much
+later — from a timer, or from a subscription it opened — including after its own
+teardown has run, exactly as it can with `send`.
+
+Two places do not get `emit`. A `transitions` handler cannot emit, because a
+handler may `skip()` and declaration order is priority order, so it would
+announce a hop that then loses. An `observe` callback cannot emit, because it is
+outside the machine and this channel is the machine speaking for itself. Both
+are compile errors.
+
+If you declare `inputs` or `states` and leave `outputs` out, `emit` and `on`
+accept no name at all: a channel you never declared is not usable by accident.
+Declare nothing and both widen, which is what [the untyped
+path](#the-untyped-path) needs.
+
+### `on`, on the host
+
+```ts
+const off = m.on('opened', ({ data, send }) => {
+	widget.show(data.center)
+	send('release')
+})
+```
+
+`on` takes an output name and a listener, and returns an unsubscribe function.
+Calling that function more than once is harmless, so cleanup paths need no
+guard. Subscribing to an undeclared name is a compile error.
+
+There is no pattern language here. An output has one coordinate, so there is
+nothing to wildcard, and `observe` already answers "tell me everything".
+
+The listener receives one record, `{ output, data, send }`: the name, what it
+carried, and the emitting host's own `send`, so a reaction can drive the machine
+back without closing over a host reference. Checking `output` narrows `data`
+beside it. `send` is not narrowed to what the current state handles, for the
+reason [Sending](#sending) gives — a send is queued, so the state at delivery
+need not be the state at the call.
+
+`Listener<M, N>` names a listener written away from its `on` call, the way
+`Observer<M, P>` does for `observe`. `OutputsOf<M>` reads the vocabulary back
+out.
+
+### When a listener runs
+
+Listeners fire **inline, at the `emit` call**, not on the queue. `emit` is
+post-commit by construction, so a listener already sees a committed machine;
+queueing the call would deliver the announcement after the machine had left the
+state that announced it, with no way for the listener to tell.
+
+Several listeners on one output fire in registration order. The list is
+copy-on-write, so a listener registered during an emit of that output does not
+run in that pass, and one unsubscribed during it still does — the same rule
+`observe` follows. An output with no listeners is a silent no-op, so a machine
+is usable before anything subscribes.
+
+A listener's own `send` is queued under the same drain every other send uses, so
+the reentrancy rules under [commit ordering](#commit-ordering) hold across an
+output-driven wiring exactly as they do across an observed one, cross-host case
+included.
+
+A listener that throws propagates out of the `emit` call, like a throwing
+observer. That costs more here than it does there, and it is worth knowing
+before you meet it: a listener throwing out of a **residency** action's `emit`
+interrupts that action mid-setup, so its teardown is never registered and
+whatever it opened is stranded. Emit after your setup finishes.
+
+**Outputs emitted during `start()` reach nobody.** Residency actions on the
+initial state run inside `start`'s dispatch, before the host is returned, so no
+`on` call can have happened yet. Nothing is buffered and nothing is replayed —
+an output's delivery time must not depend on when someone subscribed. This is
+the sibling of the existing rule that `observe` is unreachable until `start`
+returns.
+
+### Wiring two machines together
+
+Two peers wired by subscription is how machines are combined today. Declared
+outputs are what a peer should publish:
+
+```ts
+menu.start().on('opened', ({ data }) => canvas.send('showMenu', data))
+```
+
+One call, and a topology refactor inside the menu does not break the wiring.
+What this does _not_ do is settle peer orchestration: the wiring still lives
+outside both definitions, as imperative calls a caller has to remember to make.
+Declared outputs improve that convention's vocabulary without closing it.
+
 ## The host
 
 `definition.start(data)` returns the stateful thing that owns the current state
 and dispatches to observers. One host per independent use: two hosts over one
 definition share no state and no observers, and neither mutates the definition.
 
-| member                            | is                                                                  |
-| --------------------------------- | ------------------------------------------------------------------- |
-| `definition.start(data?)`         | creates a host; `data` follows the declared initial state's payload |
-| `host.current`                    | `{ name, data }`: where the host is, and what that state carries    |
-| `host.send(input, inputData?)`    | a dispatch; returns nothing                                         |
-| `host.observe(pattern, observer)` | a subscription; returns an unsubscribe function                     |
+| member                            | is                                                                   |
+| --------------------------------- | -------------------------------------------------------------------- |
+| `definition.start(data?)`         | creates a host; `data` follows the declared initial state's payload  |
+| `host.current`                    | `{ name, data }`: where the host is, and what that state carries     |
+| `host.send(input, inputData?)`    | a dispatch; returns nothing                                          |
+| `host.observe(pattern, observer)` | a subscription to transitions; returns an unsubscribe function       |
+| `host.on(output, listener)`       | a subscription to a declared output; returns an unsubscribe function |
 
 ```ts
 const doc = publication.start() // `empty` carries no payload, so no argument
@@ -512,9 +672,8 @@ returns an unsubscribe function.
 They are observers rather than listeners because of what they are handed. An
 observer is told that a transition committed, and reads the whole record of it.
 A listener is told that something happened, and reads whatever that something
-carried. Totorobot has no second kind yet, so the distinction costs nothing to
-follow today; a [declared output channel](#beyond-this-release) would add one, and the
-word is kept free for it.
+carried. Both exist: `observe` takes an observer, and
+[`on`](#on-on-the-host) takes a listener.
 
 The observer receives the transition record,
 `{ input, inputData, from, fromData, to, toData, send }`: three names, each next
@@ -777,6 +936,7 @@ The table gives the alternative for each omission and links to its rationale:
 | `stop()`                    | unsubscribe, and stop sending ([§11](docs/design-record.md#no-disposal-and-an-observer-that-throws))                  |
 | typed `send`                | nothing at runtime either; recorded but unbuilt ([§12](docs/design-record.md#if-it-comes-back-it-comes-back-as-s12))  |
 | hierarchy, parallel regions | out of scope ([§10](docs/design-record.md#what-the-rest-of-the-record-forbids))                                       |
+| replay of missed outputs    | subscribe before you send ([§10](docs/design-record.md#emits-during-start-are-unobservable-and-stay-that-way))        |
 
 ## The untyped path
 
@@ -808,13 +968,12 @@ an odd name by hand is deliberate in a way a doubled space never is.
 
 ## Beyond this release
 
-A declared `emit` channel and horizontal composition are sketched in
-[the roadmap](docs/roadmap.md), and neither is promised.
+Horizontal composition is sketched in [the roadmap](docs/roadmap.md), and it is
+not promised.
 
 ## Documentation
 
-- [Roadmap](docs/roadmap.md) — what might come after v1: a declared output
-  channel and composition.
+- [Roadmap](docs/roadmap.md) — what might come after v1: composition.
 - [Design record](docs/design-record.md) — the decision ledger: what was
   considered and rejected, and on what evidence.
 - [Research notes](docs/research/) — research on automata theory, execution

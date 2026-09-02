@@ -44,7 +44,8 @@
 8. [Effects](#8-effects)
 9. [Actions](#9-actions)
 10. [Composition](#10-composition) — with
-    [Revision: the composition boundary](#revision-the-composition-boundary)
+    [Revision: the composition boundary](#revision-the-composition-boundary) and
+    [Revision: what the channel is actually made of](#revision-what-the-channel-is-actually-made-of)
 11. [The host](#11-the-host)
 12. [Sending inputs](#12-sending-inputs)
 13. [Narrowing is never invalidated](#13-narrowing-is-never-invalidated)
@@ -63,8 +64,9 @@ Twenty axes. All twenty were closed. **Two late revisions then reopened two of t
 were decided after the rest of this record, and merged into the sections they revise: the
 [composition boundary](#revision-the-composition-boundary) into §10, and the
 [shape of a named thing](#revision-the-shape-of-a-named-thing) into §5. States, inputs,
-`observe`, `actions`, and the transition record are shipped; outputs and `emit`
-remain unbuilt. The record carries a fourth field, `send`, added after the sections
+`observe`, `actions`, the transition record, and — since
+[§10's second revision](#revision-what-the-channel-is-actually-made-of) — outputs and
+`emit` are all shipped. The record carries a fourth field, `send`, added after the sections
 below were written ([§11](#the-observer-gets-send-too)).
 
 | #   | Axis                       | Answer                                                                                                       | §      |
@@ -75,7 +77,7 @@ below were written ([§11](#the-observer-gets-send-too)).
 | 4   | Re-entry vs stay           | dissolved — it is an action's restart policy                                                                 | 9      |
 | 5   | Self-transition spelling   | `'draft -revise> draft'`, an ordinary row                                                                    | 5      |
 | 6   | Input vocabulary           | declared — **answer stands, shape changed** to unions by §5's revision                                       | 5      |
-| 7   | Returned commands (`emit`) | ~~out~~ — **reopened** as `emit` in `actions`, §10's revision                                                | 7, 10  |
+| 7   | Returned commands (`emit`) | ~~out~~ — **reopened** as `emit` in `actions`, §10's revisions, **shipped**                                  | 7, 10  |
 | 8   | Fall-through refusal       | no `else` and no warning — a decline is silent                                                               | 4      |
 | 9   | Async / work-in-flight     | subsumed by axis 10                                                                                          | 8      |
 | 10  | Actions in the machine     | `actions:`, keyed by trigger, a `restart` field for policy                                                   | 9      |
@@ -735,7 +737,7 @@ way, and the context member is `input` rather than `event`.
 > **A late revision, merged here from what was §17 of the chronological record.**
 > Decided alongside [§10's composition boundary](#revision-the-composition-boundary),
 > and it changes the shape argued above rather than the decision to declare at all.
-> States and inputs are built; outputs are unbuilt. Reopens axis 2, since `void`
+> States, inputs and outputs are all built. Reopens axis 2, since `void`
 > leaves the vocabulary entirely, and changes the shape axis 6 settled, though not its answer:
 > the vocabulary is still declared. The transition record's fourth field is freed up
 > and the record carries `{ input, from, to }`. The position it supersedes is the map
@@ -2119,12 +2121,13 @@ invoke(…))`.
 ### Revision: the composition boundary
 
 > **A late revision, merged here from what was §16 of the chronological record.**
-> Decided after v1's surface was written, and it changes that surface. Outputs and
-> `emit` (axis 7) remain unbuilt and deferred past v1; `observe` (axis 16) is shipped,
+> Decided after v1's surface was written, and it changes that surface. It settles where
+> a machine's boundary goes; it does not replace the three designs above, which are
+> preserved as they were argued. Outputs and `emit` (axis 7) were deferred past v1 when
+> this was written and are shipped now, under their own
+> [second revision](#revision-what-the-channel-is-actually-made-of); `observe` (axis 16)
 > and the state/input shapes and transition record of
-> [§5's revision](#revision-the-shape-of-a-named-thing) are shipped. It settles where a
-> machine's boundary goes; it does not replace the three designs above, which are
-> preserved as they were argued.
+> [§5's revision](#revision-the-shape-of-a-named-thing) were already shipped.
 
 [Issue #24](https://github.com/QuentinRoy/totorobot/issues/24) asked where the
 boundary of a machine goes, and offered two answers:
@@ -2224,8 +2227,8 @@ needs a post-commit home, and there is exactly one: the action bag. Buffering em
 discarding them on skip is real machinery plus an impure handler, for a channel that
 wants to fire post-commit anyway.
 
-So **`actions` is the prerequisite, not the follow-on**, which is why
-[the roadmap](roadmap.md) lists it first.
+So **`actions` is the prerequisite, not the follow-on**, which is why it shipped
+first.
 
 #### Axis 7 is reopened, not reversed
 
@@ -2245,6 +2248,180 @@ remember to make; [§10's own objection](#10-composition) called it "half a mach
 plus a convention". `emit` improves its grade, because the convention becomes the machine's
 declared outputs rather than its internal states, so a topology refactor stops breaking
 consumers. It does not close it.
+
+### Revision: what the channel is actually made of
+
+> **A second revision to §10, written when the channel above was built.** The
+> revision preceding it decided _that_ a machine gets a declared output channel and
+> left its shape explicitly unclaimed — "no property name, shape, or syntax is claimed
+> ahead of the design that would justify it". This is that design. Nothing above is
+> overturned.
+
+#### A fourth vocabulary map, not a tagged union
+
+`outputs` is declared the way `inputs` and `states` are, with `type<{ name: payload }>()`:
+
+```ts
+outputs: type<{ opened: { center: Point }; ended: undefined }>(),
+```
+
+The sketch that came before this used a tagged union, `{ type: 'opened'; center: Point }`,
+and marked the spelling illustrative. A map wins for two reasons. All three vocabularies
+then name things one way, so there is one shape to learn rather than three-and-a-bit. And
+`emit('opened', data)` reads as `send`'s mirror, which is what it is.
+[§5's revision](#revision-the-shape-of-a-named-thing) already spent the discriminator
+question on making a name the discriminator; spending it again differently here would be
+the inconsistency, not the economy.
+
+#### An omitted `outputs` widens, and what it widens to depends on its siblings
+
+There is no second inference site for outputs. Nothing derives an output name the way
+`transitions` keys derive input and state names, because nothing in the table mentions
+one. So an omitted `outputs` has only a default to fall back on, and there are two
+different callers who omit it.
+
+A plain-JavaScript caller declares no vocabulary at all and still wants a working
+channel, on the same terms `send` already gives them: any name, unknown payload. A
+TypeScript caller who declared `inputs` and `states` and left `outputs` out has said
+something different — this machine announces nothing — and a channel they never
+declared should not be usable by accident.
+
+So the default reads its siblings: the any-vocabulary default when neither `inputs` nor
+`states` was declared, and the empty vocabulary otherwise, which leaves `emit` and `on`
+with no name they accept. This is the one place a vocabulary's default is not simply the
+widest thing available, and it is because omission means two different things depending
+on the company it keeps. The compiler mechanics are in
+[implementation-record.md, I41](implementation-record.md#i41).
+
+#### `emit` lives only in `actions`
+
+A `transitions` handler cannot emit. Handlers may `skip()`, and declaration order is
+priority order, so a handler that emitted would announce a hop that then loses. Buffering
+emits and discarding them on a skip is real machinery plus an impure handler, for a
+channel that wants to fire post-commit anyway — the argument
+[above](#emit-cannot-precede-actions) that made `actions` the prerequisite.
+
+An `observe` callback cannot emit either. It is outside the machine, and the channel is
+the machine speaking for itself. Handing the machine's own voice to a subscriber would
+make "who said this" unanswerable from the declaration.
+
+#### `emit` joins the argument bag, and the two argument types fork
+
+`EdgeAction` and `EdgeObserver` were the same `Transition`, and `ResidencyAction`'s
+argument was built from the same parts. That shared shape widens for actions only:
+an action's record carries `emit`, an observer's does not. This is
+[§9's](#9-actions) settled shape — one argument for every action, not a bag per kind —
+so `run(transition, { emit })` is rejected. The exported `Observer<M, P>` is unchanged,
+and a machine that declares no `outputs` type-checks exactly as it did.
+
+#### `Emit<O>` is declared apart from `Send<I>`
+
+The two are structurally identical today, conditional optional-payload rule and `void`
+return included. They are not aliased. `Send`'s meaning is a capability a state permits,
+which is the wrong story for an output, and two declarations can drift later without a
+rename.
+
+#### `emit` is gated on nothing
+
+Not on liveness, not on a dispatch window. A residency action may capture `emit` and call
+it long after its teardown ran, exactly as it may capture `send`. `emit` runs its
+listeners where it is called and opens no dispatch window of its own; a listener's `send`
+takes the drain through `send`'s existing path, so
+[rule 4](#commit-ordering) holds across an output-driven wiring exactly as it does across
+an observed one, including across two hosts.
+
+#### The host gains `on(name, listener)`
+
+It returns an unsubscribe function, idempotent, mirroring `observe`. There is no pattern
+language: an output has one coordinate, so there is nothing to wildcard. There is no
+all-outputs form — a consumer wanting everything registers per name, and `observe`
+already answers "tell me everything". Both are additive later.
+
+#### The listener receives one record: `{ output, data, send }`
+
+`output` mirrors the transition record's `input`, which names the input. `send` is the
+emitting host's own binding, hoisted above the dispatch that runs the initial chain, the
+same construction [§11](#the-observer-gets-send-too) uses for the observer's `send`, so
+the drain rules hold by construction.
+
+The case that a listener should be _denied_ `send` was raised and withdrawn. `send`
+reaches the input vocabulary, which is already the machine's declared inward surface, so
+it leaks no topology; and §11's "a capability hands the observer no fact it could not
+already compute" applies unchanged. It is not narrowed to what the current state handles,
+for [§12's](#12-sending-inputs) reason: a send is queued, so the state at delivery need
+not be the state at the call.
+
+#### Listeners fire inline, in registration order, over a copy-on-write list
+
+Inline, because `emit` is post-commit by construction, so a listener already sees a
+committed machine. Queueing the listener call would deliver an announcement after the
+machine had left the state that announced it, with no way for the listener to tell.
+
+Copy-on-write, because every observer and action list in the library already is. The
+queue's live iteration is a deliberate exception justified by drain semantics, and a
+listener list is not that kind of list. It follows that a listener registered during an
+emit does not run in that pass, and one unsubscribed during an emit still does.
+
+#### A throwing listener propagates
+
+Same rule as a throwing observer: no swallowing, no error channel, no API. An error
+channel stays additive later, and the default staying harsh keeps one uniform rule.
+
+This carries a cost strictly larger than the observer case, so it is written down rather
+than inherited silently. A listener throwing out of a _residency_ action's `emit`
+interrupts that action mid-setup, so its teardown is never registered and whatever it
+opened is stranded. That is an argument for emitting after setup, and it is recorded as
+one.
+
+#### Emits during `start()` are unobservable, and stay that way
+
+Residency actions on the initial state fire inside `start`'s dispatch, before the host is
+returned, so no `on` call can have happened yet. Unlike a residency `observe`, which
+`enter` replays for a late subscriber, an output has nothing to catch up on.
+
+Buffering startup emits is rejected: it would make an output's delivery time depend on
+subscription time, which is the one thing a declared channel must not do. A listener
+argument to `start()` is rejected because [§11](#11-the-host) already refused to put a
+knob in that signature. This is a sibling of the existing rule that `observe` is
+unreachable until `start` returns.
+
+#### Shipped in core, eagerly
+
+No subpath export and no second constructor. `emit` cannot be tree-shaken: `machine()`
+itself must allocate the listener store per host and place `emit` in the argument bag,
+and a second way to declare a machine would put the duplication on the API surface. A
+lazy variant was considered and rejected — it saves one object allocation per host while
+costing source bytes for the guard, the wrong side of this project's trades.
+
+#### Storage is internal, and measurement decided it
+
+Two candidates were built: a keyed store, null-prototype so `on('toString')` finds
+nothing, copy-on-write per key; and a flat copy-on-write array of `[name, listener]` rows
+scanned per emit, reusing the `observers` idiom verbatim. `pnpm size` put the flat array
+25 raw and 3 gzipped bytes ahead and 9 brotli bytes behind; raw and gzip decided, and the
+flat array also gets stable iteration for free from the same copy-on-write and
+unsubscribes by row identity, so registering one function twice removes one
+registration. Listener counts are realistically single-digit, so the scan is not a
+concern. Nothing outside the module can tell which one won, and that must stay true.
+
+#### An output name may collide with a state or an input name
+
+The three vocabularies are independent, and forcing a rename because a machine happens to
+have both an `open` state and an `open` output would be a cost paid for nothing. Names
+are resolved per vocabulary at every site that reads one.
+
+#### What this pass does not add
+
+No `emit` in a residency teardown — a teardown also runs on unsubscribe and on the exit
+half of a restart, so its emits would fire in situations that are not "something happened
+to the machine". No all-outputs subscription; no pattern matching on output names; no
+replay or buffering; no return value from `emit`; no error channel; no disposal. Every
+one of them is additive later.
+
+None of it closes peer orchestration. Wiring between peers still lives outside any
+definition, as imperative calls a caller must remember to make. Declared outputs improve
+that convention's vocabulary — the convention becomes the machine's declared outputs
+rather than its internal states — but the orchestration shape stays undecided.
 
 ## 11. The host
 

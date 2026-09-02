@@ -358,7 +358,7 @@ describe('actions', () => {
 		expect(pinned).not.toHaveBeenCalled()
 	})
 
-	test('a residency action receives the arrival that entered its state, the same record shape an edge action and an observer get, with `to` the resident state', () => {
+	test('a residency action receives the arrival that entered its state, the same record shape an edge action gets, with `to` the resident state', () => {
 		const action = vi.fn()
 		const doc = machine({
 			initial: 'off',
@@ -381,6 +381,7 @@ describe('actions', () => {
 			to: 'on',
 			toData: undefined,
 			send: expect.any(Function),
+			emit: expect.any(Function),
 		})
 		expect(action.mock.calls[0]?.[0].send).toBe(doc.send)
 	})
@@ -407,11 +408,12 @@ describe('actions', () => {
 			to: 'off',
 			toData: undefined,
 			send: expect.any(Function),
+			emit: expect.any(Function),
 		})
 		expect(action.mock.calls[0]?.[0].send).toBe(doc.send)
 	})
 
-	test("an edge action's argument is the transition it fired on, identical to what a matching observer receives", () => {
+	test("an edge action's argument is the transition it fired on, which is what a matching observer receives plus `emit`", () => {
 		const action = vi.fn()
 		const doc = machine({
 			initial: 'off',
@@ -434,6 +436,7 @@ describe('actions', () => {
 			to: 'on',
 			toData: undefined,
 			send: expect.any(Function),
+			emit: expect.any(Function),
 		})
 		expect(action.mock.calls[0]?.[0].send).toBe(doc.send)
 	})
