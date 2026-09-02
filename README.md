@@ -514,7 +514,7 @@ later (from a timer, or from a subscription it opened), including after its own
 teardown has run, exactly as it can with `send`.
 
 Two places do not get `emit`. A `transitions` handler cannot emit, because a
-transition is pure — it neither performs nor schedules anything, and `emit` is
+transition is pure. It neither performs nor schedules anything, and `emit` is
 a side effect. A handler may also `skip()`, and declaration order is priority
 order, so an emitting handler would sometimes announce a hop that then loses.
 An `observe` callback cannot emit either, because it is outside the machine
