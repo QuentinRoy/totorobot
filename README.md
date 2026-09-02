@@ -877,8 +877,11 @@ GitHub Actions to create and approve pull requests".
 To the libraries and work this one learned from:
 [Robot3](https://thisrobot.life/),
 [XState](https://github.com/statelyai/xstate),
-[yay-machine](https://yay-machine.js.org/), and
-[SwingStates](https://perso.lisn.upsaclay.fr/appert/website/papers/SwingStates-spe.pdf).
+[yay-machine](https://yay-machine.js.org/),
+[jssm](https://github.com/StoneCypher/jssm),
+[@doeixd/machine](https://github.com/doeixd/machine),
+[SwingStates](https://perso.lisn.upsaclay.fr/appert/website/papers/SwingStates-spe.pdf),
+and [others](docs/research/07-js-fsm-library-landscape.md).
 
 ## License
 
