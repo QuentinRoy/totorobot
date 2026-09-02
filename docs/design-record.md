@@ -17,6 +17,9 @@
 > rather than the tagged union `{ name: 'empty' } | { name: 'draft'; … }`; a
 > handler's `({ data })` rather than `({ state })`; and the four-field transition
 > record `{ on, input, from, to }` rather than `{ input, from, to }`.
+> `observe`'s callback is one of the corrections: this record was written when it
+> was a listener, and calls it an observer throughout, after the exported
+> `Observer<M, P>` ([§11](#observation-observe-on-the-host-with-patterns)).
 >
 > **Only the API argument is here.** What the compiler does is in
 > [the implementation record](implementation-record.md): the findings about making
@@ -62,7 +65,7 @@ were decided after the rest of this record, and merged into the sections they re
 [shape of a named thing](#revision-the-shape-of-a-named-thing) into §5. States, inputs,
 `observe`, `actions`, and the transition record are shipped; outputs and `emit`
 remain unbuilt. The record carries a fourth field, `send`, added after the sections
-below were written ([§11](#the-listener-gets-send-too)).
+below were written ([§11](#the-observer-gets-send-too)).
 
 | #   | Axis                       | Answer                                                                                                       | §      |
 | --- | -------------------------- | ------------------------------------------------------------------------------------------------------------ | ------ |
@@ -1113,7 +1116,7 @@ so source, target and handler are all that remain.
 ## 7. Self-transitions
 
 > **Axis 7 was closed here, and is reopened in [§10](#revision-the-composition-boundary).**
-> One of its three grounds, that a listener recovers everything from the transition
+> One of its three grounds, that an observer recovers everything from the transition
 > record, did not survive the composition question. The other two stand. The
 > self-transition argument itself is untouched.
 
@@ -1164,15 +1167,15 @@ That produced a cleaner boundary than "no side effects in the definition":
 
 **What dropping entry/exit cost:** a measured consolidation disappeared (using
 residency for the marking menu's dwell had moved `cancelDwell` from three edges to
-one place; that survives with an external listener scoped to "while in
+one place; that survives with an external observer scoped to "while in
 `tracking`", it just moves out of the file), and the machine stops telling you
 what it _does_. That is a locality cost, not an expressiveness one: a transition
-is identified by (source, input, target), so an external listener can
+is identified by (source, input, target), so an external observer can
 pattern-match at exactly the granularity inline actions gave.
 
 **Axis 7 (`emit`) closed with it**, on three grounds in ascending order of force:
 another concept to learn on a project whose thesis is that the table reads without
-explanation; **strictly redundant**, since a listener receives
+explanation; **strictly redundant**, since an observer receives
 `{ input, from, to }` with the states at both ends, and everything a pure handler
 could compute is already in `to`; and **the direction is asymmetric**: adding
 `emit` later is additive, removing it later is breaking.
@@ -1326,7 +1329,7 @@ actions.
 Option S is worth one note, because it is the only shape that puts "this
 transition starts a fetch" on the line where the transition already is, and
 because it **reopens axis 7 legitimately rather than contradicting it**: that
-decision was about _outgoing notifications_, which a listener can recover from
+decision was about _outgoing notifications_, which an observer can recover from
 `{ input, from, to }`. _Starting work_ is not recoverable that way, so the
 redundancy argument does not transfer.
 
@@ -1552,12 +1555,12 @@ activities to nodes).
 The spec gave each trigger kind its own bag: `{ state, send }` for a residency,
 `{ transition, send }` for an edge. Built, both were wrong.
 
-**The edge bag wrapped what it should have been.** An edge action and a listener
+**The edge bag wrapped what it should have been.** An edge action and an observer
 react to the same committed transition, so nothing justifies two shapes, and the
 wrapper carried `send` twice — once as `bag.send`, once inside `bag.transition`.
 Unwrapping it then left residency as the only shape still differing.
 
-**One fix, and the constraints force it.** Edge must equal listener and residency
+**One fix, and the constraints force it.** Edge must equal observer and residency
 must equal edge, so all three take the transition record. A residency is an
 arrival, so its `to` _is_ the resident state, which is what `state` was; `from`
 and `input` come free. Dispatch already builds one such record per commit and now
@@ -1575,7 +1578,7 @@ residency form should take the same argument when it lands.
 
 ### The bare-key conflict, and the rule that closed it
 
-Residency wants a bare key, and the listener language already gave bare keys a
+Residency wants a bare key, and the observer language already gave bare keys a
 different meaning — a pattern's first arm is an input name. Left alone, the same
 syntax would mean an input in one block and a state in the other, and a name that
 is legally both — `review` is plausibly both, and the neutral machine has it as a
@@ -1628,9 +1631,9 @@ lifetime rule bolted to an opaque closure**, which is `useEffect` with better
 scoping.
 
 **So `actions` is deferred, and v1 ships no effect mechanism at all** — not a block,
-and not the residency-keyed listener that was briefly going to stand in for one. An
+and not the residency-keyed observer that was briefly going to stand in for one. An
 intermediate plan had `observe()` carry residency in v1 and `actions` arrive beside it in
-v1.1. That plan died with the listener registry (§11): the two would have been the
+v1.1. That plan died with the observer registry (§11): the two would have been the
 same shape with two owners, and §9's own open question — "if both attach to `draft`,
 what is the run and teardown order?" — is a question worth never having.
 
@@ -1698,7 +1701,7 @@ deferring differently from actions everywhere else, or the initial chain's own s
 draining after `start` returns — the first one is what wrapping the initial
 residency and `settle()` in one `dispatch()` call already gives for free: the queue
 drains inside that call, before `start`'s own `dispatch()` returns, so the host
-handed back already reflects a self-send's outcome. No listener misses the hop,
+handed back already reflects a self-send's outcome. No observer misses the hop,
 because none could exist yet to miss it — `observe` stays unreachable until `start`
 returns, same as always. Pinned in `tests/queue.test.ts`, "actions fired by
 `start()`".
@@ -1710,7 +1713,7 @@ also swept in a wildcard-source edge action, `* -> *` included, since a
 wildcard reads a missing `from` — the initial arrival, which no transition
 caused — the same as a real predecessor. Fixed by filtering that one `enter`
 call to residency rows (`row[4]`, the teardown key only those carry); `fire`'s
-own matching, shared with every real transition and listener, is unchanged.
+own matching, shared with every real transition and observer, is unchanged.
 Pinned in `tests/actions.test.ts`, "startup invokes no edge action".
 
 ### Measured, then declined: completions for `actions`
@@ -1954,7 +1957,7 @@ Three things fall out that were not designed for:
   we are arguably still in `loading` and may still need `{ id }`, so it is the
   child's outcome, the parent's data, or both under separate bindings.
 - **Run-to-completion becomes urgent.** A single `send` can now cause a _chain_ of
-  transitions. When do actions fire, when do listeners fire, what does `send`
+  transitions. When do actions fire, when do observers fire, what does `send`
   return, and what stops `'a -> b'` / `'b -> a'` from spinning? P0.7 was already
   amended to say run-to-completion is eight decisions, not one; immediate
   transitions make paying that bill unavoidable.
@@ -2168,7 +2171,7 @@ Two results fell out of owning the timer:
   on an announce-once action duplicates the output silently.
 
 **Cross-machine dispatch nests, under both models.** [Commit
-ordering](#commit-ordering) rule 4, that a listener is never re-entered while an
+ordering](#commit-ordering) rule 4, that an observer is never re-entered while an
 earlier call is still running, holds _per host_. Peer wiring crosses hosts, so the guarantee
 lapses exactly where composition needs it. ~15 lines to fix, and unrelated to A/B.
 
@@ -2347,14 +2350,22 @@ the initial data is an argument or lives in the definition beside `initial:`.
 > `.on` is left unclaimed for the later output channel, so that channel is pure
 > addition. The transition record this method delivers is reshaped by
 > [§5's revision](#revision-the-shape-of-a-named-thing).
+>
+> **The callback followed the method.** This record called it a listener
+> throughout, written when the method was `.on` and the word fit. The exported
+> type is `Observer<M, P>`, and the prose here says observer to match. `Listener`
+> is exported by nothing, and is held for the output channel above, whose
+> subscribers would be told that something happened and read what it carried.
+> An observer is handed the record of a transition that committed, which is the
+> distinction §7's rejected argument circles without naming.
 
-`doc.observe(pattern, fn)` returns an unsubscribe function. Many listeners, edge patterns
+`doc.observe(pattern, fn)` returns an unsubscribe function. Many observers, edge patterns
 in the transition key language, and **no bare-state key**: a key with no arrow
 means residency, which the host does not implement. That last part held for v1 only.
 1.1 gave `observe` the bare key and the `{ run, restart }` record `actions` takes,
 after `actions` had made the host own a lifetime anyway.
 
-**On the host, never the definition.** The prototype attaches listeners to the
+**On the host, never the definition.** The prototype attaches observers to the
 definition, which contradicts the ownership split §9 relies on: two hosts running
 one definition would share them, and a value documented as inert is quietly mutated.
 On the host, the definition stays immutable, which is what lets it be exported,
@@ -2362,19 +2373,19 @@ imported, diffed and visualised.
 
 **Deliver the transition record, not a snapshot.** Robot3 hands its observer the live
 service, with no `from`, no `to` and no input, which is why it cannot say what
-_caused_ a change. Axis 7 dropped `emit` on the grounds that "a listener recovers
+_caused_ a change. Axis 7 dropped `emit` on the grounds that "an observer recovers
 everything from `{ input, from, to }`". Deliver the record and that argument stands;
 deliver a snapshot and axis 7 reopens.
 
-**Two arguments against a listener list were made and do not survive**, recorded
+**Two arguments against an observer list were made and do not survive**, recorded
 because both looked strong:
 
 - _"Multiplicity is what makes dispatch hard — with L1, L2, L3 and L1 sending during
-  its own notification, the later listeners get told about a transition the machine
+  its own notification, the later observers get told about a transition the machine
   has already left."_ **That is an argument against nesting, not against the list.**
   Under the queue, L1's send is parked, L2 and L3 are notified with the machine still
   where their event says it is, and the drain delivers the next transition to all
-  three in order. The invariant holds for any number of listeners. Once the queue is
+  three in order. The invariant holds for any number of observers. Once the queue is
   in — and it is, for independent reasons — the list costs nothing here.
 - _"The pattern language is runtime cost."_ **It is not.** The table already has to
   parse every key into `(from, input, to)` to dispatch at all; a pattern is the same
@@ -2383,7 +2394,7 @@ because both looked strong:
   list.
 
 **And one argument for patterns that the cost framing hid:** they keep the grep story
-whole. `grep '\-> published'` finds the transition rows and the listeners together,
+whole. `grep '\-> published'` finds the transition rows and the observers together,
 where `if (e.to.name === 'published')` severs the link. "Every topology question is
 a text search" is the project's central claim, and this is a place it applies.
 
@@ -2396,15 +2407,15 @@ neither, so every framework consumer writes its own fan-out. P0.11 asks for
 browser-first and framework-neutral, which argues for the standard shape rather than
 against it.
 
-### The listener gets `send` too
+### The observer gets `send` too
 
 > **Shipped after the section above was written.** It adds a field to the record
 > that section specifies, and changes none of its arguments.
 
-The record a listener receives carries `send` beside `input`, `from` and `to`, so a
+The record an observer receives carries `send` beside `input`, `from` and `to`, so a
 reaction drives the machine without closing over the host it was registered on. It is
 the host's own binding rather than a wrapper, hoisted above the `dispatch` that runs
-the initial chain, so the drain rules hold by construction: the listener is not
+the initial chain, so the drain rules hold by construction: the observer is not
 re-entered, and the input is read when the queue reaches it.
 
 **It is not narrowed to what the notified state handles**, and cannot be, for the
@@ -2412,9 +2423,9 @@ reason [§12](#decided-a-broad-send-and-no-typed-send-site) gives: a send is que
 the state at delivery need not be the state at the call. Narrowing would make the
 ordinary reaction a compile error.
 
-This does not reopen axis 7. `emit` was dropped because a listener recovers everything
+This does not reopen axis 7. `emit` was dropped because an observer recovers everything
 from `{ input, from, to }`, which is a claim about data; `send` is a capability, and
-adding one hands the listener no fact it could not already compute. Every action
+adding one hands the observer no fact it could not already compute. Every action
 receives the same record, per [§9's revision](#revision-one-argument-for-every-action-not-a-bag-per-kind).
 
 ### Residency is derivable, not a host feature
@@ -2445,20 +2456,20 @@ function residency(doc, state, setup) {
 A self-transition matches **both** patterns, so restart-on-re-entry falls out rather
 than being implemented. `persistent` is `if (e.to.name !== e.from.name)` in the
 exit handler; `keyed` compares `k(e.from)` against `k(e.to)`. It needs two
-things from the host, both worth committing to anyway: **listeners fire in
+things from the host, both worth committing to anyway: **observers fire in
 registration order** (which is what makes exit-before-entry reliable), and
 `doc.current` is readable at registration (for the already-resident case that no
 transition will announce).
 
 **So the dividing line is ownership, not the feature.** Caller-owned residency is a
-helper over public listeners. Definition-owned residency, `actions`, must be host
+helper over public observers. Definition-owned residency, `actions`, must be host
 machinery, because the definition is inert data and something has to interpret it:
 read the block, run the right entry, hold the teardown, apply the restart policy.
 That is the only place the host is forced into a lifetime.
 
 Two consequences. The v1.1 coexistence worry softens: a helper and `actions` are not
 two implementations of one host lifetime, but one lifetime and one
-interpretation of a block, needing only "actions before listeners", which the commit
+interpretation of a block, needing only "actions before observers", which the commit
 order needs regardless. And residency **can arrive at any time without any version
 having been wrong**, because nothing about it is breaking to add.
 
@@ -2467,7 +2478,7 @@ The answer above is scoped to v1, and 1.1 revisited it in the order predicted he
 field (§9), so a caller-side residency and a declared one share one policy vocabulary.
 Nothing that existed before either broke, which is what made the deferral cheap. The
 dividing line moved with it: once the host held a teardown for `actions`, holding one
-for a listener cost a slot on the same row, and the recipe above became one way to
+for an observer cost a slot on the same row, and the recipe above became one way to
 write what the host now does rather than the only one.
 
 ### Commit ordering
@@ -2499,10 +2510,10 @@ That leaves the rules, all five of them:
 
 1. **One input can yield a chain of transitions**, settled to exhaustion (or to the
    hop budget) before the next queued input is taken.
-2. **Commit, then notify.** A listener always sees a fully committed machine, so
-   `e.to` and `doc.current` agree, for every listener, always.
-3. **Listeners fire in registration order.**
-4. **A send from a listener is queued**, and the queue drains before the outermost
+2. **Commit, then notify.** An observer always sees a fully committed machine, so
+   `e.to` and `doc.current` agree, for every observer, always.
+3. **Observers fire in registration order.**
+4. **A send from an observer is queued**, and the queue drains before the outermost
    `send` returns, not on a microtask and not nested.
 5. **`send` returns nothing.**
 
@@ -2513,10 +2524,10 @@ order**. Four things differ:
 
 |                                                     | nested               | queued                          |
 | --------------------------------------------------- | -------------------- | ------------------------------- |
-| what the listener's own `send` returns              | the real outcome     | nothing yet → `queued`          |
+| what the observer's own `send` returns              | the real outcome     | nothing yet → `queued`          |
 | what the machine is in for the rest of the callback | the new state        | the state it was notified about |
 | stack depth over a chain                            | a frame pair per hop | constant                        |
-| **what the listeners after it are told**            | **a stale event**    | the transition they are in      |
+| **what the observers after it are told**            | **a stale event**    | the transition they are in      |
 
 Nesting is free, being what happens if you write nothing; it keeps `send` always
 returning a real outcome and fails loudly on runaway recursion with a stack trace.
@@ -2526,12 +2537,12 @@ Queueing costs about ten lines and turns that runaway into a hang, which is a
 Three arguments decide it, and none is stack depth (a transient chain is one or two
 hops, not fifty):
 
-- **The last row, once there is more than one listener.** Under nesting, whether
+- **The last row, once there is more than one observer.** Under nesting, whether
   your event is stale on arrival depends on what somebody else registered before
   you, an ordering nobody controls. Under the queue the invariant holds for any
-  number of listeners. **This is what makes the list safe**, and without it the case
+  number of observers. **This is what makes the list safe**, and without it the case
   for a single construction-time observer would be strong.
-- **A listener is never re-entered.** "This callback may be called while it is
+- **An observer is never re-entered.** "This callback may be called while it is
   already running" is a materially harder contract to write against than one that
   cannot be.
 - **It is the terminal state anyway.** `actions`, composition and immediate
@@ -2548,7 +2559,7 @@ it because it has exactly one observer; with a list it would not.
 The argument above settles queue over stack for one host. It says nothing about two,
 and two machines wired to each other is how peer composition works today, before any
 composition feature exists. A queue and a draining flag owned by the host that created
-them get this wrong: a send from one machine's listener into another finds the second
+them get this wrong: a send from one machine's observer into another finds the second
 host's own flag unset and nests, exactly the shape just rejected, and precisely where
 composition needs the guarantee most. [Issue #24](https://github.com/QuentinRoy/totorobot/issues/24)'s
 prototype hit this directly; see
@@ -2567,7 +2578,7 @@ Three shapes were on the table:
   composition feature explicitly wires together, leaving hand-wired hosts (two
   `machine().start()` calls with a plain closure between them, which is how peer
   composition is _done today_) back on separate queues. Rejected because it gives
-  different semantics to two call shapes that read identically, a listener calling
+  different semantics to two call shapes that read identically, an observer calling
   another host's `send`, depending on whether that host was "declared" a peer through
   machinery that does not exist yet. A reader cannot tell which rule applies by
   looking at the code.
@@ -2583,12 +2594,12 @@ changes what ordering they get.
 **Accepted cost, not designed around.** A send issued while any dispatch is in
 progress is deferred, including one into a host that has nothing to do with whichever
 dispatch is running. Reading that host's `current` right afterwards shows the state it
-had before the send. This is not a new property: a send from a listener into its
+had before the send. This is not a new property: a send from an observer into its
 _own_ host was already exactly this stale, for the same reason
 ([above](#queue-not-stack)). Module scope widens who a send can be stale with respect to; it does not
 introduce staleness that single-host use did not already have.
 
-**Failure widens along the same axis.** A per-host queue could let one host's listener
+**Failure widens along the same axis.** A per-host queue could let one host's observer
 bug stay that host's problem. A shared queue cannot: a throw anywhere unwinds out of
 the `send` that started the chain (the outermost call, wherever it sits) and
 discards everything still queued, on every host in that chain, not only the one that
@@ -2596,10 +2607,10 @@ threw. The alternative, draining on and surfacing the error at the end, was reje
 for the same reason a per-host version of it would be: an entry left in the queue past
 the throw is either picked up later by an unrelated send at an arbitrary time, or run
 anyway against assumptions the throw may have already broken. Neither is better for
-being scoped to one host. What does not widen: the listeners after the throwing one
-still do not run, and every host in the chain, including the one whose listener threw,
+being scoped to one host. What does not widen: the observers after the throwing one
+still do not run, and every host in the chain, including the one whose observer threw,
 stays usable afterwards, exactly as a single host did. The coupling this introduces,
-one machine's listener bug discarding another machine's queued work, is a bug-path
+one machine's observer bug discarding another machine's queued work, is a bug-path
 property, understood and accepted rather than designed around; uniform-scheduler
 designs share it.
 
@@ -2611,19 +2622,19 @@ any other, but for one release it did not look like one from the outside. It cal
 progress" was false everywhere. Measured, on a machine whose initial state settles
 `a -> b -> c` with a handler on `a -> b` sending into an unrelated host:
 
-|                                  | the handler's send                                           | the other host's listeners        |
-| -------------------------------- | ------------------------------------------------------------ | --------------------------------- |
-| `start()` called at top level    | ran **immediately, nested**, between hop `a→b` and hop `b→c` | fired **inside** `start`'s settle |
-| `start()` called from a listener | queued (stale read), drained with the outer chain            | fired after the outer chain       |
+|                                   | the handler's send                                           | the other host's observers        |
+| --------------------------------- | ------------------------------------------------------------ | --------------------------------- |
+| `start()` called at top level     | ran **immediately, nested**, between hop `a→b` and hop `b→c` | fired **inside** `start`'s settle |
+| `start()` called from an observer | queued (stale read), drained with the outer chain            | fired after the outer chain       |
 
 The second row is rule 4. The first was the shape ["Queue, not stack"](#queue-not-stack)
-rejects: a listener on another host running mid-chain of somebody else's settling, and
+rejects: an observer on another host running mid-chain of somebody else's settling, and
 a handler reading a host it just sent to and seeing the _new_ state. Identical code,
 two semantics, decided by whether a dispatch happened to be in flight, which the
 author of that handler cannot see from where they stand.
 
 **Nothing supported could reach it**, which is why it survived a release: handlers only
-project (§15), and the host being started has no listeners at all — `observe` is
+project (§15), and the host being started has no observers at all — `observe` is
 unreachable until `start` returns, which is observable behaviour 6. The only way in was
 a handler closing over some _other_ host's `send`, hand-wired. **It stops being
 unreachable the moment `actions` lands**, since an action on a hop `start` is settling,
@@ -2646,19 +2657,19 @@ The factoring pays for itself in bytes, one `try`/`finally` where there were two
 and the fix's net cost against the real toolchain is 11 B brotli (28 raw, 9 gzip).
 Rejected at that measurement: `queue = []` in place of `queue.length = 0`, which is
 3 B brotli cheaper and allocates an array per drain: the wrong trade on the path that
-runs once per outermost `send`, by the same rule that settled the listener array.
+runs once per outermost `send`, by the same rule that settled the observer array.
 
 A throw out of a `start` that owns the drain now discards queued work across every
-host, exactly as a throwing listener does, and for the same reason. It reads harsher
+host, exactly as a throwing observer does, and for the same reason. It reads harsher
 here only because the caller never received the host being started, but "every host
 stays usable" was never a claim about a host nobody has.
 
-#### No disposal, and a listener that throws
+#### No disposal, and an observer that throws
 
 **There is no `stop()`.** Not because disposal is hard, but because in v1 **the host
-owns no resources**: a current state, a listener array, and a queue that always
+owns no resources**: a current state, an observer array, and a queue that always
 finishes. Everything a `stop()` would do, the caller already can — unsubscribe the
-listeners it registered, stop calling `send`, and call the disposer the residency
+observers it registered, stop calling `send`, and call the disposer the residency
 helper handed it.
 
 That is the residency dividing line arriving from a third direction. Disposal only
@@ -2688,9 +2699,9 @@ caller is a separate question, and the answer is no.
   than after; `available` itself was later removed for reporting the wrong thing
   (see [If `available` comes back, it comes back as `accepts`](#if-available-comes-back-it-comes-back-as-accepts));
   nothing today answers that question in advance at all.
-- **`queued` is not information the caller can use.** It is inside a listener, it
+- **`queued` is not information the caller can use.** It is inside an observer, it
   queued something, it will happen.
-- **Only a `skip()` refusal is unobservable**: nothing commits, so no listener fires
+- **Only a `skip()` refusal is unobservable**: nothing commits, so no observer fires
   and nothing changed. But that is the intended meaning of a refusal.
   A machine that needs the refusal to be _visible_ should model it as a transition,
   which is a state change and therefore observable through the normal channel.
@@ -2704,15 +2715,15 @@ allocates nothing where an object allocates once per send, which is what P0.11's
 pure transition function, where it has to carry the next state; the host has already
 committed it.
 
-**A listener that throws propagates.** The exception unwinds out of `send`, which is
+**An observer that throws propagates.** The exception unwinds out of `send`, which is
 where the caller is, and the core being synchronous means it surfaces at the exact
-call that caused it with the offending listener on the stack. No swallowing, no error
+call that caused it with the offending observer on the stack. No swallowing, no error
 channel, no API.
 
-What that costs, stated so it is not discovered later: **the listeners after it do
+What that costs, stated so it is not discovered later: **the observers after it do
 not run, and the rest of that dispatch's queue is discarded**, the one case where a
 `queued` answer does not lead to a transition. The transition itself is already
-committed and stays committed; rolling back would produce a state no listener ever
+committed and stays committed; rolling back would produce a state no observer ever
 saw, which is worse. And the implementation must reset the drain flag on the way out
 (`try`/`finally`), or a single throw wedges the host into answering `queued` forever
 and never draining. That is the one thing "just let it throw" does not get for free.
@@ -3005,7 +3016,7 @@ input-declared source (leaving a _set_ of states is undefined) · E async handle
 block · H derived mounting (same set problem as D) · P/Q/R/S/T effect-free variants
 (reconciliation needs identity)
 
-**Actions.** U handler performs · V `do:` on the edge · X listeners as the action
+**Actions.** U handler performs · V `do:` on the edge · X observers as the action
 layer · Y actions as data · Z handler acts with multi-target return · AA
 `Symbol.dispose` on the data · AB no feature at all: **not rejected; this is what
 v1 ships** · AC key completions via `observe`'s own phantom-key fix (pays for the
@@ -3014,7 +3025,7 @@ whole trigger union at every `machine()` declaration, not per call; measured
 
 **Observation.** A construction-time single observer (loses the standard
 subscribe/unsubscribe contract; every framework consumer writes a fan-out) ·
-listeners on the definition (two hosts would share them) · handing a listener a
+observers on the definition (two hosts would share them) · handing an observer a
 snapshot or the live host instead of the transition record (loses the cause,
 reopens `emit`) · nesting a reaction's send instead of queueing it (robot3 does
 this; P0.7 forbids it) · a bare state key on `observe()` for residency (derivable in
@@ -3030,7 +3041,7 @@ the child (only machines written to be invoked could be invoked)
 S5 pure chaining · S6 both provenances · S7 scoped visit · S9 `from` · S10 key
 prefix · S11 `sendIf` — and S12 `match`, designed but not built.
 
-**Other.** `emit` (redundant with the listener event) · `else` (throws at runtime,
+**Other.** `emit` (redundant with the observer event) · `else` (throws at runtime,
 no static guarantee) · `enter`/`exit` as their own keys (edge patterns with one end
 pinned) · a class or `new` for instantiation.
 

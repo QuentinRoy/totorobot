@@ -930,8 +930,12 @@ and the module-local alias beside it is `EdgeObserver`. `Listener` is exported
 by nothing, which keeps it available for a channel with the better claim to it
 rather than spending it on the weaker one and paying a breaking rename later.
 
-`README.md` and `src/` follow the new word; `design-record.md` does not. It
-records arguments as they were made, and its "listener" is a faithful quotation
-of the vocabulary in use at the time, including the §7 passage that reasons
-about the collision directly. Rewriting it would make the record agree with a
-decision it predates.
+`README.md`, `src/` and `design-record.md` all follow the new word. Leaving the
+design record in the old one was considered and dropped: 66 uses of "listener"
+against an API that exports no such name is the confusion the rename exists to
+prevent, and the record's own preamble already sets the policy — a later rename
+is corrected in place where it would otherwise leave a reader expecting
+something that does not exist. Two headings move with it, and the links into
+them. What the record keeps is the argument, under a note in §11 saying which
+word was current when the sections were written and why the other one is held
+back.

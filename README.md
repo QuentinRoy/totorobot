@@ -774,7 +774,7 @@ The table gives the alternative for each omission and links to its rationale:
 | `keep` / `repeat` / `stay`  | an ordinary self-transition row ([§7](docs/design-record.md#7-self-transitions))                                      |
 | `else`                      | declining is a normal outcome, and silent ([§4](docs/design-record.md#two-decisions-that-fell-out-of-the-comparison)) |
 | a `send` return value       | `current` ([§11](docs/design-record.md#send-returns-nothing))                                                         |
-| `stop()`                    | unsubscribe, and stop sending ([§11](docs/design-record.md#no-disposal-and-a-listener-that-throws))                   |
+| `stop()`                    | unsubscribe, and stop sending ([§11](docs/design-record.md#no-disposal-and-an-observer-that-throws))                  |
 | typed `send`                | nothing at runtime either; recorded but unbuilt ([§12](docs/design-record.md#if-it-comes-back-it-comes-back-as-s12))  |
 | hierarchy, parallel regions | out of scope ([§10](docs/design-record.md#what-the-rest-of-the-record-forbids))                                       |
 
