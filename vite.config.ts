@@ -70,6 +70,8 @@ export default defineConfig({
 			format: {
 				ecma: 2020,
 				comments: false,
+				// The emitted strings favor single quotes by two compressed bytes.
+				quote_style: 1,
 			},
 		},
 		// The size script reads the bundle straight out of `dist`, so leave
@@ -82,5 +84,16 @@ export default defineConfig({
 			include: ['src'],
 			rollupTypes: true,
 		}),
+		{
+			// Terser always terminates its module. JavaScript's automatic semicolon
+			// insertion makes that mark redundant at the end of the file. Removing only
+			// that byte leaves internal statement boundaries untouched.
+			name: 'trim-final-semicolon',
+			generateBundle(_, bundle) {
+				for (const output of Object.values(bundle))
+					if (output.type === 'chunk')
+						output.code = output.code.replace(/;$/, '')
+			},
+		},
 	],
 })
