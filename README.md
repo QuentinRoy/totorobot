@@ -556,7 +556,14 @@ is usable before anything subscribes.
 A listener's own `send` is queued under the same drain every other send uses, so
 the reentrancy rules under [commit ordering](#commit-ordering) hold across an
 output-driven wiring exactly as they do across an observed one, cross-host case
-included.
+included. Where no drain is open — a captured `emit` called from a timer is the
+only way to reach a listener from outside one — `emit` opens the window itself,
+the way a top-level `send` does. Delivery is still inline either way; only the
+queue waits.
+
+A listener is therefore never re-entered by a send. It can still re-enter itself
+by calling a captured `emit` directly, which is ordinary recursion in your own
+code: `emit` is not an input and is not queued.
 
 A listener that throws propagates out of the `emit` call, like a throwing
 observer. That costs more here than it does there, and it is worth knowing

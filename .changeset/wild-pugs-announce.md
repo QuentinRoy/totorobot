@@ -34,7 +34,8 @@ menu.start().on('opened', ({ data }) => widget.show(data.center))
 
 The listener is handed `{ output, data, send }` and runs inline at the `emit`
 call, in registration order, with a send of its own queued under the same drain
-every other send uses. `on` returns an unsubscribe function, idempotent like
+every other send uses. Where no drain is open — a captured `emit` called from a
+timer — `emit` opens one itself, so a listener is never re-entered by a send. `on` returns an unsubscribe function, idempotent like
 `observe`'s. Emitting an undeclared name, subscribing to one, forgetting a
 declared payload, or supplying one an output does not declare are all compile
 errors.
@@ -51,9 +52,7 @@ type-checks exactly as before and needs no edits.
 Also exported: `OutputsOf<M>` and `Listener<M, N>`, beside the existing
 `InputsOf`, `StatesOf` and `Observer`.
 
-The channel costs 162 bytes raw, 65 gzipped and 76 brotli: `pnpm size` goes
-from 1,580 to 1,742 B raw, 867 to 932 B gzipped, and 797 to 873 B brotli. Two
-listener stores were built and measured. The flat array that shipped beat the
-keyed one by 25 raw and 3 gzipped bytes and lost it by 9 brotli, so raw and
-gzip decided, with the flat array's identity-keyed unsubscribe and its reuse of
-the existing observer idiom breaking the near-tie.
+The channel costs 171 bytes raw, 68 gzipped and 68 brotli: `pnpm size` goes from
+1,580 to 1,751 B raw, 867 to 935 B gzipped, and 797 to 865 B brotli. Two listener
+stores were built and measured; the flat array that shipped beat the keyed one by
+25 raw, 3 gzipped and 5 brotli bytes.

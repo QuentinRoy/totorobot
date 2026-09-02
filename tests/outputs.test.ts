@@ -326,4 +326,83 @@ describe('outputs', () => {
 		doc.send('open', { at: 2 })
 		expect(listener).toHaveBeenCalledTimes(3)
 	})
+
+	test('a captured emit called outside a dispatch queues what its listeners send, so no listener is re-entered', () => {
+		// A captured `emit` is the one call that can reach `on` with no drain
+		// already open. An A -> B -> A cycle driven from there is where a listener
+		// would be re-entered if delivery bypassed the queue.
+		let announce: (() => void) | undefined
+		const first = machine({
+			initial: 'idle',
+			inputs: type<{ back: undefined }>(),
+			states: type<{ idle: undefined }>(),
+			outputs: type<{ ping: undefined }>(),
+			transitions: { 'idle -back> idle': () => {} },
+			actions: {
+				idle: { run: ({ emit }) => void (announce = () => emit('ping')) },
+				'idle -back> idle': ({ emit }) => emit('ping'),
+			},
+		}).start()
+
+		const second = machine({
+			initial: 'off',
+			inputs: type<{ go: undefined }>(),
+			states: type<{ off: undefined; on: undefined }>(),
+			outputs: type<{ pong: undefined }>(),
+			transitions: { 'off -go> on': () => {} },
+			actions: { 'off -go> on': ({ emit }) => emit('pong') },
+		}).start()
+
+		const log = vi.fn()
+		let sent = false
+		first.on('ping', () => {
+			log('enter')
+			if (!sent) {
+				sent = true
+				second.send('go')
+			}
+			log('exit')
+		})
+		second.on('pong', ({ send: _ }) => first.send('back'))
+
+		announce!()
+
+		expect(log).toHaveBeenCalledTimes(4)
+		expect(log).toHaveBeenNthCalledWith(1, 'enter')
+		expect(log).toHaveBeenNthCalledWith(2, 'exit')
+		expect(log).toHaveBeenNthCalledWith(3, 'enter')
+		expect(log).toHaveBeenNthCalledWith(4, 'exit')
+	})
+
+	test('a listener calling a captured emit for its own output re-enters itself: emit is not queued', () => {
+		let announce: ((depth: number) => void) | undefined
+		const doc = machine({
+			initial: 'ready',
+			inputs: type<{ poke: undefined }>(),
+			states: type<{ ready: undefined }>(),
+			outputs: type<{ tick: { depth: number } }>(),
+			transitions: { 'ready -poke> ready': () => {} },
+			actions: {
+				ready: {
+					run: ({ emit }) =>
+						void (announce = (depth) => emit('tick', { depth })),
+					restart: false,
+				},
+			},
+		}).start()
+
+		const log = vi.fn()
+		doc.on('tick', ({ data }) => {
+			log('enter', data.depth)
+			if (data.depth < 2) announce!(data.depth + 1)
+			log('exit', data.depth)
+		})
+
+		announce!(1)
+
+		expect(log).toHaveBeenNthCalledWith(1, 'enter', 1)
+		expect(log).toHaveBeenNthCalledWith(2, 'enter', 2)
+		expect(log).toHaveBeenNthCalledWith(3, 'exit', 2)
+		expect(log).toHaveBeenNthCalledWith(4, 'exit', 1)
+	})
 })

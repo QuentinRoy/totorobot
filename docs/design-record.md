@@ -2321,14 +2321,32 @@ return included. They are not aliased. `Send`'s meaning is a capability a state 
 which is the wrong story for an output, and two declarations can drift later without a
 rename.
 
-#### `emit` is gated on nothing
+#### `emit` is gated on nothing, and takes the drain
 
-Not on liveness, not on a dispatch window. A residency action may capture `emit` and call
-it long after its teardown ran, exactly as it may capture `send`. `emit` runs its
-listeners where it is called and opens no dispatch window of its own; a listener's `send`
-takes the drain through `send`'s existing path, so
-[rule 4](#commit-ordering) holds across an output-driven wiring exactly as it does across
-an observed one, including across two hosts.
+Not on liveness, and not on a live residency. A residency action may capture `emit` and
+call it long after its teardown ran, exactly as it may capture `send`.
+
+That freedom is what forces the second half. The first shape ran the listeners where
+`emit` was called and opened no dispatch window, on the reasoning that a listener's
+`send` would take the drain through `send`'s own path anyway. It does — but only if a
+drain is open, and a captured `emit` called from a timer is the one call into this
+channel that runs with no drain open at all. The listener's `send` then becomes the
+outermost dispatch and drains under the listener's own frame, so a cycle back into the
+emitting host re-enters that listener before its first call returns. Measured on an
+A → B → A wiring, that shape delivered `enter, enter, exit, exit` where every other
+wiring in the library delivers `enter, exit, enter, exit`.
+
+So `emit` runs its listeners under `dispatch`, which changes nothing where a drain is
+already open — the work runs inline in both branches, so delivery stays synchronous at
+the call — and owns the drain where none is, exactly as a top-level `send` does. With
+that, [rule 4](#commit-ordering) holds across an output-driven wiring exactly as it does
+across an observed one, including across two hosts and including from a timer.
+
+One path is left, and it is not the queue's business: a listener that calls a captured
+`emit` itself re-enters that output's listeners directly. `emit` is not an input and is
+not queued, so this is ordinary recursion in caller code. The guarantee is that a
+listener is never re-entered by a _send_, and it is stated that way rather than widened
+into something the library cannot hold.
 
 #### The host gains `on(name, listener)`
 
@@ -2398,10 +2416,9 @@ costing source bytes for the guard, the wrong side of this project's trades.
 Two candidates were built: a keyed store, null-prototype so `on('toString')` finds
 nothing, copy-on-write per key; and a flat copy-on-write array of `[name, listener]` rows
 scanned per emit, reusing the `observers` idiom verbatim. `pnpm size` put the flat array
-25 raw and 3 gzipped bytes ahead and 9 brotli bytes behind; raw and gzip decided, and the
-flat array also gets stable iteration for free from the same copy-on-write and
-unsubscribes by row identity, so registering one function twice removes one
-registration. Listener counts are realistically single-digit, so the scan is not a
+25 raw, 3 gzipped and 5 brotli bytes ahead, so there was nothing to trade off. It also
+gets stable iteration for free from the same copy-on-write, and unsubscribes by row
+identity, so registering one function twice removes one registration. Listener counts are realistically single-digit, so the scan is not a
 concern. Nothing outside the module can tell which one won, and that must stay true.
 
 #### An output name may collide with a state or an input name

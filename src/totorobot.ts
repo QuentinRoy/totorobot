@@ -640,7 +640,7 @@ interface Host<
 	}
 }
 
-/** Nothing at runtime; a function position keeps the three inferable together. */
+/** Nothing at runtime; a function position keeps the four inferable together. */
 declare const vocabulary: unique symbol
 interface Vocabulary<
 	I extends Vocab,
@@ -666,7 +666,7 @@ interface Machine<
 // Reading a machine type back out
 // ---------------------------------------------------------------------------
 
-/** All three at once, because matching `Machine` itself simply fails (I22). */
+/** All four at once, because matching `Machine` itself simply fails (I22). */
 type Carried<M> =
 	M extends Vocabulary<infer I, infer S, infer K, infer O>
 		? { inputs: I; states: S; keys: K; outputs: O }
@@ -952,14 +952,15 @@ export let machine: <
 				let fire = (
 					list: Registration[],
 					facts: UncheckedFacts,
-					extra?: object,
+					capabilities?: object,
 				): void => {
 					// The facts plus the capabilities the record carries: the same `send`
 					// the host exposes, so a reaction drives the machine without closing
 					// over the host it was registered on, and — for an action alone —
-					// `emit`, passed in as `extra` (§10 Composition). Once per call, so
-					// the allocation stays off the path that runs most (I16).
-					let e: Arrival = { ...facts, send, ...extra }
+					// `emit`, passed in by the two sites that fire actions (§10
+					// Composition). Once per call, so the allocation stays off the path
+					// that runs most (I16).
+					let e: Arrival = { ...facts, send, ...capabilities }
 					for (let row of list) {
 						let [f, l, t, run, key] = row
 						if (
@@ -977,14 +978,14 @@ export let machine: <
 				// The arrival no transition caused: source and input are simply absent
 				// (§9 Actions). Shared by `start` and a bare-key `observe`, which goes
 				// through `fire` for the `to === state` test its third clause already does.
-				let enter = (list: Registration[], extra?: object): void =>
+				let enter = (list: Registration[], capabilities?: object): void =>
 					fire(
 						list,
 						{
 							to: current.name,
 							toData: current.data,
 						} as UncheckedFacts,
-						extra,
+						capabilities,
 					)
 
 				// One scanning path for both kinds of transition: commit the first row
@@ -1043,7 +1044,7 @@ export let machine: <
 							current = { name: to, data: toData }
 
 							// Actions in declaration order, then observers (§9 Actions).
-							fire(acts, facts, out)
+							fire(acts, facts, actionCapabilities)
 							fire(observers, facts)
 							// One input yields at most one transition.
 							return true
@@ -1086,29 +1087,33 @@ export let machine: <
 				}
 
 				// A flat list of `[name, listener]` rows scanned per emit, not a keyed
-				// store: `pnpm size` measured the keyed variant 25 raw and 3 gzipped
-				// bytes larger and 9 brotli bytes smaller, and this reuses the
-				// `observers` idiom verbatim. Listener counts are realistically
-				// single-digit, so the scan is not a concern. Copy-on-write for the
+				// store: `pnpm size` measured the keyed variant larger on all three
+				// figures, and this reuses the `observers` idiom verbatim. Listener
+				// counts are realistically single-digit, so the scan is not a concern.
+				// Copy-on-write for the
 				// same reason `observers` is: a listener registered during an emit must
 				// not join that pass, and one unsubscribed during it must still finish
 				// it (§10 Composition).
 				let listeners: Subscription[] = []
 
-				// Runs its listeners where it is called, opening no dispatch window of
-				// its own: `emit` is post-commit by construction, so a listener already
-				// sees a committed machine, and queueing the call would deliver the
-				// announcement after the machine had left the state that announced it
-				// (§10 Composition). A listener's own `send` takes the ordinary drain.
-				// A throwing listener propagates, like a throwing observer.
+				// Delivery is inline — `dispatch` runs its work in both branches — because
+				// `emit` is post-commit by construction, so a listener already sees a
+				// committed machine, and queueing the call would deliver the announcement
+				// after the machine had left the state that announced it. Under the drain
+				// because an `emit` captured by a residency and called later runs with no
+				// dispatch open, and a listener's `send` would then drain inside the
+				// listener's own frame and re-enter it (§10 Composition). A throwing
+				// listener propagates, like a throwing observer.
 				let emit: UncheckedEmit = (output, data) => {
 					let a = { output, data, send }
-					for (let [name, run] of listeners) if (name === output) run(a)
+					dispatch(() => {
+						for (let [name, run] of listeners) if (name === output) run(a)
+					})
 				}
 
 				// The one capability an action carries and an observer does not, built
 				// once rather than per hop (I16).
-				let out = { emit }
+				let actionCapabilities = { emit }
 
 				// Under the drain `send` takes, so a send from one of these hops runs after
 				// the chain settles (§11 The host, "`start` settles under the drain").
@@ -1119,7 +1124,7 @@ export let machine: <
 				dispatch(() => {
 					enter(
 						acts.filter((row) => row[4]),
-						out,
+						actionCapabilities,
 					)
 					settle()
 				})

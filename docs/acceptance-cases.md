@@ -201,7 +201,11 @@ idle emits `ended`. A consumer calls `on('opened', …)` and never names a state
    during it still does.
 4. A listener's `send` is queued under the running drain, so the machine has
    not moved when the listener returns, and a send into a second host runs
-   after the first host finishes notifying.
+   after the first host finishes notifying. This holds for an `emit` captured
+   by a residency action and called with no drain open, which is the only call
+   into the channel that reaches a listener from outside a dispatch: an
+   A → B → A cycle driven from there must let the first listener finish before
+   it runs again.
 5. An output with no listeners is a silent no-op. An output emitted while
    `start()` is still running reaches nobody, and is not replayed to a listener
    that subscribes afterwards.
