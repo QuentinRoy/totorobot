@@ -37,6 +37,6 @@ one that emitted would announce a hop that then loses, and an `observe` callback
 is outside the machine. Emitting an undeclared name, subscribing to one, or
 getting a payload wrong are compile errors.
 
-Also exported: `OutputsOf<M>` and `Listener<M, N>`, beside the existing
+Also exported: `OutputsOf<MachineType>` and `Listener<MachineType, OutputName>`, beside the existing
 `InputsOf`, `StatesOf` and `Observer`. A machine that declares no `outputs`
 type-checks exactly as before and needs no edits.
