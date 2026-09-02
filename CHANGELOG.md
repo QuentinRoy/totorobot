@@ -1,5 +1,52 @@
 # totorobot
 
+## 2.1.0
+
+### Size
+
+`dist/totorobot.js` — brotli 818 B (+21 B, +2.6% vs 2.0.0), gzip 881 B, raw 1,633 B
+
+### Minor Changes
+
+- [#129](https://github.com/QuentinRoy/totorobot/pull/129) [`6d4710a`](https://github.com/QuentinRoy/totorobot/commit/6d4710a10cbf6359b24fefbdd340107b1838d49f) - A machine can now declare a fourth vocabulary, `outputs`, naming what it
+  announces separately from what it is. An action reaches it through `emit`, the
+  way it already reaches inputs through `send`, and a consumer subscribes by name
+  with `on`:
+
+  ```ts
+  const menu = machine({
+  	initial: 'idle',
+  	inputs: type<{ press: { at: Point }; release: undefined }>(),
+  	states: type<{ idle: undefined; open: { at: Point } }>(),
+  	outputs: type<{ opened: { center: Point }; ended: undefined }>(),
+  	transitions: {
+  		'idle -press> open': ({ inputData }) => ({ at: inputData.at }),
+  		'open -release> idle': () => {},
+  	},
+  	actions: {
+  		open: ({ toData, emit }) => emit('opened', { center: toData.at }),
+  		'open -release> idle': ({ emit }) => emit('ended'),
+  	},
+  })
+
+  menu.start().on('opened', ({ data }) => widget.show(data.center))
+  ```
+
+  The listener is handed `{ output, data, send }` and runs at the `emit` call, in
+  registration order. A send it makes is queued like any other send, including
+  from an `emit` that a residency action captured and called from a timer, so a
+  listener is never re-entered by one. `on` returns an unsubscribe function,
+  idempotent like `observe`'s.
+
+  `emit` is available in `actions` only. A `transitions` handler may `skip()`, so
+  one that emitted would announce a hop that then loses, and an `observe` callback
+  is outside the machine. Emitting an undeclared name, subscribing to one, or
+  getting a payload wrong are compile errors.
+
+  Also exported: `OutputsOf<MachineType>` and `Listener<MachineType, OutputName>`, beside the existing
+  `InputsOf`, `StatesOf` and `Observer`. A machine that declares no `outputs`
+  type-checks exactly as before and needs no edits.
+
 ## 2.0.0
 
 ### Size
