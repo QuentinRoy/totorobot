@@ -1,7 +1,7 @@
 # Roadmap
 
 > **None of this is promised.** These are directions the design record argues for,
-> past what v1 ships. Whether any of them lands, and in what shape, stays open.
+> past what the library ships today. Whether any of them lands, and in what shape, stays open.
 
 ## `emit` — a declared output channel
 
