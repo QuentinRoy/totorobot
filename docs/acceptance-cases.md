@@ -80,7 +80,7 @@ Applied to [rule 1](#effect-placement), only the dwell is internal — nothing
 outside the machine needs to know it is pending. It is therefore a `startup`
 residency, per rule 2: something with a lifetime, scoped to the state that
 owns it. Interaction feedback, menu display, and selection/cancellation
-reporting are all external and stay `.observe()` listeners.
+reporting are all external and stay `.observe()` observers.
 
 ### Required traces
 
@@ -177,12 +177,12 @@ and editor responsiveness rather than runtime throughput.
    residency down: the request's `AbortController` is aborted and its work
    can no longer affect later evolution. There is no separate `stop()`
    (README.md:533), and none is wanted — a caller disposes of a machine by no
-   longer sending to it and unsubscribing its listeners, and a state with no
+   longer sending to it and unsubscribing its observers, and a state with no
    declared rows silently ignores whatever still arrives, which is the
    disposed outcome for a design that models one.
 
 totorobot's commit ordering — teardown of the residency being left, the
-commit, matching actions in declaration order, then listeners — covers effect,
+commit, matching actions in declaration order, then observers — covers effect,
 observation, and nested-submission ordering for every trace above. No trace
 exposes half-applied state or silently appears to process a rejected input.
 

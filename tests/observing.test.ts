@@ -18,7 +18,7 @@ describe('observing', () => {
 		expect(observer).not.toHaveBeenCalled()
 	})
 
-	test('listeners fire after the commit, in registration order', () => {
+	test('observers fire after the commit, in registration order', () => {
 		const doc = toggle.start()
 		const first = vi.fn()
 		const second = vi.fn()
@@ -32,7 +32,7 @@ describe('observing', () => {
 		expect(first).toHaveBeenCalledBefore(second)
 	})
 
-	test("inside a listener, the record's target end agrees with current", () => {
+	test("inside an observer, the record's target end agrees with current", () => {
 		const doc = toggle.start()
 		const observer = vi.fn()
 
@@ -85,8 +85,8 @@ describe('observing', () => {
 		expect(logY).toHaveBeenNthCalledWith(2, 'any-input')
 	})
 
-	test('the listener list is snapshotted before dispatch: unsubscribed-during still runs, registered-during does not', () => {
-		// a listener unsubscribed by an earlier one still runs for the current transition
+	test('the observer list is snapshotted before dispatch: unsubscribed-during still runs, registered-during does not', () => {
+		// an observer unsubscribed by an earlier one still runs for the current transition
 		const docA = toggle.start()
 		const logA = vi.fn()
 		let offSecond: () => void
@@ -100,7 +100,7 @@ describe('observing', () => {
 		expect(logA).toHaveBeenNthCalledWith(1, 'first')
 		expect(logA).toHaveBeenNthCalledWith(2, 'second')
 
-		// a listener registered during dispatch does not run for the current transition
+		// an observer registered during dispatch does not run for the current transition
 		const docB = toggle.start()
 		const logB = vi.fn()
 		docB.observe('* -> *', () => {
@@ -486,7 +486,7 @@ describe('observing', () => {
 		expect(run).toHaveBeenCalledOnce()
 	})
 
-	test('a declared residency and an observe-attached one on the same state: actions before listeners, entry and exit alike', () => {
+	test('a declared residency and an observe-attached one on the same state: actions before observers, entry and exit alike', () => {
 		const log = vi.fn()
 		const doc = machine({
 			initial: 'off',
@@ -553,7 +553,7 @@ describe('observing', () => {
 		expect(observer).toHaveBeenCalledExactlyOnceWith(host.send)
 	})
 
-	test('a send from a listener is queued: the listener is not re-entered, and the machine settles afterwards', () => {
+	test('a send from an observer is queued: the observer is not re-entered, and the machine settles afterwards', () => {
 		const relay = machine({
 			initial: 'a',
 			inputs: type<{ x: undefined; y: undefined }>(),
@@ -582,7 +582,7 @@ describe('observing', () => {
 		expect(host.current.name).toBe('c')
 	})
 
-	test('a send from a listener is read at drain time, so it may correctly find no row', () => {
+	test('a send from an observer is read at drain time, so it may correctly find no row', () => {
 		const fork = machine({
 			initial: 'a',
 			inputs: type<{ x: undefined; z: undefined }>(),
@@ -597,7 +597,7 @@ describe('observing', () => {
 		const observer = vi.fn()
 		host.observe('* -> *', (e) => observer(e.to))
 
-		// `z` is a row on `a`, the state the listener is told about — but the
+		// `z` is a row on `a`, the state the observer is told about — but the
 		// machine is in `b` by the time the queue reads it, and `b` has no rows.
 		host.observe('a -x> b', (e) => e.send('z'))
 		host.send('x')
@@ -606,7 +606,7 @@ describe('observing', () => {
 		expect(host.current.name).toBe('b')
 	})
 
-	test('a listener that sends its own trigger is not re-entered within the dispatch that notified it', () => {
+	test('an observer that sends its own trigger is not re-entered within the dispatch that notified it', () => {
 		const host = toggle.start()
 		let depth = 0
 		let maxDepth = 0
@@ -615,7 +615,7 @@ describe('observing', () => {
 		host.observe('* -> *', (e) => {
 			observer()
 			maxDepth = Math.max(maxDepth, ++depth)
-			// Runs after this listener returns, so the next notification is a fresh
+			// Runs after this observer returns, so the next notification is a fresh
 			// call rather than a nested one.
 			if (observer.mock.calls.length < 3) e.send('toggle')
 			depth--

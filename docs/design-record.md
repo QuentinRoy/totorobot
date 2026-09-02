@@ -2357,7 +2357,8 @@ the initial data is an argument or lives in the definition beside `initial:`.
 > is exported by nothing, and is held for the output channel above, whose
 > subscribers would be told that something happened and read what it carried.
 > An observer is handed the record of a transition that committed, which is the
-> distinction §7's rejected argument circles without naming.
+> distinction the rejected argument under
+> [`inputs`, not `events`](#inputs-not-events) circles without naming.
 
 `doc.observe(pattern, fn)` returns an unsubscribe function. Many observers, edge patterns
 in the transition key language, and **no bare-state key**: a key with no arrow

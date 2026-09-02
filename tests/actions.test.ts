@@ -358,7 +358,7 @@ describe('actions', () => {
 		expect(pinned).not.toHaveBeenCalled()
 	})
 
-	test('a residency action receives the arrival that entered its state, the same record shape an edge action and a listener get, with `to` the resident state', () => {
+	test('a residency action receives the arrival that entered its state, the same record shape an edge action and an observer get, with `to` the resident state', () => {
 		const action = vi.fn()
 		const doc = machine({
 			initial: 'off',
@@ -411,7 +411,7 @@ describe('actions', () => {
 		expect(action.mock.calls[0]?.[0].send).toBe(doc.send)
 	})
 
-	test("an edge action's argument is the transition it fired on, identical to what a matching listener receives", () => {
+	test("an edge action's argument is the transition it fired on, identical to what a matching observer receives", () => {
 		const action = vi.fn()
 		const doc = machine({
 			initial: 'off',
@@ -498,11 +498,11 @@ describe('actions', () => {
 		expect(declaredSetup).toHaveBeenCalledBefore(declaredTeardown)
 	})
 
-	test('per commit: teardown of the residency being left, then the commit, then the actions in declaration order, then listeners', () => {
+	test('per commit: teardown of the residency being left, then the commit, then the actions in declaration order, then observers', () => {
 		const teardown = vi.fn()
 		const edgeAction = vi.fn()
 		const setup = vi.fn()
-		const listener = vi.fn()
+		const observer = vi.fn()
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ toggle: undefined }>(),
@@ -518,21 +518,21 @@ describe('actions', () => {
 			},
 		}).start()
 
-		doc.observe('* -> *', listener)
+		doc.observe('* -> *', observer)
 		doc.send('toggle')
 
 		expect(teardown).toHaveBeenCalledOnce()
 		expect(edgeAction).toHaveBeenCalledOnce()
 		expect(setup).toHaveBeenCalledOnce()
-		expect(listener).toHaveBeenCalledOnce()
+		expect(observer).toHaveBeenCalledOnce()
 		expect(teardown).toHaveBeenCalledBefore(edgeAction)
 		expect(edgeAction).toHaveBeenCalledBefore(setup)
-		expect(setup).toHaveBeenCalledBefore(listener)
+		expect(setup).toHaveBeenCalledBefore(observer)
 	})
 
 	test('an action that throws propagates, abandoning the rest of that commit: what committed stays committed, and the host is usable afterwards', () => {
 		const setup = vi.fn()
-		const listener = vi.fn()
+		const observer = vi.fn()
 		const doc = machine({
 			initial: 'off',
 			inputs: type<{ toggle: undefined }>(),
@@ -549,12 +549,12 @@ describe('actions', () => {
 			},
 		}).start()
 
-		doc.observe('* -> *', listener) // must never run either
+		doc.observe('* -> *', observer) // must never run either
 
 		expect(() => doc.send('toggle')).toThrow('boom')
 		expect(doc.current.name).toBe('on') // the transition itself stays committed
 		expect(setup).not.toHaveBeenCalled()
-		expect(listener).not.toHaveBeenCalled()
+		expect(observer).not.toHaveBeenCalled()
 
 		// the host is usable afterwards
 		doc.send('toggle')
@@ -757,17 +757,17 @@ describe('actions', () => {
 				},
 			},
 		}).start()
-		doc.observe('* -> *', (e) => log(`listener: -> ${e.to}`))
+		doc.observe('* -> *', (e) => log(`observer: -> ${e.to}`))
 
 		doc.send('go')
 
 		expect(log).toHaveBeenCalledTimes(6)
 		expect(log).toHaveBeenNthCalledWith(1, 'b setup')
 		expect(log).toHaveBeenNthCalledWith(2, 'b setup returns')
-		expect(log).toHaveBeenNthCalledWith(3, 'listener: -> b')
+		expect(log).toHaveBeenNthCalledWith(3, 'observer: -> b')
 		expect(log).toHaveBeenNthCalledWith(4, 'b teardown')
 		expect(log).toHaveBeenNthCalledWith(5, 'c setup')
-		expect(log).toHaveBeenNthCalledWith(6, 'listener: -> c')
+		expect(log).toHaveBeenNthCalledWith(6, 'observer: -> c')
 		expect(doc.current.name).toBe('c')
 	})
 })

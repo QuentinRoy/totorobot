@@ -262,7 +262,7 @@ since; treat it as the reason the shape was chosen, not as a current number.
   mutates.** The assigned property comes out larger: mutating a bound object costs
   more than a getter closing over a local, and the getter needs no identifier for
   the object itself.
-- **Listeners copy-on-write at registration, not a mutable list.** Mutating with
+- **Observers copy-on-write at registration, not a mutable list.** Mutating with
   `push`/`splice` and snapshotting with `slice` per dispatch is 20 B larger
   (29 raw, 14 gzip), and it allocates on the path that runs most. Observable
   behaviour is identical under both.
@@ -305,10 +305,10 @@ since; treat it as the reason the shape was chosen, not as a current number.
   pattern, 15 B; a shared module-level helper doing the same, 26 B; attaching
   `send` inside `fire` costs 10 B, and 1 B if it is attached per matching row
   instead of per call. The per-row form is not taken: it moves an allocation onto
-  the notify path, which is the same trade the listener list is copy-on-write to
+  the notify path, which is the same trade the observer list is copy-on-write to
   avoid. Attaching lazily, so nothing is allocated when no row matches, spends the
   saving again on reading the coordinates off the other object (16 B).
-- **The departure loop over `[acts, listeners]`, not a `leave` helper called
+- **The departure loop over `[acts, observers]`, not a `leave` helper called
   twice.** The two-element array literal plus one nested loop measures smaller
   than factoring the row scan into a named function and calling it once per row
   array (1,790 B vs 1,810 B raw, pre-golf).
@@ -685,7 +685,7 @@ its own default, reachable or not.
 ### <a id="i35"></a>I35 — Registration eligibility is a second check, layered on `ActionArrival`'s own `Init` comparison
 
 #100 needs a noninitial residency action naming a state with no incoming row
-rejected outright: unlike a listener, whose argument merely narrows to
+rejected outright: unlike an observer, whose argument merely narrows to
 `never` and stays perfectly legal to declare ([I32](#i32)), a callback
 argument's type cannot itself make the _declaration_ an error — a function
 typed to take `never` still accepts any implementation, by contravariance.
@@ -887,7 +887,7 @@ The fix is a second signature ahead of it, taking a matchable pattern directly:
 ```ts
 <P extends MatchedPattern<I, S, K>>(
 	pattern: P,
-	listener: EdgeObserver<I, S, K, P>,
+	observer: EdgeObserver<I, S, K, P>,
 ): () => void
 ```
 
@@ -917,25 +917,29 @@ The type layer is erased: `pnpm size` reports 1,580 B raw, unchanged.
 
 ### <a id="i40"></a>I40 — The exported callback type is `Observer`, and `Listener` is reserved
 
-`observe`'s callback is called a listener throughout
-[`design-record.md`](design-record.md), and that word is the one the roadmap's
-`emit` channel will want. §7 there argues the difference without naming it: an
-event is something that happens to you, and what `observe` delivers is not an
-event but a transition record. A subscriber to a declared output would be told
-that something happened and would read what it carried, which is a listener in
-the ordinary sense.
+`observe`'s callback was called a listener everywhere: the README, the source,
+the tests, and every record in `docs/`. That word is the one the roadmap's
+`emit` channel will want. [§5](design-record.md#inputs-not-events) argues the
+difference without naming it — an event is something that happens to you, and
+what `observe` delivers is not an event but a transition record. A subscriber
+to a declared output would be told that something happened and would read what
+it carried, which is a listener in the ordinary sense.
 
 So the exported type is `Observer<M, P>`, named for the method that takes it,
 and the module-local alias beside it is `EdgeObserver`. `Listener` is exported
-by nothing, which keeps it available for a channel with the better claim to it
-rather than spending it on the weaker one and paying a breaking rename later.
+by nothing, which keeps it for the channel with the better claim rather than
+spending it on the weaker one and paying a breaking rename later.
 
-`README.md`, `src/` and `design-record.md` all follow the new word. Leaving the
-design record in the old one was considered and dropped: 66 uses of "listener"
-against an API that exports no such name is the confusion the rename exists to
-prevent, and the record's own preamble already sets the policy — a later rename
-is corrected in place where it would otherwise leave a reader expecting
-something that does not exist. Two headings move with it, and the links into
-them. What the record keeps is the argument, under a note in §11 saying which
-word was current when the sections were written and why the other one is held
-back.
+The word moves everywhere the shipped API is described: `README.md`, `src/`,
+the tests, and the records in `docs/`, two headings in `design-record.md`
+included, with the links into them. Leaving the records in the old word was
+considered and dropped, because sixty-six uses of "listener" against an API
+that exports no such name is the confusion the rename exists to prevent, and
+`design-record.md`'s own preamble already sets the policy: a later rename is
+corrected in place where it would otherwise leave a reader expecting something
+that does not exist. The arguments themselves are untouched, under a note in
+§11 saying which word was current when the sections were written.
+
+`explorations/` keeps "listener" throughout, and should. Those prototypes
+implement other designs, several of them spelling the method `.on`, so their
+vocabulary is theirs rather than a stale copy of this one.

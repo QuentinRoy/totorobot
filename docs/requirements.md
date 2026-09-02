@@ -487,7 +487,7 @@ Composition must not require hierarchical or parallel states in the core API.
 > twice over three examples in `explorations/composition/`.
 >
 > The blocker was not expressiveness. Commit ordering guarantees that a
-> listener is never re-entered while an earlier call is still running, and the
+> observer is never re-entered while an earlier call is still running, and the
 > queue was **per host**, so peer wiring — which crosses hosts — was exactly
 > where the guarantee lapsed. **Resolved 2026-08-19**: the queue and its
 > draining flag moved to module scope, shared by every host, so rule 4 holds
