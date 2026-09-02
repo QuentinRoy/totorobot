@@ -374,6 +374,70 @@ describe('outputs', () => {
 		expect(log).toHaveBeenNthCalledWith(4, 'exit')
 	})
 
+	test('two hosts over one definition share no listeners', () => {
+		const doc = beacon.start()
+		const other = beacon.start()
+		const heard = vi.fn()
+
+		doc.on('opened', heard)
+		other.send('open', { at: 1 })
+
+		expect(heard).not.toHaveBeenCalled()
+	})
+
+	test('a throwing listener abandons the later listeners and the queue, and the host still works afterwards', () => {
+		// The listener half of the rule `queue.test.ts` asserts for observers.
+		// It is reached through a captured `emit`, because that is the call that
+		// owns the drain rather than joining one: a listener throwing there is
+		// what abandons a queue nothing else is holding.
+		let announce: (() => void) | undefined
+		const doc = machine({
+			initial: 'idle',
+			inputs: type<{ go: undefined; back: undefined }>(),
+			states: type<{ idle: undefined; working: undefined }>(),
+			outputs: type<{ ping: undefined }>(),
+			transitions: {
+				'idle -go> working': () => {},
+				'working -back> idle': () => {},
+			},
+			actions: {
+				working: { run: ({ emit }) => void (announce = () => emit('ping')) },
+			},
+		}).start()
+		doc.send('go')
+
+		const log = vi.fn()
+		let thrown = false
+		const offFirst = doc.on('ping', ({ send }) => {
+			log('first')
+			send('back') // queued under the emit's own drain; must never run
+		})
+		const offThrower = doc.on('ping', () => {
+			log('thrower')
+			if (!thrown) {
+				thrown = true
+				throw new Error('boom')
+			}
+		})
+		doc.on('ping', () => log('third'))
+
+		expect(() => announce!()).toThrow('boom')
+		expect(log).toHaveBeenCalledTimes(2)
+		expect(log).toHaveBeenNthCalledWith(1, 'first')
+		expect(log).toHaveBeenNthCalledWith(2, 'thrower')
+		expect(doc.current.name).toBe('working')
+
+		// The drain flag reset, so the next emit delivers and its sends drain.
+		offFirst()
+		offThrower()
+		log.mockClear()
+		doc.on('ping', ({ send }) => send('back'))
+		announce!()
+
+		expect(log).toHaveBeenCalledExactlyOnceWith('third')
+		expect(doc.current.name).toBe('idle')
+	})
+
 	test('a listener calling a captured emit for its own output re-enters itself: emit is not queued', () => {
 		let announce: ((depth: number) => void) | undefined
 		const doc = machine({
