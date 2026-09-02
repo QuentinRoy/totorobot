@@ -70,12 +70,12 @@ type IsUnion<T, Whole = T> = T extends Whole
 	: never
 
 /** `object` admits interfaces; this check rejects non-map shapes (I30). */
-type VocabMap<V extends Vocab> =
-	true extends IsUnion<V>
+type VocabMap<SomeVocab extends Vocab> =
+	true extends IsUnion<SomeVocab>
 		? never
-		: V extends readonly unknown[] | Function
+		: SomeVocab extends readonly unknown[] | Function
 			? never
-			: Exclude<keyof V, string> extends never
+			: Exclude<keyof SomeVocab, string> extends never
 				? unknown
 				: never
 
@@ -86,10 +86,13 @@ type VocabMap<V extends Vocab> =
  */
 type Declared<Raw, Default> = Raw extends undefined ? Default : Raw
 
-type Name<V extends Vocab> = keyof V & string
+type Name<SomeVocab extends Vocab> = keyof SomeVocab & string
 
-/** The payload a name carries. `& keyof V` is the constraint, never a filter. */
-type Payload<V extends Vocab, N extends string> = V[N & keyof V]
+/** The payload a name carries. `& keyof SomeVocab` is the constraint, never a filter. */
+type Payload<
+	SomeVocab extends Vocab,
+	MemberName extends string,
+> = SomeVocab[MemberName & keyof SomeVocab]
 
 // ---------------------------------------------------------------------------
 // The key grammar, at the type level
@@ -100,41 +103,50 @@ type Payload<V extends Vocab, N extends string> = V[N & keyof V]
  * offers as completions — |states|² × |inputs| of them, priced in §12 Sending
  * inputs.
  */
-type Key<I extends Vocab, S extends Vocab> =
-	`${Name<S>} -${Name<I>}> ${Name<S>}` | `${Name<S>} -> ${Name<S>}`
+type Key<Inputs extends Vocab, States extends Vocab> =
+	| `${Name<States>} -${Name<Inputs>}> ${Name<States>}`
+	| `${Name<States>} -> ${Name<States>}`
 
 /** A leading `infer` stops at the first separator, so these agree with `parse`. */
-type From<K> = K extends `${infer F} -${string}> ${string}` ? F : never
-type Label<K> = K extends `${string} -${infer L}> ${string}` ? L : never
-type To<K> = K extends `${string} -${string}> ${infer T}` ? T : never
+type From<KeyString> =
+	KeyString extends `${infer FromPart} -${string}> ${string}` ? FromPart : never
+type Label<KeyString> =
+	KeyString extends `${string} -${infer LabelPart}> ${string}`
+		? LabelPart
+		: never
+type To<KeyString> = KeyString extends `${string} -${string}> ${infer ToPart}`
+	? ToPart
+	: never
 
 /**
  * `*` collides with the pattern wildcard, a padded name with the grammar's own
  * delimiters: a key minting either names a state nothing can address (§5 The
  * declared vocabulary).
  */
-type RoundTrips<N extends string> = N extends '*' | ` ${string}` | `${string} `
+type RoundTrips<CandidateName extends string> = CandidateName extends
+	'*' | ` ${string}` | `${string} `
 	? never
-	: N
+	: CandidateName
 
 /**
- * The vocabulary when `inputs` is omitted, read off the raw keys `K`, a sibling
- * parameter already inferred. Only inferred names are filtered, never declared.
+ * The vocabulary when `inputs` is omitted, read off the raw keys `Keys`, a
+ * sibling parameter already inferred. Only inferred names are filtered, never
+ * declared.
  */
-type InputsFromKeys<K extends string> = {
-	[N in RoundTrips<Exclude<Label<K>, ''>>]: unknown
+type InputsFromKeys<Keys extends string> = {
+	[InputName in RoundTrips<Exclude<Label<Keys>, ''>>]: unknown
 }
 
 /** The same for state names, read off both ends of every key. */
-type StatesFromKeys<K extends string> = {
-	[N in RoundTrips<From<K> | To<K>>]: unknown
+type StatesFromKeys<Keys extends string> = {
+	[StateName in RoundTrips<From<Keys> | To<Keys>>]: unknown
 }
 
 /** No `-*>`: the unlabelled arrow is the broad form, and a bare key is not one. */
-type Wildcard<S extends Vocab> = Name<S> | '*'
-type Pattern<I extends Vocab = AnyVocab, S extends Vocab = AnyVocab> =
-	| `${Wildcard<S>} -${Name<I>}> ${Wildcard<S>}`
-	| `${Wildcard<S>} -> ${Wildcard<S>}`
+type Wildcard<States extends Vocab> = Name<States> | '*'
+type Pattern<Inputs extends Vocab = AnyVocab, States extends Vocab = AnyVocab> =
+	| `${Wildcard<States>} -${Name<Inputs>}> ${Wildcard<States>}`
+	| `${Wildcard<States>} -> ${Wildcard<States>}`
 
 // ---------------------------------------------------------------------------
 // The table
@@ -144,30 +156,34 @@ type Pattern<I extends Vocab = AnyVocab, S extends Vocab = AnyVocab> =
  * Checked row by row: a malformed key poisons its own value type, so
  * `not a transition: '…'` lands on that row, not on the whole table. The return
  * is the destination's payload, resolved inline rather than behind an alias over
- * `S`, so a wrong-shaped return names the one state the row targets (I18); the
- * row stays the authority for the name, which no return can redirect (§5 The
+ * `States`, so a wrong-shaped return names the one state the row targets (I18);
+ * the row stays the authority for the name, which no return can redirect (§5 The
  * declared vocabulary). The `void` arm accepts an empty body, and only where the
  * payload already admits `undefined`, so a destination that carries something
  * still rejects a handler that returns nothing (I27). `NoInfer` guards the
  * parameters (I14).
  */
-type Table<I extends Vocab, S extends Vocab, K extends string> = {
-	readonly [P in K]: P extends Key<I, S>
+type Table<Inputs extends Vocab, States extends Vocab, Keys extends string> = {
+	readonly [RowKey in Keys]: RowKey extends Key<Inputs, States>
 		? (args: {
-				readonly input: NoInfer<[Label<P>] extends [''] ? undefined : Label<P>>
-				readonly inputData: NoInfer<
-					[Label<P>] extends [''] ? undefined : Payload<I, Label<P>>
+				readonly input: NoInfer<
+					[Label<RowKey>] extends [''] ? undefined : Label<RowKey>
 				>
-				readonly from: From<P>
-				readonly fromData: NoInfer<Payload<S, From<P>>>
-				readonly to: To<P>
+				readonly inputData: NoInfer<
+					[Label<RowKey>] extends ['']
+						? undefined
+						: Payload<Inputs, Label<RowKey>>
+				>
+				readonly from: From<RowKey>
+				readonly fromData: NoInfer<Payload<States, From<RowKey>>>
+				readonly to: To<RowKey>
 				readonly skip: () => Skip
 			}) =>
-				| (undefined extends S[To<P> & keyof S]
-						? S[To<P> & keyof S] | void
-						: S[To<P> & keyof S])
+				| (undefined extends States[To<RowKey> & keyof States]
+						? States[To<RowKey> & keyof States] | void
+						: States[To<RowKey> & keyof States])
 				| Skip
-		: `not a transition: '${P}'`
+		: `not a transition: '${RowKey}'`
 }
 
 // ---------------------------------------------------------------------------
@@ -179,9 +195,12 @@ type Table<I extends Vocab, S extends Vocab, K extends string> = {
  * beside it (§5 The declared vocabulary). A state carrying nothing keeps its
  * `data`, valued `undefined`, rather than dropping the property.
  */
-type Current<S extends Vocab> = {
-	[N in Name<S>]: { readonly name: N; readonly data: S[N] }
-}[Name<S>]
+type Current<States extends Vocab> = {
+	[StateName in Name<States>]: {
+		readonly name: StateName
+		readonly data: States[StateName]
+	}
+}[Name<States>]
 
 /**
  * `send` is the whole declared vocabulary from every state, never narrowed to
@@ -191,12 +210,12 @@ type Current<S extends Vocab> = {
  * keeps each input name paired with its data when callers hold unions of both
  * fields (I29).
  */
-type Send<I extends Vocab> = (
+type Send<Inputs extends Vocab> = (
 	...args: {
-		[N in Name<I>]: undefined extends I[N]
-			? [input: N, inputData?: I[N]]
-			: [input: N, inputData: I[N]]
-	}[Name<I>]
+		[InputName in Name<Inputs>]: undefined extends Inputs[InputName]
+			? [input: InputName, inputData?: Inputs[InputName]]
+			: [input: InputName, inputData: Inputs[InputName]]
+	}[Name<Inputs>]
 ) => void
 
 /**
@@ -205,12 +224,12 @@ type Send<I extends Vocab> = (
  * capability a state permits, which is the wrong story for an output, and two
  * declarations can drift without a rename (§10 Composition).
  */
-type Emit<O extends Vocab> = (
+type Emit<Outputs extends Vocab> = (
 	...args: {
-		[N in Name<O>]: undefined extends O[N]
-			? [output: N, data?: O[N]]
-			: [output: N, data: O[N]]
-	}[Name<O>]
+		[OutputName in Name<Outputs>]: undefined extends Outputs[OutputName]
+			? [output: OutputName, data?: Outputs[OutputName]]
+			: [output: OutputName, data: Outputs[OutputName]]
+	}[Name<Outputs>]
 ) => void
 
 /**
@@ -220,9 +239,9 @@ type Emit<O extends Vocab> = (
  * `observe` callback is outside the machine, and the channel is the machine
  * speaking for itself (§10 Composition).
  */
-type Capabilities<I extends Vocab, O extends Vocab> = {
-	readonly send: Send<I>
-	readonly emit: Emit<O>
+type Capabilities<Inputs extends Vocab, Outputs extends Vocab> = {
+	readonly send: Send<Inputs>
+	readonly emit: Emit<Outputs>
 }
 
 /**
@@ -231,13 +250,17 @@ type Capabilities<I extends Vocab, O extends Vocab> = {
  * closing over a host reference. One member per name, so a name check narrows
  * the payload beside it, the same construction `Current` uses (I31).
  */
-type Announcement<I extends Vocab, O extends Vocab, N extends string> = {
-	[M in N]: {
-		readonly output: M
-		readonly data: Payload<O, M>
-		readonly send: Send<I>
+type Announcement<
+	Inputs extends Vocab,
+	Outputs extends Vocab,
+	OutputName extends string,
+> = {
+	[EachOutput in OutputName]: {
+		readonly output: EachOutput
+		readonly data: Payload<Outputs, EachOutput>
+		readonly send: Send<Inputs>
 	}
-}[N]
+}[OutputName]
 
 /**
  * A declared row matches a pattern when every coordinate agrees: `*` in a
@@ -245,56 +268,75 @@ type Announcement<I extends Vocab, O extends Vocab, N extends string> = {
  * wildcard spelling (line 127) — the omitted, unlabelled form is the broad one
  * already, so it admits a row's label, named or absent alike (I31, I32).
  */
-type Matches<Row extends string, P extends string> = (
-	From<P> extends '*' ? true : From<Row> extends From<P> ? true : false
+type Matches<RowKey extends string, PatternString extends string> = (
+	From<PatternString> extends '*'
+		? true
+		: From<RowKey> extends From<PatternString>
+			? true
+			: false
 ) extends true
 	? (
-			Label<P> extends '' ? true : Label<Row> extends Label<P> ? true : false
+			Label<PatternString> extends ''
+				? true
+				: Label<RowKey> extends Label<PatternString>
+					? true
+					: false
 		) extends true
-		? To<P> extends '*'
+		? To<PatternString> extends '*'
 			? true
-			: To<Row> extends To<P>
+			: To<RowKey> extends To<PatternString>
 				? true
 				: false
 		: false
 	: false
 
-/** The declared rows a pattern admits, one member of `K` per match. */
-type MatchingRows<K extends string, P extends string> = K extends unknown
-	? Matches<K, P> extends true
-		? K
+/** The declared rows a pattern admits, one member of `Keys` per match. */
+type MatchingRows<
+	Keys extends string,
+	PatternString extends string,
+> = Keys extends unknown
+	? Matches<Keys, PatternString> extends true
+		? Keys
 		: never
 	: never
 
 /**
  * A pattern with no declared row it could ever fire from — the same
- * `string extends K` gate `Transition`'s own fallback uses (I34), so a
- * genuinely widened `K` is left unchecked rather than falsely rejected.
+ * `string extends Keys` gate `Transition`'s own fallback uses (I34), so a
+ * genuinely widened `Keys` is left unchecked rather than falsely rejected.
  */
-type NoMatch<K extends string, P extends string> = string extends K
+type NoMatch<
+	Keys extends string,
+	PatternString extends string,
+> = string extends Keys
 	? false
-	: [MatchingRows<K, P>] extends [never]
+	: [MatchingRows<Keys, PatternString>] extends [never]
 		? true
 		: false
 
 /**
- * The matchable subset of `Pattern<I, S>`: every member with at least one
- * declared row, filtered against the table the same way `NoMatch` rejects a
- * dead one — but computed from `I`, `S` and `K` alone, with no call-site
- * pattern in the formula. `observe`'s edge overload intersects its parameter
- * with this rather than gating on `NoMatch<K, P>` at the top: a pattern this
- * checks *offers*, `NoMatch` still decides what it *accepts* (I37).
+ * The matchable subset of `Pattern<Inputs, States>`: every member with at
+ * least one declared row, filtered against the table the same way `NoMatch`
+ * rejects a dead one — but computed from `Inputs`, `States` and `Keys` alone,
+ * with no call-site pattern in the formula. `observe`'s edge overload
+ * intersects its parameter with this rather than gating on
+ * `NoMatch<Keys, PatternString>` at the top: a pattern this checks *offers*,
+ * `NoMatch` still decides what it *accepts* (I37).
  */
 type MatchedPattern<
-	I extends Vocab,
-	S extends Vocab,
-	K extends string,
-> = string extends K
-	? Pattern<I, S>
-	: { [P in Pattern<I, S>]: NoMatch<K, P> extends true ? never : P }[Pattern<
-			I,
-			S
-		>]
+	Inputs extends Vocab,
+	States extends Vocab,
+	Keys extends string,
+> = string extends Keys
+	? Pattern<Inputs, States>
+	: {
+			[PatternString in Pattern<Inputs, States>]: NoMatch<
+				Keys,
+				PatternString
+			> extends true
+				? never
+				: PatternString
+		}[Pattern<Inputs, States>]
 
 /** The wildcard rules of the runtime's own comparison, at the type level. */
 type Select<Coordinate extends string, All extends string> = [
@@ -305,78 +347,79 @@ type Select<Coordinate extends string, All extends string> = [
 
 /**
  * The pattern-only construction `Transition` built before #99 (I31): the
- * fallback for a widened `K`, where the exact row keys are unavailable (I34).
+ * fallback for a widened `Keys`, where the exact row keys are unavailable
+ * (I34).
  */
 type PatternFacts<
-	I extends Vocab,
-	S extends Vocab,
-	P extends string,
-	X extends object,
+	Inputs extends Vocab,
+	States extends Vocab,
+	PatternString extends string,
+	Extra extends object,
 > = {
-	[F in Select<From<P>, Name<S>>]: {
-		[T in Select<To<P>, Name<S>>]:
+	[FromState in Select<From<PatternString>, Name<States>>]: {
+		[ToState in Select<To<PatternString>, Name<States>>]:
 			| {
-					[N in Select<Label<P>, Name<I>>]: X & {
-						readonly input: N
-						readonly inputData: I[N]
-						readonly from: F
-						readonly fromData: S[F]
-						readonly to: T
-						readonly toData: S[T]
+					[InputName in Select<Label<PatternString>, Name<Inputs>>]: Extra & {
+						readonly input: InputName
+						readonly inputData: Inputs[InputName]
+						readonly from: FromState
+						readonly fromData: States[FromState]
+						readonly to: ToState
+						readonly toData: States[ToState]
 					}
-			  }[Select<Label<P>, Name<I>>]
-			| ([Label<P>] extends ['']
-					? X & {
+			  }[Select<Label<PatternString>, Name<Inputs>>]
+			| ([Label<PatternString>] extends ['']
+					? Extra & {
 							readonly input: undefined
 							readonly inputData: undefined
-							readonly from: F
-							readonly fromData: S[F]
-							readonly to: T
-							readonly toData: S[T]
+							readonly from: FromState
+							readonly fromData: States[FromState]
+							readonly to: ToState
+							readonly toData: States[ToState]
 						}
 					: never)
-	}[Select<To<P>, Name<S>>]
-}[Select<From<P>, Name<S>>]
+	}[Select<To<PatternString>, Name<States>>]
+}[Select<From<PatternString>, Name<States>>]
 
 /**
  * Three names and their three payloads, narrowed by the observer's own
- * pattern. One member per declared row `K` the pattern admits, filtered
+ * pattern. One member per declared row `Keys` the pattern admits, filtered
  * against the table rather than built from the pattern's own wildcards, so a
  * source, an input or a destination this table never pairs cannot appear
  * together in one record — a check on any one name narrows the payload
  * beside it, and also narrows the other two, to only what that name actually
- * reaches (I31, I32). `string extends K` falls back to `PatternFacts` for a
- * widened `K`, which would otherwise collapse every field to `never` (I34).
- * `X` is what the record carries beyond the facts — `send` for a committed
- * transition, nothing for a restart decision (§9 Actions).
+ * reaches (I31, I32). `string extends Keys` falls back to `PatternFacts` for
+ * a widened `Keys`, which would otherwise collapse every field to `never`
+ * (I34). `Extra` is what the record carries beyond the facts — `send` for a
+ * committed transition, nothing for a restart decision (§9 Actions).
  */
 type Transition<
-	I extends Vocab = AnyVocab,
-	S extends Vocab = AnyVocab,
-	K extends string = string,
-	P extends string = '* -> *',
-	X extends object = { readonly send: Send<I> },
-> = string extends K
-	? PatternFacts<I, S, P, X>
+	Inputs extends Vocab = AnyVocab,
+	States extends Vocab = AnyVocab,
+	Keys extends string = string,
+	PatternString extends string = '* -> *',
+	Extra extends object = { readonly send: Send<Inputs> },
+> = string extends Keys
+	? PatternFacts<Inputs, States, PatternString, Extra>
 	: {
-			[R in MatchingRows<K, P>]: X & {
-				readonly input: [Label<R>] extends [''] ? undefined : Label<R>
-				readonly inputData: [Label<R>] extends ['']
+			[RowKey in MatchingRows<Keys, PatternString>]: Extra & {
+				readonly input: [Label<RowKey>] extends [''] ? undefined : Label<RowKey>
+				readonly inputData: [Label<RowKey>] extends ['']
 					? undefined
-					: Payload<I, Label<R>>
-				readonly from: From<R>
-				readonly fromData: Payload<S, From<R>>
-				readonly to: To<R>
-				readonly toData: Payload<S, To<R>>
+					: Payload<Inputs, Label<RowKey>>
+				readonly from: From<RowKey>
+				readonly fromData: Payload<States, From<RowKey>>
+				readonly to: To<RowKey>
+				readonly toData: Payload<States, To<RowKey>>
 			}
-		}[MatchingRows<K, P>]
+		}[MatchingRows<Keys, PatternString>]
 
 type EdgeObserver<
-	I extends Vocab = AnyVocab,
-	S extends Vocab = AnyVocab,
-	K extends string = string,
-	P extends string = '* -> *',
-> = (transition: Transition<I, S, K, P>) => void
+	Inputs extends Vocab = AnyVocab,
+	States extends Vocab = AnyVocab,
+	Keys extends string = string,
+	PatternString extends string = '* -> *',
+> = (transition: Transition<Inputs, States, Keys, PatternString>) => void
 
 // ---------------------------------------------------------------------------
 // Actions
@@ -405,27 +448,33 @@ type Teardown = () => void
  * share: `input: undefined` already discriminates an immediate hop, so
  * `from: undefined` extends that vocabulary instead of inventing a second one.
  */
-type Arrived<S extends Vocab, N extends string, X extends object> = X & {
+type Arrived<
+	States extends Vocab,
+	State extends string,
+	Extra extends object,
+> = Extra & {
 	readonly input: undefined
 	readonly inputData: undefined
 	readonly from: undefined
 	readonly fromData: undefined
-	readonly to: NoInfer<N>
-	readonly toData: NoInfer<Payload<S, N>>
+	readonly to: NoInfer<State>
+	readonly toData: NoInfer<Payload<States, State>>
 }
 
 /**
  * What a residency action and a residency observer for the same bare state
- * share: every declared row landing on `N`, correlated per row like any other
- * `Transition`, plus the arrival no transition caused (I31, I32).
+ * share: every declared row landing on `State`, correlated per row like any
+ * other `Transition`, plus the arrival no transition caused (I31, I32).
  */
 type Residency<
-	I extends Vocab,
-	S extends Vocab,
-	K extends string,
-	N extends string,
-	X extends object = { readonly send: Send<I> },
-> = Transition<I, S, K, `* -> ${N}`, X> | Arrived<S, N, X>
+	Inputs extends Vocab,
+	States extends Vocab,
+	Keys extends string,
+	State extends string,
+	Extra extends object = { readonly send: Send<Inputs> },
+> =
+	| Transition<Inputs, States, Keys, `* -> ${State}`, Extra>
+	| Arrived<States, State, Extra>
 
 /**
  * What a declared action sees on its own bare state, as opposed to what
@@ -437,30 +486,36 @@ type Residency<
  * is `observe`'s own late-registration case with no equivalent here (I33).
  */
 type ActionArrival<
-	I extends Vocab,
-	S extends Vocab,
-	K extends string,
-	O extends Vocab,
-	Init extends string,
-	N extends string,
-> = [N] extends [Init]
-	? Residency<I, S, K, N, Capabilities<I, O>>
-	: Transition<I, S, K, `* -> ${N}`, Capabilities<I, O>>
+	Inputs extends Vocab,
+	States extends Vocab,
+	Keys extends string,
+	Outputs extends Vocab,
+	InitialState extends string,
+	State extends string,
+> = [State] extends [InitialState]
+	? Residency<Inputs, States, Keys, State, Capabilities<Inputs, Outputs>>
+	: Transition<
+			Inputs,
+			States,
+			Keys,
+			`* -> ${State}`,
+			Capabilities<Inputs, Outputs>
+		>
 
 /**
- * Fires on arrival at its state, by any route `* -> N` covers; the teardown it
- * returns runs on exit (§9 Actions). Generic in the argument itself, rather
- * than in `I, S, K, N`, so `Actions` and `ObserveAction` can each hand it a
- * differently-scoped arrival (`ActionArrival`, `Residency`) without a second
- * signature. The trailing `| void` is not the bivariance hole it looks like —
- * that only opens when a signature's return type *is* `void`, not when
- * `void` is one arm of a union, where an explicit wrong-shaped or `async`
- * return is still rejected (I27). It is what lets a setup with nothing to
- * tear down end in a plain statement rather than an explicit
- * `return undefined`.
+ * Fires on arrival at its state, by any route `* -> State` covers; the
+ * teardown it returns runs on exit (§9 Actions). Generic in the argument
+ * itself, rather than in `Inputs, States, Keys, State`, so `Actions` and
+ * `ObserveAction` can each hand it a differently-scoped arrival
+ * (`ActionArrival`, `Residency`) without a second signature. The trailing
+ * `| void` is not the bivariance hole it looks like — that only opens when a
+ * signature's return type *is* `void`, not when `void` is one arm of a union,
+ * where an explicit wrong-shaped or `async` return is still rejected (I27).
+ * It is what lets a setup with nothing to tear down end in a plain statement
+ * rather than an explicit `return undefined`.
  */
-type ResidencyAction<Arrival> = (
-	arrival: NoInfer<Arrival>,
+type ResidencyAction<Argument> = (
+	arrival: NoInfer<Argument>,
 ) => undefined | Teardown | void
 
 /**
@@ -471,13 +526,21 @@ type ResidencyAction<Arrival> = (
  * return.
  */
 type EdgeAction<
-	I extends Vocab,
-	S extends Vocab,
-	K extends string,
-	O extends Vocab,
-	P extends string,
+	Inputs extends Vocab,
+	States extends Vocab,
+	Keys extends string,
+	Outputs extends Vocab,
+	PatternString extends string,
 > = (
-	transition: NoInfer<Transition<I, S, K, P, Capabilities<I, O>>>,
+	transition: NoInfer<
+		Transition<
+			Inputs,
+			States,
+			Keys,
+			PatternString,
+			Capabilities<Inputs, Outputs>
+		>
+	>,
 ) => undefined | void
 
 /**
@@ -496,35 +559,41 @@ type Action<Run, Extra extends object = {}> =
  * the same six a committed record carries, minus `send`, which is what keeps the
  * decision pure in the types and at runtime alike (§9 Actions). No arrival
  * member: a predicate is never invoked for one (I31, I32). The default is to
- * restart. Without `NoInfer` the predicate reopens `S` and the table collapses
- * (I28).
+ * restart. Without `NoInfer` the predicate reopens `States` and the table
+ * collapses (I28).
  */
 type Restart<
-	I extends Vocab,
-	S extends Vocab,
-	K extends string,
-	N extends string,
+	Inputs extends Vocab,
+	States extends Vocab,
+	Keys extends string,
+	State extends string,
 > = {
 	readonly restart?:
 		| boolean
-		| ((facts: NoInfer<Transition<I, S, K, `${N} -> ${N}`, {}>>) => boolean)
+		| ((
+				facts: NoInfer<
+					Transition<Inputs, States, Keys, `${State} -> ${State}`, {}>
+				>,
+		  ) => boolean)
 }
 
 /**
  * A bare state name whose residency can actually run: `initial`, whose
  * synthetic arrival needs no incoming row (#100), or any other state with at
- * least one declared row landing on it (`NoMatch<K, '* -> N'>` false). Named
- * once rather than left inline in `Actions`, the same question I35 already
- * stated twice under different names before it was unified — #117 built a
- * second reader on top of this one (completions for `actions`) and measured
- * its cost too high to ship (I38), but the question itself is asked here
- * exactly once regardless.
+ * least one declared row landing on it
+ * (`NoMatch<Keys, '* -> State'>` false). Named once rather than left inline
+ * in `Actions`, the same question I35 already stated twice under different
+ * names before it was unified — #117 built a second reader on top of this one
+ * (completions for `actions`) and measured its cost too high to ship (I38),
+ * but the question itself is asked here exactly once regardless.
  */
-type Eligible<K extends string, Init extends string, N extends string> = [
-	N,
-] extends [Init]
+type Eligible<
+	Keys extends string,
+	InitialState extends string,
+	State extends string,
+> = [State] extends [InitialState]
 	? true
-	: NoMatch<K, `* -> ${N}`> extends true
+	: NoMatch<Keys, `* -> ${State}`> extends true
 		? false
 		: true
 
@@ -541,33 +610,44 @@ type Eligible<K extends string, Init extends string, N extends string> = [
  * instead: an edge with no matching row can never run, and neither can a
  * noninitial residency with none, since `enter` hands the synthetic arrival
  * only to `initial`'s own action (#100). This is a second, independent check
- * alongside `ActionArrival`'s own `Init` comparison, not a replacement for
- * it: a noninitial action's argument still excludes the arrival member it can
- * never receive, precise as I33 left it, and eligibility is checked on top of
- * that, not by widening it.
+ * alongside `ActionArrival`'s own `InitialState` comparison, not a
+ * replacement for it: a noninitial action's argument still excludes the
+ * arrival member it can never receive, precise as I33 left it, and
+ * eligibility is checked on top of that, not by widening it.
  */
 type Actions<
-	I extends Vocab,
-	S extends Vocab,
-	K extends string,
-	O extends Vocab,
-	Init extends string,
-	A extends string,
+	Inputs extends Vocab,
+	States extends Vocab,
+	Keys extends string,
+	Outputs extends Vocab,
+	InitialState extends string,
+	TriggerKeys extends string,
 > = {
-	readonly [P in A]: P extends `${string} -${string}> ${string}`
-		? P extends Pattern<I, S>
-			? NoMatch<K, P> extends true
-				? `no row matches '${P}'`
-				: Action<EdgeAction<I, S, K, O, P>>
-			: `not a trigger: '${P}'`
-		: P extends Name<S>
-			? Eligible<K, Init, P> extends true
+	readonly [
+		TriggerKey in TriggerKeys
+	]: TriggerKey extends `${string} -${string}> ${string}`
+		? TriggerKey extends Pattern<Inputs, States>
+			? NoMatch<Keys, TriggerKey> extends true
+				? `no row matches '${TriggerKey}'`
+				: Action<EdgeAction<Inputs, States, Keys, Outputs, TriggerKey>>
+			: `not a trigger: '${TriggerKey}'`
+		: TriggerKey extends Name<States>
+			? Eligible<Keys, InitialState, TriggerKey> extends true
 				? Action<
-						ResidencyAction<ActionArrival<I, S, K, O, Init, P>>,
-						Restart<I, S, K, P>
+						ResidencyAction<
+							ActionArrival<
+								Inputs,
+								States,
+								Keys,
+								Outputs,
+								InitialState,
+								TriggerKey
+							>
+						>,
+						Restart<Inputs, States, Keys, TriggerKey>
 					>
-				: `no row matches '${P}'`
-			: `not a trigger: '${P}'`
+				: `no row matches '${TriggerKey}'`
+			: `not a trigger: '${TriggerKey}'`
 }
 
 /**
@@ -578,41 +658,40 @@ type Actions<
  * registration can find any state already occupied, `initial` or not (I32).
  */
 type ObserveAction<
-	I extends Vocab,
-	S extends Vocab,
-	K extends string,
-	N extends string,
+	Inputs extends Vocab,
+	States extends Vocab,
+	Keys extends string,
+	State extends string,
 > =
-	| ResidencyAction<Residency<I, S, K, N>>
-	| ({ readonly run: ResidencyAction<Residency<I, S, K, N>> } & Restart<
-			I,
-			S,
-			K,
-			N
-	  >)
+	| ResidencyAction<Residency<Inputs, States, Keys, State>>
+	| ({
+			readonly run: ResidencyAction<Residency<Inputs, States, Keys, State>>
+	  } & Restart<Inputs, States, Keys, State>)
 
 /** The initial payload, omitted exactly when `send` would omit one (§5). */
-type Start<S extends Vocab, Init extends string> =
-	undefined extends Payload<S, Init>
-		? [data?: Payload<S, Init>]
-		: [data: Payload<S, Init>]
+type Start<States extends Vocab, InitialState extends string> =
+	undefined extends Payload<States, InitialState>
+		? [data?: Payload<States, InitialState>]
+		: [data: Payload<States, InitialState>]
 
 /** A running machine: the only mutable thing in the design. */
 interface Host<
-	I extends Vocab = AnyVocab,
-	S extends Vocab = AnyVocab,
-	K extends string = string,
-	O extends Vocab = AnyVocab,
+	Inputs extends Vocab = AnyVocab,
+	States extends Vocab = AnyVocab,
+	Keys extends string = string,
+	Outputs extends Vocab = AnyVocab,
 > {
-	readonly current: Current<S>
-	readonly send: Send<I>
+	readonly current: Current<States>
+	readonly send: Send<Inputs>
 	// Subscribe by output name, not by a place in the machine's topology. One
 	// coordinate, so no pattern language and nothing to wildcard; returns an
 	// idempotent unsubscribe, mirroring `observe` (§10 Composition). Generic in
 	// the name, so the record's payload is narrowed by it.
-	readonly on: <N extends Name<O>>(
-		output: N,
-		listener: (announcement: NoInfer<Announcement<I, O, N>>) => void,
+	readonly on: <OutputName extends Name<Outputs>>(
+		output: OutputName,
+		listener: (
+			announcement: NoInfer<Announcement<Inputs, Outputs, OutputName>>,
+		) => void,
 	) => () => void
 	// Generic in the pattern, so an observer's record is narrowed by it. A
 	// name-valid edge pattern with no declared row it could ever fire from is
@@ -629,19 +708,19 @@ interface Host<
 		// own helper, generic in its pattern, can forward that pattern here
 		// (I39). A dead pattern fails the constraint instead, and falls to the
 		// signature below, which is what still rejects it by name.
-		<P extends MatchedPattern<I, S, K>>(
-			pattern: P,
-			observer: EdgeObserver<I, S, K, P>,
+		<PatternString extends MatchedPattern<Inputs, States, Keys>>(
+			pattern: PatternString,
+			observer: EdgeObserver<Inputs, States, Keys, PatternString>,
 		): () => void
-		<P extends Pattern<I, S>>(
-			pattern: NoMatch<K, P> extends true
-				? `no row matches '${P}'`
-				: P & MatchedPattern<I, S, K>,
-			observer: EdgeObserver<I, S, K, P>,
+		<PatternString extends Pattern<Inputs, States>>(
+			pattern: NoMatch<Keys, PatternString> extends true
+				? `no row matches '${PatternString}'`
+				: PatternString & MatchedPattern<Inputs, States, Keys>,
+			observer: EdgeObserver<Inputs, States, Keys, PatternString>,
 		): () => void
-		<N extends Name<S>>(
-			pattern: N,
-			action: ObserveAction<I, S, K, N>,
+		<State extends Name<States>>(
+			pattern: State,
+			action: ObserveAction<Inputs, States, Keys, State>,
 		): () => void
 	}
 }
@@ -649,23 +728,27 @@ interface Host<
 /** Nothing at runtime; a function position keeps the four inferable together. */
 declare const vocabulary: unique symbol
 interface Vocabulary<
-	I extends Vocab,
-	S extends Vocab,
-	K extends string,
-	O extends Vocab,
+	Inputs extends Vocab,
+	States extends Vocab,
+	Keys extends string,
+	Outputs extends Vocab,
 > {
-	readonly [vocabulary]?: (declared: readonly [I, S, K, O]) => void
+	readonly [vocabulary]?: (
+		declared: readonly [Inputs, States, Keys, Outputs],
+	) => void
 }
 
 /** A declared machine. Inert, shareable, and never mutated by running one. */
 interface Machine<
-	I extends Vocab = AnyVocab,
-	S extends Vocab = AnyVocab,
-	K extends string = string,
-	Init extends string = string,
-	O extends Vocab = AnyVocab,
-> extends Vocabulary<I, S, K, O> {
-	readonly start: (...data: Start<S, Init>) => Host<I, S, K, O>
+	Inputs extends Vocab = AnyVocab,
+	States extends Vocab = AnyVocab,
+	Keys extends string = string,
+	InitialState extends string = string,
+	Outputs extends Vocab = AnyVocab,
+> extends Vocabulary<Inputs, States, Keys, Outputs> {
+	readonly start: (
+		...data: Start<States, InitialState>
+	) => Host<Inputs, States, Keys, Outputs>
 }
 
 // ---------------------------------------------------------------------------
@@ -673,56 +756,67 @@ interface Machine<
 // ---------------------------------------------------------------------------
 
 /** All four at once, because matching `Machine` itself simply fails (I22). */
-type Carried<M> =
-	M extends Vocabulary<infer I, infer S, infer K, infer O>
-		? { inputs: I; states: S; keys: K; outputs: O }
+type Carried<MachineType> =
+	MachineType extends Vocabulary<
+		infer Inputs,
+		infer States,
+		infer Keys,
+		infer Outputs
+	>
+		? { inputs: Inputs; states: States; keys: Keys; outputs: Outputs }
 		: never
 
 /** The input vocabulary a machine was declared with. */
-export type InputsOf<M> = Carried<M>['inputs']
+export type InputsOf<MachineType> = Carried<MachineType>['inputs']
 
 /** The state vocabulary a machine was declared with. */
-export type StatesOf<M> = Carried<M>['states']
+export type StatesOf<MachineType> = Carried<MachineType>['states']
 
 /** The output vocabulary a machine was declared with. */
-export type OutputsOf<M> = Carried<M>['outputs']
+export type OutputsOf<MachineType> = Carried<MachineType>['outputs']
 
-/** The inputs state `S` has rows for; `Exclude<…, ''>` drops immediate rows. */
-export type Handled<M, S extends string> = Exclude<
-	Label<Extract<Carried<M>['keys'], `${S} -${string}> ${string}`>>,
+/** The inputs state `State` has rows for; `Exclude<…, ''>` drops immediate rows. */
+export type Handled<MachineType, State extends string> = Exclude<
+	Label<
+		Extract<Carried<MachineType>['keys'], `${State} -${string}> ${string}`>
+	>,
 	''
 >
 
-/** The states that can reach `S`: the reverse index, from the same keys. */
-export type Sources<M, S extends string> = From<
-	Extract<Carried<M>['keys'], `${string} -${string}> ${S}`>
+/** The states that can reach `State`: the reverse index, from the same keys. */
+export type Sources<MachineType, State extends string> = From<
+	Extract<Carried<MachineType>['keys'], `${string} -${string}> ${State}`>
 >
 
 /**
- * The patterns `observe` accepts on `M`: the public face of `MatchedPattern`,
- * for a caller wrapping `observe` who wants the same constraint on their own
- * pattern argument — neither `Pattern` nor `Host` is exported to name
- * directly (I37).
+ * The patterns `observe` accepts on `MachineType`: the public face of
+ * `MatchedPattern`, for a caller wrapping `observe` who wants the same
+ * constraint on their own pattern argument — neither `Pattern` nor `Host` is
+ * exported to name directly (I37).
  */
-export type Patterns<M> = MatchedPattern<
-	Carried<M>['inputs'],
-	Carried<M>['states'],
-	Carried<M>['keys']
+export type Patterns<MachineType> = MatchedPattern<
+	Carried<MachineType>['inputs'],
+	Carried<MachineType>['states'],
+	Carried<MachineType>['keys']
 >
 
 /**
  * What `observe` takes beside one of those patterns, for the same caller: the
  * public face of `EdgeObserver`, which is module-local like the rest (I37).
- * Three of that alias's four parameters live in `M`, so only the pattern is
- * left, and omitting it covers every row the table can fire. Named for
- * `observe` rather than called an observer, which `on`'s own `Listener` has the
- * better claim to: this one is handed a transition record, not an event (I40).
+ * Three of that alias's four parameters live in `MachineType`, so only the
+ * pattern is left, and omitting it covers every row the table can fire. Named
+ * for `observe` rather than called an observer, which `on`'s own `Listener`
+ * has the better claim to: this one is handed a transition record, not an
+ * event (I40).
  */
-export type Observer<M, P extends Patterns<M> = Patterns<M>> = EdgeObserver<
-	Carried<M>['inputs'],
-	Carried<M>['states'],
-	Carried<M>['keys'],
-	P
+export type Observer<
+	MachineType,
+	PatternString extends Patterns<MachineType> = Patterns<MachineType>,
+> = EdgeObserver<
+	Carried<MachineType>['inputs'],
+	Carried<MachineType>['states'],
+	Carried<MachineType>['keys'],
+	PatternString
 >
 
 /**
@@ -730,13 +824,20 @@ export type Observer<M, P extends Patterns<M> = Patterns<M>> = EdgeObserver<
  * the one channel that earned it (I40). A subscriber here is told that
  * something happened and reads what it carried, which `observe`'s callback —
  * handed the record of a committed transition — is not. The name defaults to
- * every declared output, so `Listener<M>` covers the whole vocabulary.
+ * every declared output, so `Listener<MachineType>` covers the whole
+ * vocabulary.
  */
 export type Listener<
-	M,
-	N extends Name<Carried<M>['outputs']> = Name<Carried<M>['outputs']>,
+	MachineType,
+	OutputName extends Name<Carried<MachineType>['outputs']> = Name<
+		Carried<MachineType>['outputs']
+	>,
 > = (
-	announcement: Announcement<Carried<M>['inputs'], Carried<M>['outputs'], N>,
+	announcement: Announcement<
+		Carried<MachineType>['inputs'],
+		Carried<MachineType>['outputs'],
+		OutputName
+	>,
 ) => void
 
 // ---------------------------------------------------------------------------
@@ -858,15 +959,16 @@ let toRow = (key: string, item: UncheckedItem): Registration => {
  * `inputs` and `states` are the vocabulary's only inference sites, both optional
  * — omitting one keeps the names `transitions` mentions and widens only their
  * payloads to `unknown`. `initial` is a `NoInfer` position rather than a third
- * site (I21), intersected with `Init` to recover its name, which is what lets
- * `start` follow the initial state's payload. `RawI`/`RawS` are what the
- * properties infer to and `I`/`S` the resolved vocabularies; collapsing each
- * pair into one fails (I19), and the defaults hold only because `Table`'s
- * `NoInfer` closes the handler parameters — as would overloads, at the cost of
- * per-row diagnostics (I14). `K` comes from the mapped type in `transitions`,
- * with no second one beside it (I20). `A` is the same idea again for `actions`:
- * inferred from that block's own keys, contributing nothing back to `I`, `S` or
- * `K` (§9 Actions).
+ * site (I21), intersected with `InitialState` to recover its name, which is
+ * what lets `start` follow the initial state's payload. `RawInputs`/`RawStates`
+ * are what the properties infer to and `Inputs`/`States` the resolved
+ * vocabularies; collapsing each pair into one fails (I19), and the defaults
+ * hold only because `Table`'s `NoInfer` closes the handler parameters — as
+ * would overloads, at the cost of per-row diagnostics (I14). `Keys` comes from
+ * the mapped type in `transitions`, with no second one beside it (I20).
+ * `TriggerKeys` is the same idea again for `actions`: inferred from that
+ * block's own keys, contributing nothing back to `Inputs`, `States` or `Keys`
+ * (§9 Actions).
  *
  * `outputs` has no second inference site at all — nothing derives an output
  * name the way `transitions` keys derive input and state names — so an omitted
@@ -875,28 +977,33 @@ let toRow = (key: string, item: UncheckedItem): Registration => {
  * empty one, which leaves `emit` and `on` uncallable, when some was (I41).
  */
 export let machine: <
-	Init extends string,
-	K extends string,
-	RawI extends Vocab | undefined = undefined,
-	RawS extends Vocab | undefined = undefined,
-	RawO extends Vocab | undefined = undefined,
-	I extends Vocab = Declared<RawI, InputsFromKeys<K>>,
-	S extends Vocab = Declared<RawS, StatesFromKeys<K>>,
-	O extends Vocab = Declared<
-		RawO,
-		[RawI, RawS] extends [undefined, undefined] ? AnyVocab : {}
+	InitialState extends string,
+	Keys extends string,
+	RawInputs extends Vocab | undefined = undefined,
+	RawStates extends Vocab | undefined = undefined,
+	RawOutputs extends Vocab | undefined = undefined,
+	Inputs extends Vocab = Declared<RawInputs, InputsFromKeys<Keys>>,
+	States extends Vocab = Declared<RawStates, StatesFromKeys<Keys>>,
+	Outputs extends Vocab = Declared<
+		RawOutputs,
+		[RawInputs, RawStates] extends [undefined, undefined] ? AnyVocab : {}
 	>,
-	A extends string = never,
+	TriggerKeys extends string = never,
 >(definition: {
-	readonly initial: Init & Name<NoInfer<S>>
+	readonly initial: InitialState & Name<NoInfer<States>>
 	// `| undefined` is what `type()` returns, and inference subtracts it. Spelled
 	// out because `exactOptionalPropertyTypes` makes `?:` a different thing.
-	readonly inputs?: (RawI & VocabMap<Exclude<RawI, undefined>>) | undefined
-	readonly states?: (RawS & VocabMap<Exclude<RawS, undefined>>) | undefined
-	readonly outputs?: (RawO & VocabMap<Exclude<RawO, undefined>>) | undefined
-	readonly transitions: Table<I, S, K>
-	readonly actions?: Actions<I, S, K, O, Init, A> | undefined
-}) => Machine<I, S, K, Init, O> =
+	readonly inputs?:
+		(RawInputs & VocabMap<Exclude<RawInputs, undefined>>) | undefined
+	readonly states?:
+		(RawStates & VocabMap<Exclude<RawStates, undefined>>) | undefined
+	readonly outputs?:
+		(RawOutputs & VocabMap<Exclude<RawOutputs, undefined>>) | undefined
+	readonly transitions: Table<Inputs, States, Keys>
+	readonly actions?:
+		| Actions<Inputs, States, Keys, Outputs, InitialState, TriggerKeys>
+		| undefined
+}) => Machine<Inputs, States, Keys, InitialState, Outputs> =
 	// The implementation, never seen by a caller through the annotation above.
 	// `unknown` because a row's value can be the poison string literal, which no
 	// concrete type implements (I23).
@@ -914,11 +1021,11 @@ export let machine: <
 		// Either order behaves the same; handler first compressed one byte smaller.
 		for (let key in transitions) rows.push([transitions[key]!, parse(key)])
 
-		// Residency on `N` is stored as the pattern `* -> N`, the teardown key alone
-		// telling the two kinds apart, so one loop matches both and observers
-		// besides (I16). A bare key naming nothing declared is a silent no-op, as
-		// everywhere else; an arrow goes through `parse`, which throws on a
-		// malformed one. An array is unwrapped to one row per element (§9 Actions).
+		// Residency on `State` is stored as the pattern `* -> State`, the teardown
+		// key alone telling the two kinds apart, so one loop matches both and
+		// observers besides (I16). A bare key naming nothing declared is a silent
+		// no-op, as everywhere else; an arrow goes through `parse`, which throws on
+		// a malformed one. An array is unwrapped to one row per element (§9 Actions).
 		let actionRows: Registration[] = []
 		for (let key in actions) {
 			for (let item of [actions[key]!].flat())
