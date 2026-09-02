@@ -876,13 +876,9 @@ GitHub Actions to create and approve pull requests".
 
 To the libraries this one learned from:
 [Robot3](https://thisrobot.life/),
-[XState](https://github.com/statelyai/xstate), and
-[yay-machine](https://yay-machine.js.org/).
-
-And to Caroline Appert and Michel Beaudouin-Lafon's
-[SwingStates](https://perso.lisn.upsaclay.fr/appert/website/papers/SwingStates-spe.pdf),
-a state machine toolkit for Java from 2006, which the design record cites
-throughout.
+[XState](https://github.com/statelyai/xstate),
+[yay-machine](https://yay-machine.js.org/), and
+[SwingStates](https://perso.lisn.upsaclay.fr/appert/website/papers/SwingStates-spe.pdf).
 
 ## License
 
