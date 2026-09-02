@@ -881,9 +881,8 @@ To the libraries this one learned from:
 
 And to Caroline Appert and Michel Beaudouin-Lafon's
 [SwingStates](https://perso.lisn.upsaclay.fr/appert/website/papers/SwingStates-spe.pdf),
-which the design record leans on more than any of them: for the evidence that
-state explosion stays manageable at this scale, and for peers over hierarchy as
-the way to combine machines.
+a state machine toolkit for Java from 2006, which the design record cites
+throughout.
 
 ## License
 
