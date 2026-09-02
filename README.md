@@ -160,12 +160,12 @@ which edge caused it.
 
 Everything the package exports:
 
-| export                                                                                                                     | is                                                               |
-| -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `machine({ inputs?, states?, outputs?, initial, transitions, actions? })`                                                  | a definition: inert data, never mutated                          |
-| `type<T>()`                                                                                                                | a declaration carrying `T`; returns `undefined` at runtime       |
-| `InputsOf<M>` `StatesOf<M>` `OutputsOf<M>` `Handled<M, S>` `Sources<M, S>` `Patterns<M>` `Observer<M, P>` `Listener<M, N>` | derived types, over `M = typeof publication`                     |
-| `Skip`                                                                                                                     | what `skip()` returns; it appears in every handler's return type |
+| export                                                                                                                                                                                                                                  | is                                                               |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `machine({ inputs?, states?, outputs?, initial, transitions, actions? })`                                                                                                                                                               | a definition: inert data, never mutated                          |
+| `type<T>()`                                                                                                                                                                                                                             | a declaration carrying `T`; returns `undefined` at runtime       |
+| `InputsOf<MachineType>` `StatesOf<MachineType>` `OutputsOf<MachineType>` `Handled<MachineType, State>` `Sources<MachineType, State>` `Patterns<MachineType>` `Observer<MachineType, PatternString>` `Listener<MachineType, OutputName>` | derived types, over `MachineType = typeof publication`           |
+| `Skip`                                                                                                                                                                                                                                  | what `skip()` returns; it appears in every handler's return type |
 
 ## `inputs` and `states`: the vocabulary
 
@@ -365,8 +365,8 @@ an exact text search:
 | where can I `submit`?             | `-submit>` |
 | how does anything reach `review`? | `> review` |
 
-Two of the three are derivable as types as well: `Handled<M, 'draft'>` and
-`Sources<M, 'review'>`, so the reverse index never has to be maintained by hand.
+Two of the three are derivable as types as well: `Handled<MachineType, 'draft'>` and
+`Sources<MachineType, 'review'>`, so the reverse index never has to be maintained by hand.
 
 ## `actions`: lifetime-scoped work
 
@@ -545,8 +545,8 @@ beside it. `send` is not narrowed to what the current state handles, for the
 reason [Sending](#sending) gives — a send is queued, so the state at delivery
 need not be the state at the call.
 
-`Listener<M, N>` names a listener written away from its `on` call, the way
-`Observer<M, P>` does for `observe`. `OutputsOf<M>` reads the vocabulary back
+`Listener<MachineType, OutputName>` names a listener written away from its `on` call, the way
+`Observer<MachineType, PatternString>` does for `observe`. `OutputsOf<MachineType>` reads the vocabulary back
 out.
 
 ### When a listener runs
@@ -742,14 +742,14 @@ This checks table membership only, never reachability: a row unreachable from
 Completion in an editor offers only matchable patterns — the row keys
 themselves and their wildcard generalizations — instead of every name-valid
 combination. `Patterns<typeof publication>` names that set, and
-`Observer<typeof publication, P>` names what goes beside it, so a helper
+`Observer<typeof publication, PatternString>` names what goes beside it, so a helper
 wrapping `observe` can type both of its arguments and stay generic in the
 pattern:
 
 ```ts
-const watch = <P extends Patterns<typeof publication>>(
-	pattern: P,
-	observer: Observer<typeof publication, P>,
+const watch = <PatternString extends Patterns<typeof publication>>(
+	pattern: PatternString,
+	observer: Observer<typeof publication, PatternString>,
 ) => doc.observe(pattern, observer)
 
 watch('draft -submit> review', (e) => e.toData.reviewer) // `to` is 'review'

@@ -139,24 +139,24 @@ moved the other way, back to a hand-written schema. **And it is not free for eve
 consumer**: under `--isolatedDeclarations`, an inferred machine cannot be exported
 at all (`TS9010`).
 
-### <a id="i14"></a>I14 — A handler's source parameter needs `NoInfer` while it names `S` directly
+### <a id="i14"></a>I14 — A handler's source parameter needs `NoInfer` while it names `States` directly
 
-> **Narrowed by #98.** The parameter is `fromData: S[From<P> & keyof S]` now, and
+> **Narrowed by #98.** The parameter is `fromData: States[From<PatternString> & keyof States]` now, and
 > TypeScript does not infer to an indexed access, so the position below is no
 > longer an inference site. `Table` keeps the wrapper as insurance; the mechanism
 > is live one property over, on `Restart`'s predicate ([I28](#i28)).
 
-While a state was a tagged object, the signature put the state vocabulary `S` in a
-handler **parameter** (`state: Extract<S, { name: … }>`), a distributive
-conditional over the naked `S`. A parameter is an inference site, so a handler
-that destructures its argument makes the compiler infer `S` from the transition
+While a state was a tagged object, the signature put the state vocabulary `States` in a
+handler **parameter** (`state: Extract<States, { name: … }>`), a distributive
+conditional over the naked `States`. A parameter is an inference site, so a handler
+that destructures its argument makes the compiler infer `States` from the transition
 table, competing with the `states` property that is meant to be its only source.
-`S` lands on garbage, the key type built from it collapses, and **every row** is
+`States` lands on garbage, the key type built from it collapses, and **every row** is
 reported as `not a transition` — the diagnostic for a malformed key, fired on rows
 that are perfectly well formed.
 
 **The mechanism is contravariance.** A parameter type is a contravariant
-position, so `S` is inferred _out of_ the table's handlers — and only a handler
+position, so `States` is inferred _out of_ the table's handlers — and only a handler
 that destructures its argument is context-sensitive enough to be checked in the
 pass where that inference happens, which is why the failure looks intermittent.
 `NoInfer` on the parameter closes the site and leaves variance untouched
@@ -165,7 +165,7 @@ everywhere else.
 The residual limitation is the mirror image, it survives #98, and it is
 TypeScript's rather than the notation's: a handler that destructures **nothing**
 — `() => ({ … })` — is not context-sensitive, so it is typed in the same pass
-that infers `states:` from the sibling property, before `S` is known. Its return expression has no contextual
+that infers `states:` from the sibling property, before `States` is known. Its return expression has no contextual
 type and its literals widen, which a target pinning a literal field then rejects.
 Destructuring any of the argument's fields defers the handler to the pass after
 the vocabulary is known and needs no annotation; an argument-free handler
@@ -175,17 +175,17 @@ literal, and one is inferred from the other. The same pass is why an argument-fr
 `() => void` rather than against its contextual return type, which is what
 [I27](#i27) has to widen the return for.
 
-The fix is one word, on the parameter rather than on `S` itself:
+The fix is one word, on the parameter rather than on `States` itself:
 
 ```ts
-readonly fromData: NoInfer<Payload<S, From<P>>>
+readonly fromData: NoInfer<Payload<States, From<PatternString>>>
 ```
 
 `states` is then the sole inference site, and the state half of the signature needs
 no other machinery — it takes the same raw/declared pair the input half always had.
 
 Two things worth keeping. The initial diagnosis was **wrong**: the symptom fits a
-story about `S` being self-referentially derived from the same keys that index the
+story about `States` being self-referentially derived from the same keys that index the
 table, and that story cost a two-overload signature before the one-word fix was
 found. And overloads are not an acceptable workaround anyway — they move errors
 from individual rows up to the opening `machine({` and collapse several bad rows
@@ -310,7 +310,7 @@ since; treat it as the reason the shape was chosen, not as a current number.
   the notify path, which is the same trade the observer list is copy-on-write to
   avoid. Attaching lazily, so nothing is allocated when no row matches, spends the
   saving again on reading the coordinates off the other object (16 B).
-- **The departure loop over `[acts, observers]`, not a `leave` helper called
+- **The departure loop over `[hostActionRows, observers]`, not a `leave` helper called
   twice.** The two-element array literal plus one nested loop measures smaller
   than factoring the row scan into a named function and calling it once per row
   array (1,790 B vs 1,810 B raw, pre-golf).
@@ -348,7 +348,7 @@ state; both accept `{}` and `undefined`. The tagged form wins on two other groun
 Costs nothing at runtime either way; the argument the encoding serves is in
 [design record §5](design-record.md#the-empty-payload-encoding-closing-the-negative-result).
 
-### <a id="i18"></a>I18 — Never put a handler's return type behind an alias that takes `S`
+### <a id="i18"></a>I18 — Never put a handler's return type behind an alias that takes `States`
 
 A wrong-shaped handler return, checked through a named alias parameterized over
 the state vocabulary, produces an error naming the **whole** vocabulary:
@@ -358,9 +358,9 @@ the state vocabulary, produces an error naming the **whole** vocabulary:
 ```
 
 Resolving the same computation **inline** reports against the one state the row
-targets — `{ text: string; by: string }` — and this holds with `S` as a real type
+targets — `{ text: string; by: string }` — and this holds with `States` as a real type
 parameter. This is the highest-traffic error in the library, so `Table` spells
-`S[To<P> & keyof S]` out rather than reaching for the `Payload<V, N>` alias its
+`States[To<RowKey> & keyof States]` out rather than reaching for the `Payload<SomeVocab, MemberName>` alias its
 parameters use. Since #98 the message carries no wrapper at all: the payload is
 what the vocabulary declares, not an `Omit` of it.
 
@@ -370,20 +370,20 @@ A type parameter constrained to bare `T` with a default rejects a candidate of
 `undefined` as a constraint violation, and TypeScript's fallback for an invalid
 candidate is **the constraint** — not the default. So `inputs: undefined`, written
 explicitly, widened every input name to `string`, where an omitted `inputs`
-correctly inferred `InputsFromKeys<K>`: two call sites meant to be
+correctly inferred `InputsFromKeys<Keys>`: two call sites meant to be
 indistinguishable were not.
 
 Constraining to `T | undefined` instead makes `undefined` a legal, non-widening
 inference target, and the default moves into an accessor type (`Declared<Raw,
-Default>`) that resolves it. This is why the vocabulary needs the `RawI`/`I` and
-`RawS`/`S` parameter pairs rather than one parameter each — collapsing a pair is
+Default>`) that resolves it. This is why the vocabulary needs the `RawInputs`/`Inputs` and
+`RawStates`/`States` parameter pairs rather than one parameter each — collapsing a pair is
 the version that fails. Same shape as [I9](#i9), reached from the other direction.
 
 ### <a id="i20"></a>I20 — A second inference site for the table stops error elaboration
 
-`K` is inferred from the mapped type in `transitions`, because a mapped type over
+`Keys` is inferred from the mapped type in `transitions`, because a mapped type over
 a bare type parameter infers its own key set. Adding a second parameter for the
-same property — `transitions: T` alongside `Table<I, S, K>` — infers the same
+same property — `transitions: T` alongside `Table<Inputs, States, Keys>` — infers the same
 thing, but makes the contextual type of every row an **intersection**: enough call
 signatures that the compiler stops elaborating into the handler, and a
 wrong-shaped return is reported against the whole row instead of against the
@@ -391,10 +391,10 @@ expression that is wrong.
 
 ### <a id="i21"></a>I21 — `initial` must not be a state-vocabulary inference site
 
-Letting `initial` infer `S` makes the name it invented the only legal state name.
+Letting `initial` infer `States` makes the name it invented the only legal state name.
 Every real row is then rejected, and the error moves off the row onto the whole
 table. A plain `NoInfer` position is the fix, not a conditional; intersecting with
-`Init` recovers the initial state's _name_ without reopening the inference, which
+`InitialState` recovers the initial state's _name_ without reopening the inference, which
 is what lets `start`'s arity follow that one state's data.
 
 ### <a id="i22"></a>I22 — A machine type is read back through the carrier, not through `Machine`
@@ -442,25 +442,25 @@ precision.
 > the row key with the tier in place. A wrapper still fails against the shipped
 > signature, by alias identity ([I25](#i25)) rather than by the tier.
 
-`machine` resolves the vocabulary in two tiers: `RawI`/`RawS` infer from the
-`inputs`/`states` properties, and `I`/`S` are defaulted type parameters computed
+`machine` resolves the vocabulary in two tiers: `RawInputs`/`RawStates` infer from the
+`inputs`/`states` properties, and `Inputs`/`States` are defaulted type parameters computed
 off them through `Declared`. Defaults resolve after inference, so a generic call in
-a row value is checked while `I` and `S` are still absent: its own row parameter
-falls back to `string`, `Key<I, S>` collapses, and every row is rejected as
+a row value is checked while `Inputs` and `States` are still absent: its own row parameter
+falls back to `string`, `Key<Inputs, States>` collapses, and every row is rejected as
 `not a transition: '…'`, well formed or not. The collapse does not stay in the table
-either; with `S` gone, `initial` stops resolving against `StateName<NoInfer<S>>`.
+either; with `States` gone, `initial` stops resolving against `StateName<NoInfer<States>>`.
 
 Isolated in [`explorations/wrapper-inference.ts`](../explorations/wrapper-inference.ts)
 to the tier alone: the same alias and the same call pass under a signature that
-infers `I`/`S` directly and fail under one that defaults them. The pair cannot be
+infers `Inputs`/`States` directly and fail under one that defaults them. The pair cannot be
 collapsed to remove the tier ([I19](#i19)). A **record** value has none of this,
 because it is not a call: contextual typing reaches its function-valued field from
 the table directly.
 
 **The scope is the block, not the value.** This bites where the block is an
-inference site. `transitions` is one, since `K` comes from it. A block keyed off the
+inference site. `transitions` is one, since `Keys` comes from it. A block keyed off the
 already-declared vocabulary, which is the shape `actions` would take, contributes
-nothing to inference, is therefore checked after `S` resolves, and accepts a wrapper with
+nothing to inference, is therefore checked after `States` resolves, and accepts a wrapper with
 its narrowing intact, in the same two-tier signature. The wrapper still has to be
 handed the vocabulary ([I25](#i25)); recovering it from context leaves the
 payload `never` while the trigger key stays constrained by the mapped type, so a
@@ -472,7 +472,7 @@ Where a wrapper does work, on a single-tier vocabulary handed to it up front, th
 row key comes back from the contextual return type only while the table's row type
 and the wrapper's signature name the **same alias**. Write the identical expression
 out twice instead and the key falls back to `string`, with nothing else changed.
-Satisfying this means factoring the row type behind an alias over `S`, which is
+Satisfying this means factoring the row type behind an alias over `States`, which is
 what [I18](#i18) forbids. Between them the two findings leave the wrapper no
 spelling that works.
 
@@ -526,12 +526,12 @@ and each rejection still fires.
 
 ### <a id="i28"></a>I28 — `restart`'s predicate parameter needs `NoInfer`
 
-`Restart<I, S, N>`'s predicate takes one record of the hop's facts,
-`(facts: Transition<I, S, "N -> N", {}>) => boolean`, contributed into
-`Actions<I, S, A>`. Left bare, a block-bodied predicate —
+`Restart<Inputs, States, State>`'s predicate takes one record of the hop's facts,
+`(facts: Transition<Inputs, States, "State -> State", {}>) => boolean`, contributed into
+`Actions<Inputs, States, TriggerKeys>`. Left bare, a block-bodied predicate —
 `restart: (facts) => { return facts.fromData.id !== facts.toData.id }` — makes
-that record an inference site: it is a mapped type over `keyof S`, which
-TypeScript reverse-maps ([I10](#i10)), so `S` collapses, every row in
+that record an inference site: it is a mapped type over `keyof States`, which
+TypeScript reverse-maps ([I10](#i10)), so `States` collapses, every row in
 `transitions` is rejected as `not a transition: '…'`, and `initial` stops
 resolving. An expression-bodied predicate does not trigger it, which is why a
 probe writing only
@@ -550,7 +550,7 @@ which reproduces the collapse.
 parameter. Required data uses `[name, data]`; data that admits `undefined` uses
 `[name, data?]`. This rejects a union-valued name beside an unrelated
 union-valued payload. Narrowing the name first selects one tuple and permits
-forwarding. A generic `(name: N, data: I[N])` accepts mismatched unions and is
+forwarding. A generic `(name: InputName, data: Inputs[InputName])` accepts mismatched unions and is
 therefore too broad.
 
 ### <a id="i30"></a>I30 — Vocabulary maps need a separate shape check
@@ -571,8 +571,8 @@ union with one member per pairing: TypeScript narrows a discriminant against the
 union it is a member of, and nothing else. So `Transition` is the product of the
 sources, destinations and inputs its pattern admits — the same |states|² ×
 |inputs| the key union already costs — and a check on any one of the three names
-narrows all six fields. Intersecting the shared half onto each member (`X &
-{ … }`, where `X` is `{ send }` or `{}`) keeps that narrowing intact, which is
+narrows all six fields. Intersecting the shared half onto each member (`Extra &
+{ … }`, where `Extra` is `{ send }` or `{}`) keeps that narrowing intact, which is
 what lets one type serve a committed record and a restart predicate's facts.
 [#99](#i32) filters the product against the table, which this entry described
 before that filtering existed.
@@ -581,8 +581,8 @@ before that filtering existed.
 
 [I31](#i31) built `Transition` as the product of a _pattern's_ own wildcards —
 every source, destination and input the pattern admits, whether or not the
-_table_ declares that pairing. #99 filters it: `Transition<I, S, K, P>` maps
-over the declared rows `K`, keeping only those a pattern's `From`, `Label` and
+_table_ declares that pairing. #99 filters it: `Transition<Inputs, States, Keys, PatternString>` maps
+over the declared rows `Keys`, keeping only those a pattern's `From`, `Label` and
 `To` each individually admit (`MatchingRows`), then builds one record per
 surviving row from that row's own three coordinates — never from the
 pattern's. A mapped type distributes over a union of string-literal keys, so
@@ -591,10 +591,10 @@ each surviving row keeps its coordinates correlated for free; the per-coordinate
 "every declared name," is gone with it.
 
 An omitted pattern label matches any row's label, named or absent alike — the
-same rule the runtime's own comparison already used (`l === '' || l ===
-e.input`, in `fire`); a specific label matches only its own name. Residency and
+same rule the runtime's own comparison already used (`!input || input ===
+arrival.input`, in `fire`); a specific label matches only its own name. Residency and
 restart facts reuse `Transition` rather than widening their own coordinates
-(`Residency<I, S, K, N>`, unioned with the arrival `Transition` never carries).
+(`Residency<Inputs, States, Keys, State>`, unioned with the arrival `Transition` never carries).
 
 **A hop no declared row supports resolves to `never`, not to a widened guess.**
 A `restart` predicate for a state with no self-transition row, or a residency
@@ -618,9 +618,9 @@ for it.
 
 ### <a id="i33"></a>I33 — A residency action's arrival member is live only on the initial state
 
-[I32](#i32)'s `Residency<I, S, K, N>` — every declared row landing on `N`,
+[I32](#i32)'s `Residency<Inputs, States, Keys, State>` — every declared row landing on `State`,
 plus the arrival no transition caused — was shared unchanged between a
-residency action and a residency observer for the same bare state, `N`
+residency action and a residency observer for the same bare state, `State`
 noninitial included. That shared type is broader than what an action can ever
 actually receive: `enter` hands the synthetic arrival to `actions` exactly
 once, at startup, gated on `to === initial` (`src/totorobot.ts`, the
@@ -630,12 +630,12 @@ can `observe()` a bare key at any point in a running host's life and find
 that state already occupied, `initial` or not (the immediate-registration
 case in `Host.observe`).
 
-`ActionArrival<I, S, K, Init, N>` narrows this per key: `Residency<I, S, K,
-N>` where `N` is exactly `Init`, and a plain `Transition<I, S, K, '* -> N'>`
-— real rows only, no arrival — everywhere else. `Actions` now takes `Init` as
+`ActionArrival<Inputs, States, Keys, InitialState, State>` narrows this per key: `Residency<Inputs, States, Keys,
+State>` where `State` is exactly `InitialState`, and a plain `Transition<Inputs, States, Keys, '* -> State'>`
+— real rows only, no arrival — everywhere else. `Actions` now takes `InitialState` as
 a fifth parameter to make this comparison, consumed rather than inferred a
-second time, the same guard [I20](#i20) already holds `K` to; `ObserveAction`
-is untouched, since `observe`'s own arrival is not conditioned on `Init` at
+second time, the same guard [I20](#i20) already holds `Keys` to; `ObserveAction`
+is untouched, since `observe`'s own arrival is not conditioned on `InitialState` at
 all. A noninitial residency action's `from` therefore excludes `undefined`
 outright, needing no narrowing to read, where before it carried the member
 unconditionally; `tests/actions.test-d.ts` pins both the noninitial exclusion
@@ -650,41 +650,41 @@ a synthetic case in, unchecked. [#100](#i35) adds a second, independent check
 alongside this one rather than replacing it: `from` stays precise here, and
 whether a noninitial action is legal to declare at all is decided separately.
 
-### <a id="i34"></a>I34 — `Transition`'s default `K` collapses every field to `never`, not to conservative facts
+### <a id="i34"></a>I34 — `Transition`'s default `Keys` collapses every field to `never`, not to conservative facts
 
-`Transition<I, S, K, P>`'s row filtering (`MatchingRows<K, P>`, [I32](#i32))
-is unsound at `K`'s own default. Widen `K` to plain `string` and
-`MatchingRows<string, P>` still evaluates to `string`: `From<string>`,
+`Transition<Inputs, States, Keys, PatternString>`'s row filtering (`MatchingRows<Keys, PatternString>`, [I32](#i32))
+is unsound at `Keys`'s own default. Widen `Keys` to plain `string` and
+`MatchingRows<string, PatternString>` still evaluates to `string`: `From<string>`,
 `Label<string>` and `To<string>` are all `never`, and `never extends
 anything` is true, so every coordinate check in `Matches` trivially passes.
 But indexing the row-mapped type by the bare `string` key produces an index
-signature evaluated once at `R = string`, not distributed per literal, so
-`From<R>` and its siblings resolve to `never` there too — a record with
+signature evaluated once at `RowKey = string`, not distributed per literal, so
+`From<RowKey>` and its siblings resolve to `never` there too — a record with
 `from`, `to` and named inputs all `never`, in place of the conservative,
 pattern-only facts [I31](#i31) built before #99 narrowed `Transition` against
 declared rows.
 
-The fix reintroduces that pre-#99 construction as `PatternFacts<I, S, P, X>`
-and gates `Transition` on `string extends K`: true only when `K` is the bare
+The fix reintroduces that pre-#99 construction as `PatternFacts<Inputs, States, PatternString, Extra>`
+and gates `Transition` on `string extends Keys`: true only when `Keys` is the bare
 `string` default, false for any literal row-key union, however large
 (`tests/scale.test-d.ts`'s forty-four rows included) — so an exact machine
-keeps full row-correlated precision and only a genuinely widened `K` falls
+keeps full row-correlated precision and only a genuinely widened `Keys` falls
 back.
 
 **No known public call site reaches this today.** `Host`, `Transition` and
 their siblings are module-local, so a caller cannot name them to construct
-one with `K` left at its default; `machine()`'s own `transitions` parameter
-is typed `Table<I, S, K>`, which requires literal row keys to check each row
+one with `Keys` left at its default; `machine()`'s own `transitions` parameter
+is typed `Table<Inputs, States, Keys>`, which requires literal row keys to check each row
 and rejects a `Record<string, …>`-shaped argument outright — confirmed by
-casting one through `machine(definition as Table<I, S, string>)`, which
+casting one through `machine(definition as Table<Inputs, States, string>)`, which
 `Table` refuses independently of this finding. The only reproduction found
 casts around that refusal entirely (`machine(definition as any)`), which is
 a deliberate opt-out rather than a scenario an unwitting caller reaches. The
-fix stands regardless: `K`'s own declared default is `string`
-(`K extends string = string`), and a type should not collapse to `never` at
+fix stands regardless: `Keys`'s own declared default is `string`
+(`Keys extends string = string`), and a type should not collapse to `never` at
 its own default, reachable or not.
 
-### <a id="i35"></a>I35 — Registration eligibility is a second check, layered on `ActionArrival`'s own `Init` comparison
+### <a id="i35"></a>I35 — Registration eligibility is a second check, layered on `ActionArrival`'s own `InitialState` comparison
 
 #100 needs a noninitial residency action naming a state with no incoming row
 rejected outright: unlike an observer, whose argument merely narrows to
@@ -695,12 +695,12 @@ typed to take `never` still accepts any implementation, by contravariance.
 describe, and stays; it says nothing about whether the declaration should
 exist at all, which is the separate question #100 answers.
 
-`Actions<I, S, K, Init, A>` now checks the key `P` directly for that second
-question, the same way it already reports `not a trigger: '${P}'` for a
-malformed one: `[P] extends [Init]` is eligible on the startup arrival alone,
+`Actions<Inputs, States, Keys, InitialState, TriggerKeys>` now checks the key `TriggerKey` directly for that second
+question, the same way it already reports `not a trigger: '${TriggerKey}'` for a
+malformed one: `[TriggerKey] extends [InitialState]` is eligible on the startup arrival alone,
 no incoming row required, matching `ActionArrival`'s own branch; anything
-else additionally needs `NoMatch<K, '* -> ${P}'>` to be `false`. Both checks
-share the one `[P] extends [Init]` discriminant rather than computing it
+else additionally needs `NoMatch<Keys, '* -> ${TriggerKey}'>` to be `false`. Both checks
+share the one `[TriggerKey] extends [InitialState]` discriminant rather than computing it
 twice under different names. `ActionArrival` is unchanged: a noninitial
 action's `from` still excludes `undefined` outright, and eligibility is
 checked on top of that precision, not instead of it.
@@ -708,19 +708,19 @@ checked on top of that precision, not instead of it.
 ### <a id="i36"></a>I36 — Rejecting a dead pattern is a parameter type, inferred through its own conditional
 
 A pattern naming only declared state and input names, but no declared row
-(`NoMatch<K, P>`, built on [I32](#i32)'s `MatchingRows`), needs a diagnostic
+(`NoMatch<Keys, PatternString>`, built on [I32](#i32)'s `MatchingRows`), needs a diagnostic
 at the registration site, the same class of problem `Table` already solves
 for a malformed transition key: turn the offending value's own type into a
-literal message, `` `no row matches '${P}'` ``, so the caller's string
+literal message, `` `no row matches '${PatternString}'` ``, so the caller's string
 argument fails to match it.
 
-`Actions` applies this per mapped key, exactly like `not a trigger: '${P}'`
+`Actions` applies this per mapped key, exactly like `not a trigger: '${TriggerKey}'`
 already does — no new mechanism. `Host.observe`'s first overload has no
 object-literal keys to map over, one `pattern` parameter instead; TypeScript
-still infers `P` from the argument through `NoMatch<K, P> extends true ?
-`no row matches '${P}'` : P`, the naked `P` in the conditional's true branch,
+still infers `PatternString` from the argument through `NoMatch<Keys, PatternString> extends true ?
+`no row matches '${PatternString}'` : PatternString`, the naked `PatternString` in the conditional's true branch,
 confirmed against `TypeScript 7.0.2` with an isolated repro before landing it
-in `src/`. A widened `K` (`string extends K`) falls back to `false` — never
+in `src/`. A widened `Keys` (`string extends Keys`) falls back to `false` — never
 rejects — the same conservative gate [I34](#i34)'s `Transition` fallback
 uses, for the same reason: a wrapper that erased the exact rows cannot tell a
 dead pattern from a live one, and a false rejection is worse than a missed
@@ -732,13 +732,13 @@ The type layer is erased: `pnpm size` reports 1,580 B raw, unchanged.
 
 [I36](#i36)'s rejection is correct and, per its own repro, reaches the
 caller — but completion in an editor still lists every name-valid pattern,
-not just the ones a declared row can fire. `NoMatch<K, P> extends true ?
-`no row matches '${P}'` : P` is a conditional keyed on the unresolved type
-parameter itself; while `P` is still unresolved (exactly the moment
+not just the ones a declared row can fire. `NoMatch<Keys, PatternString> extends true ?
+`no row matches '${PatternString}'` : PatternString` is a conditional keyed on the unresolved type
+parameter itself; while `PatternString` is still unresolved (exactly the moment
 completion needs an answer), TypeScript cannot evaluate the conditional and
-falls back to `P`'s own constraint, `Pattern<I, S>`, for _both_ the check
+falls back to `PatternString`'s own constraint, `Pattern<Inputs, States>`, for _both_ the check
 and the branch it substitutes back in. The crafted rejection message
-survives because it fires later, once the caller's literal has resolved `P`
+survives because it fires later, once the caller's literal has resolved `PatternString`
 and the conditional is no longer deferred — but the completion list, asked
 before that, sees only the constraint.
 
@@ -753,39 +753,39 @@ expression, deferred conditional included, is what produces today's
 over-wide fallback, and nesting the same expression one level deeper inside
 it does not change that.
 
-The fix adds `MatchedPattern<I, S, K>` — the `NoMatch`-filtered subset of
-`Pattern<I, S>`, built with no call-site `P` in its own definition — and
+The fix adds `MatchedPattern<Inputs, States, Keys>` — the `NoMatch`-filtered subset of
+`Pattern<Inputs, States>`, built with no call-site `PatternString` in its own definition — and
 intersects it into the existing conditional's live branch: `pattern:
-NoMatch<K, P> extends true ? `no row matches '${P}'` : P &
-MatchedPattern<I, S, K>`. Confirmed against the real `observe-machine`
+NoMatch<Keys, PatternString> extends true ? `no row matches '${PatternString}'` : PatternString &
+MatchedPattern<Inputs, States, Keys>`. Confirmed against the real `observe-machine`
 fixture (`scripts/completion-fixtures/`, the twenty-state, forty-four-row
 acceptance machine): the conditional still resolves to its constraint under
-completion, `Pattern<I, S> & MatchedPattern<I, S, K>`, which simplifies to
-`MatchedPattern<I, S, K>` alone since it is already a subset — no change to
+completion, `Pattern<Inputs, States> & MatchedPattern<Inputs, States, Keys>`, which simplifies to
+`MatchedPattern<Inputs, States, Keys>` alone since it is already a subset — no change to
 the conditional's own shape, so [I36](#i36)'s repro and every existing
 acceptance/rejection case (`tests/patterns.test-d.ts`) needed no update.
 
 This settles #116's own experiment in favor of the non-breaking shape: the
-type parameter's constraint, `P extends Pattern<I, S>`, is untouched, so
-existing code keeps compiling. `Patterns<M>`, `Carried<M>` applied to
+type parameter's constraint, `PatternString extends Pattern<Inputs, States>`, is untouched, so
+existing code keeps compiling. `Patterns<MachineType>`, `Carried<MachineType>` applied to
 `MatchedPattern`, ships as the convenience the issue's other branch would
 have made mandatory — a public constraint matching what `observe` accepts,
 for a caller who cannot otherwise name `Pattern` or `Host` (both
-module-local). `Observer<M, P>` is the same move on the second argument:
-`EdgeObserver`'s four parameters collapse to two, since `Carried<M>` supplies
-three of them, and `P` defaults to the whole `Patterns<M>` union, which
+module-local). `Observer<MachineType, PatternString>` is the same move on the second argument:
+`EdgeObserver`'s four parameters collapse to two, since `Carried<MachineType>` supplies
+three of them, and `PatternString` defaults to the whole `Patterns<MachineType>` union, which
 `Matches` admits every row against.
 
 This entry claimed, until [I39](#i39), that a caller's helper _generic over
-`P`_ keeps compiling. That was true of the constraint and false of the call:
-forwarding an unresolved `P` to `observe` was rejected, and nobody had measured
+`PatternString`_ keeps compiling. That was true of the constraint and false of the call:
+forwarding an unresolved `PatternString` to `observe` was rejected, and nobody had measured
 it against one. I39 is that measurement, and the signature it adds.
 
-A genuinely widened `K` (`string extends K`) falls back to `Pattern<I, S>`
+A genuinely widened `Keys` (`string extends Keys`) falls back to `Pattern<Inputs, States>`
 unfiltered, the same gate [I34](#i34)'s `Transition` fallback and
 [I36](#i36)'s rejection both use, and — like I34 — has no known public call
-site: `machine()`'s own `Table<I, S, K>` parameter requires literal row
-keys, so a caller cannot construct a `Machine` with `K` left at its default
+site: `machine()`'s own `Table<Inputs, States, Keys>` parameter requires literal row
+keys, so a caller cannot construct a `Machine` with `Keys` left at its default
 through the public surface either.
 
 Measured (`scripts/measure-completions.mjs`, `observe-machine`, TypeScript
@@ -808,18 +808,18 @@ The type layer is erased: `pnpm size` reports 1,580 B raw, unchanged.
 
 ### <a id="i38"></a>I38 — `observe`'s completions fix does not transfer to `actions`: the same intersection is paid at every declaration, not per call site
 
-`Actions<I, S, K, Init, A>`'s `[P in A]` is a homomorphic mapped type over the
-caller's own literal keys, `A`; with nothing typed, `A` defaults to `never`
+`Actions<Inputs, States, Keys, InitialState, TriggerKeys>`'s `[TriggerKey in TriggerKeys]` is a homomorphic mapped type over the
+caller's own literal keys, `TriggerKeys`; with nothing typed, `TriggerKeys` defaults to `never`
 (§9 Actions), so the mapped type has zero known members and an editor offers
 nothing. [I37](#i37)'s fix for the equivalent problem on `observe` — intersect
 the conditional's live branch with a `NoMatch`-filtered, call-site-free union —
 does not transfer: `observe`'s pattern is one function parameter, so the
 intersection is paid once, when that call is checked. `actions` is a
 _property_ of the object literal `machine()` takes, and adding
-`& Partial<Record<NoInfer<MatchedTrigger<I, S, K, Init>>, unknown>>` to its
-type (`MatchedTrigger` being `MatchedPattern<I, S, K>` plus every bare name
+`& Partial<Record<NoInfer<MatchedTrigger<Inputs, States, Keys, InitialState>>, unknown>>` to its
+type (`MatchedTrigger` being `MatchedPattern<Inputs, States, Keys>` plus every bare name
 [I35](#i35)'s eligibility rule, factored out as `Eligible`, accepts) does not
-wait for `A`: `I`, `S`, `K` and `Init` are already resolved by the time
+wait for `TriggerKeys`: `Inputs`, `States`, `Keys` and `InitialState` are already resolved by the time
 `machine()`'s parameter type is built, so the mapped type inside
 `MatchedTrigger` evaluates immediately, on every `machine()` declaration,
 whether or not `actions` is written at all.
@@ -839,7 +839,7 @@ and check time for one `machine()` declaration, no other file in the project:
 
 Writing `actions: {}` — no keys, nothing for a caller to complete — is enough
 to multiply one declaration's cost ~78×, because the phantom key set does not
-look at `A` before evaluating. `no actions property` barely moves (12 097 →
+look at `TriggerKeys` before evaluating. `no actions property` barely moves (12 097 →
 12 350 in the same before/after pair), confirming the cost is conditioned on
 the property being present in the literal, not proportional to what a caller
 puts in it. `observe`'s own [I37](#i37) fix costs nothing analogous because a
@@ -852,7 +852,7 @@ constraint, paid per call site, this one is paid by every `machine()` call
 that writes an `actions` property at all, whether or not it declares a single
 key — a much larger share of declarations than the ones an editor is actually
 asked to complete for. The issue's own
-estimate — "roughly `|Pattern| x |K|` conditional evaluations, about 4 851 x
+estimate — "roughly `|Pattern| x |Keys|` conditional evaluations, about 4 851 x
 44 on the 20-state acceptance case" — is the right order of magnitude; this
 entry's own count (≈953 000 additional instantiations) is the measured number
 in its place. **The finding is unacceptable, and the change described in
@@ -868,16 +868,16 @@ The type layer is erased: `pnpm size` reports 1,580 B raw, unchanged.
 
 [I37](#i37) put `observe`'s pattern behind a conditional on that pattern, and
 [I36](#i36) is why: the rejection for a dead pattern is the parameter's own
-type, produced by whichever branch `NoMatch<K, P>` selects. A conditional on
-`P` stays deferred while `P` is unresolved, and an unresolved type parameter is
+type, produced by whichever branch `NoMatch<Keys, PatternString>` selects. A conditional on
+`PatternString` stays deferred while `PatternString` is unresolved, and an unresolved type parameter is
 assignable to a deferred conditional only when it is assignable to both
-branches. It is not assignable to `` `no row matches '${P}'` ``. So a caller's
+branches. It is not assignable to `` `no row matches '${PatternString}'` ``. So a caller's
 helper, generic in its own pattern, could not pass that pattern to `observe` at
 all: resolution moved on to the bare state key signature and rejected the
-pattern against `Name<S>`.
+pattern against `Name<States>`.
 
 Measured before the fix on a helper taking a pattern and nothing else, so that
-neither `Patterns<M>` nor `Observer<M, P>` is implicated in the failure:
+neither `Patterns<MachineType>` nor `Observer<MachineType, PatternString>` is implicated in the failure:
 
 ```
 Argument of type '"* -> *" | ... | "empty -open> draft"'
@@ -887,13 +887,13 @@ Argument of type '"* -> *" | ... | "empty -open> draft"'
 The fix is a second signature ahead of it, taking a matchable pattern directly:
 
 ```ts
-<P extends MatchedPattern<I, S, K>>(
-	pattern: P,
-	observer: EdgeObserver<I, S, K, P>,
+<PatternString extends MatchedPattern<Inputs, States, Keys>>(
+	pattern: PatternString,
+	observer: EdgeObserver<Inputs, States, Keys, PatternString>,
 ): () => void
 ```
 
-Nothing in it is conditional on `P`, so an unresolved one satisfies it through
+Nothing in it is conditional on `PatternString`, so an unresolved one satisfies it through
 its constraint and arrives at `EdgeObserver` as itself: a caller of the helper
 keeps the narrowed record rather than the whole union. A dead literal fails
 this signature's constraint instead of matching it, falls through to I37's, and
@@ -909,7 +909,7 @@ TypeScript 7.0.2, the twenty-state, forty-four-row `observe-machine` fixture):
 | after  | 219     | 55 KB    | 5 ms | 12 519         | 0.168 s    |
 
 Completions do not move, which is what [I37](#i37) constrains: the new
-signature's parameter is `MatchedPattern<I, S, K>` by its constraint, the same
+signature's parameter is `MatchedPattern<Inputs, States, Keys>` by its constraint, the same
 set I37's intersection offers. The 183 extra instantiations are paid once per
 host type rather than per `observe` call — the count is the same with the
 fixture's two calls deleted — so this is not [I38](#i38)'s shape, where the
@@ -919,7 +919,7 @@ The type layer is erased: `pnpm size` reports 1,580 B raw, unchanged.
 
 ### <a id="i40"></a>I40 — The exported callback type is `Observer`, and `Listener` is reserved
 
-> **The reservation has since been spent.** `Listener<M, N>` is exported, on the
+> **The reservation has since been spent.** `Listener<MachineType, OutputName>` is exported, on the
 > declared output channel this entry was holding the name for
 > ([design-record.md, §10](design-record.md#revision-what-the-channel-is-actually-made-of)).
 > The reasoning below is why the name went there and not to `observe`.
@@ -932,7 +932,7 @@ what `observe` delivers is not an event but a transition record. A subscriber
 to a declared output would be told that something happened and would read what
 it carried, which is a listener in the ordinary sense.
 
-So the exported type is `Observer<M, P>`, named for the method that takes it,
+So the exported type is `Observer<MachineType, PatternString>`, named for the method that takes it,
 and the module-local alias beside it is `EdgeObserver`. `Listener` is exported
 by nothing, which keeps it for the channel with the better claim rather than
 spending it on the weaker one and paying a breaking rename later.
@@ -956,7 +956,7 @@ vocabulary is theirs rather than a stale copy of this one.
 TypeScript 6.0.
 
 `inputs` and `states` each have a second inference site: an omitted one is read
-back off the `transitions` keys, so `InputsFromKeys<K>` and `StatesFromKeys<K>`
+back off the `transitions` keys, so `InputsFromKeys<Keys>` and `StatesFromKeys<Keys>`
 recover the names the table itself mentions and widen only the payloads.
 `outputs` has no such site. Nothing in the table, or anywhere else in a
 definition, mentions an output name. An omitted `outputs` therefore has only a
@@ -971,22 +971,22 @@ declares nothing and still expects `emit` to work the way `send` already does.
 The default reads its siblings instead:
 
 ```ts
-O extends Vocab = Declared<
-	RawO,
-	[RawI, RawS] extends [undefined, undefined] ? AnyVocab : {}
+Outputs extends Vocab = Declared<
+	RawOutputs,
+	[RawInputs, RawStates] extends [undefined, undefined] ? AnyVocab : {}
 >
 ```
 
-`RawI` and `RawS` are the raw `inputs`/`states` parameters, both already
+`RawInputs` and `RawStates` are the raw `inputs`/`states` parameters, both already
 inferred by the time this default resolves — the same "constrained default that
 reads a sibling, not the argument itself" construction
 [I19](#i19) established, one parameter further along. The tuple wrapper is
-required: `RawI extends undefined ? …` distributes over a union, and the pair
+required: `RawInputs extends undefined ? …` distributes over a union, and the pair
 has to be tested as a pair.
 
 The rejection this produces is by arity, not by name. `Emit<{}>` resolves its
 rest parameter through a mapped type over `never`, so its argument list is
-`never` and every call is rejected; `on`'s `N extends Name<O>` has no member to
+`never` and every call is rejected; `on`'s `OutputName extends Name<Outputs>` has no member to
 satisfy. The diagnostics name `never` rather than saying "this machine declares
 no outputs", which is worse than the `not a transition: '…'` and
 `no row matches '…'` messages elsewhere in the surface. Those work because a key
@@ -997,7 +997,7 @@ trade [I38](#i38) measured too expensive for `actions` completions. Left as is,
 recorded so the next reader does not rediscover it as a bug.
 
 The same widening question does not arise for `Announcement`'s `data`, which
-indexes `O` by the subscribed name: under `AnyVocab` that is `unknown`, which is
+indexes `Outputs` by the subscribed name: under `AnyVocab` that is `unknown`, which is
 exactly what the untyped path should see.
 
 ### <a id="i42"></a>I42 — Parsed rows beat the encoded transition index
