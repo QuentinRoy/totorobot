@@ -769,8 +769,8 @@ existing code keeps compiling. `Patterns<M>`, `Carried<M>` applied to
 `MatchedPattern`, ships as the convenience the issue's other branch would
 have made mandatory — a public constraint matching what `observe` accepts,
 for a caller who cannot otherwise name `Pattern` or `Host` (both
-module-local). `Listener<M, P>` is the same move on the second argument:
-`EdgeListener`'s four parameters collapse to two, since `Carried<M>` supplies
+module-local). `Observer<M, P>` is the same move on the second argument:
+`EdgeObserver`'s four parameters collapse to two, since `Carried<M>` supplies
 three of them, and `P` defaults to the whole `Patterns<M>` union, which
 `Matches` admits every row against.
 
@@ -875,7 +875,7 @@ all: resolution moved on to the bare state key signature and rejected the
 pattern against `Name<S>`.
 
 Measured before the fix on a helper taking a pattern and nothing else, so that
-neither `Patterns<M>` nor `Listener<M, P>` is implicated in the failure:
+neither `Patterns<M>` nor `Observer<M, P>` is implicated in the failure:
 
 ```
 Argument of type '"* -> *" | ... | "empty -open> draft"'
@@ -887,12 +887,12 @@ The fix is a second signature ahead of it, taking a matchable pattern directly:
 ```ts
 <P extends MatchedPattern<I, S, K>>(
 	pattern: P,
-	listener: EdgeListener<I, S, K, P>,
+	listener: EdgeObserver<I, S, K, P>,
 ): () => void
 ```
 
 Nothing in it is conditional on `P`, so an unresolved one satisfies it through
-its constraint and arrives at `EdgeListener` as itself: a caller of the helper
+its constraint and arrives at `EdgeObserver` as itself: a caller of the helper
 keeps the narrowed record rather than the whole union. A dead literal fails
 this signature's constraint instead of matching it, falls through to I37's, and
 is rejected there as before. The diagnostic is identical in both arrangements,
@@ -914,3 +914,24 @@ fixture's two calls deleted — so this is not [I38](#i38)'s shape, where the
 cost landed on every declaration whether or not a caller used the feature.
 
 The type layer is erased: `pnpm size` reports 1,580 B raw, unchanged.
+
+### <a id="i40"></a>I40 — The exported callback type is `Observer`, and `Listener` is reserved
+
+`observe`'s callback is called a listener throughout
+[`design-record.md`](design-record.md), and that word is the one the roadmap's
+`emit` channel will want. §7 there argues the difference without naming it: an
+event is something that happens to you, and what `observe` delivers is not an
+event but a transition record. A subscriber to a declared output would be told
+that something happened and would read what it carried, which is a listener in
+the ordinary sense.
+
+So the exported type is `Observer<M, P>`, named for the method that takes it,
+and the module-local alias beside it is `EdgeObserver`. `Listener` is exported
+by nothing, which keeps it available for a channel with the better claim to it
+rather than spending it on the weaker one and paying a breaking rename later.
+
+`README.md` and `src/` follow the new word; `design-record.md` does not. It
+records arguments as they were made, and its "listener" is a faithful quotation
+of the vocabulary in use at the time, including the §7 passage that reasons
+about the collision directly. Rewriting it would make the record agree with a
+decision it predates.

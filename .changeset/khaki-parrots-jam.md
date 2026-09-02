@@ -15,4 +15,4 @@ doc.observe('loading', {
 If the state is already resident when you call `observe`, the run callback
 fires immediately. Unsubscribing tears down a run in flight. There's no
 array form, no third-argument options object, and no subscription
-`AbortSignal`. Existing `observe(pattern, listener)` calls need no change.
+`AbortSignal`. Existing `observe(pattern, observer)` calls need no change.

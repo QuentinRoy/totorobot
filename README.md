@@ -149,7 +149,7 @@ Everything the package exports:
 | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
 | `machine({ inputs?, states?, initial, transitions, actions? })`                            | a definition: inert data, never mutated                          |
 | `type<T>()`                                                                                | a declaration carrying `T`; returns `undefined` at runtime       |
-| `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>` `Patterns<M>` `Listener<M, P>` | derived types, over `M = typeof publication`                     |
+| `InputsOf<M>` `StatesOf<M>` `Handled<M, S>` `Sources<M, S>` `Patterns<M>` `Observer<M, P>` | derived types, over `M = typeof publication`                     |
 | `Skip`                                                                                     | what `skip()` returns; it appears in every handler's return type |
 
 ## `inputs` and `states`: the vocabulary
@@ -207,7 +207,7 @@ carries no payload, so `publication.start()` takes none. An initial state that
 does carry data makes its payload a required argument, as in
 `counter.start({ count: 0 })`.
 
-Nothing announces the state a host starts in. Listeners attach to the host that
+Nothing announces the state a host starts in. Observers attach to the host that
 `.start()` hands back, so the earliest thing they can see is the first
 transition. If the initial state has
 [immediate rows](#immediate-transitions-an-edge-with-no-input) they run before
@@ -280,7 +280,7 @@ A submission naming a reviewer goes to `review`; one that names nobody skips tha
 row and publishes directly.
 
 If every candidate skips, the machine declines the input: nothing changes and no
-listener fires. An input the current state has no row for is declined the same
+observer fires. An input the current state has no row for is declined the same
 way. Both are normal outcomes rather than faults, both are silent, and nothing
 tells them apart.
 
@@ -330,7 +330,7 @@ and carries `inputData: undefined`.
 
 A chain that never settles throws. After 100,000 consecutive hops the machine
 raises `RangeError`, naming a state inside the cycle. There is no rollback:
-listeners keep every hop that committed, and the host stays usable.
+observers keep every hop that committed, and the host stays usable.
 
 `.start()` settles the initial state's immediates too, chain and all, before
 the host is handed back, so those hops are unobservable: nobody has subscribed
@@ -384,7 +384,7 @@ once per matching transition in the same [pattern language](#observing),
 including wildcards.
 
 Every action receives the same transition record as a matching
-[listener](#observing):
+[observer](#observing):
 `{ input, inputData, from, fromData, to, toData, send }`. A residency is an
 arrival, so its `to` is the resident state. On an arrival with no transition,
 either the initial state or a residency registered while the host already
@@ -420,24 +420,24 @@ self-transition; the same decision governs both the teardown and the setup that
 follows it.
 
 For each commit, Totorobot runs the old residency's teardown, commits the new
-state, runs every matching action in declaration order, then calls the listeners.
+state, runs every matching action in declaration order, then calls the observers.
 [Commit ordering](#commit-ordering) is otherwise unchanged. If an action throws,
 the error propagates and the rest of that commit does not run, just as with a
-throwing listener. If one of several teardowns on a trigger throws, the rest of
+throwing observer. If one of several teardowns on a trigger throws, the rest of
 the reverse-order teardown does not run.
 
 ## The host
 
 `definition.start(data)` returns the stateful thing that owns the current state
-and dispatches to listeners. One host per independent use: two hosts over one
-definition share no state and no listeners, and neither mutates the definition.
+and dispatches to observers. One host per independent use: two hosts over one
+definition share no state and no observers, and neither mutates the definition.
 
 | member                            | is                                                                  |
 | --------------------------------- | ------------------------------------------------------------------- |
 | `definition.start(data?)`         | creates a host; `data` follows the declared initial state's payload |
 | `host.current`                    | `{ name, data }`: where the host is, and what that state carries    |
 | `host.send(input, inputData?)`    | a dispatch; returns nothing                                         |
-| `host.observe(pattern, listener)` | a subscription; returns an unsubscribe function                     |
+| `host.observe(pattern, observer)` | a subscription; returns an unsubscribe function                     |
 
 ```ts
 const doc = publication.start() // `empty` carries no payload, so no argument
@@ -486,7 +486,7 @@ state, or apply half a transition. That is also how a stale asynchronous result
 lands harmlessly.
 
 If you call `send` while a dispatch is in progress, Totorobot queues it. This is
-true whether the call comes from a listener or from a hop that `.start()` is
+true whether the call comes from an observer or from a hop that `.start()` is
 settling, and whether it targets the dispatching host or an unrelated one. A
 send takes effect immediately only when no dispatch is running anywhere.
 Otherwise it waits for the active dispatch to settle, and `current` read right
@@ -506,10 +506,17 @@ const off = doc.observe('* -> published', (e) => notify(e.toData))
 doc.observe('draft -cancel> *', () => track('cancelled'))
 ```
 
-Listeners go on the host, never on the definition, which is inert. `observe()`
+Observers go on the host, never on the definition, which is inert. `observe()`
 returns an unsubscribe function.
 
-The listener receives the transition record,
+They are observers rather than listeners because of what they are handed. An
+observer is told that a transition committed, and reads the whole record of it.
+A listener is told that something happened, and reads whatever that something
+carried. Totorobot has no second kind yet, so the distinction costs nothing to
+follow today; a [declared output channel](#beyond-v1) would add one, and the
+word is kept free for it.
+
+The observer receives the transition record,
 `{ input, inputData, from, fromData, to, toData, send }`: three names, each next
 to its payload. Checking a name narrows the payload beside it, just as checking
 `current.name` narrows `current.data`. For example, `if (e.from === 'draft')`
@@ -526,7 +533,7 @@ doc.observe('* -> review', (e) => e.send('publish'))
 
 It takes the whole declared input vocabulary, however narrow the pattern is.
 The pattern does not limit it to what `e.from` or `e.to` handles. A send from a
-listener is
+observer is
 [queued](#commit-ordering) and read when the queue reaches it, by which point
 the machine has usually moved on, so narrowing to the notified state's rows
 would reject the ordinary case.
@@ -549,7 +556,7 @@ have no input at all. A labeled pattern never matches an immediate. A bare key
 is legal too, but means something else entirely: [residency](#residency), next.
 
 A pattern built from declared state and input names but naming no declared row
-— exact or broad — is a compile error, not a listener typed with `never`:
+— exact or broad — is a compile error, not an observer typed with `never`:
 
 ```ts
 doc.observe('draft -publish> published', () => {}) // no such row: compile error
@@ -561,15 +568,15 @@ This checks table membership only, never reachability: a row unreachable from
 Completion in an editor offers only matchable patterns — the row keys
 themselves and their wildcard generalizations — instead of every name-valid
 combination. `Patterns<typeof publication>` names that set, and
-`Listener<typeof publication, P>` names what goes beside it, so a helper
+`Observer<typeof publication, P>` names what goes beside it, so a helper
 wrapping `observe` can type both of its arguments and stay generic in the
 pattern:
 
 ```ts
 const watch = <P extends Patterns<typeof publication>>(
 	pattern: P,
-	listener: Listener<typeof publication, P>,
-) => doc.observe(pattern, listener)
+	observer: Observer<typeof publication, P>,
+) => doc.observe(pattern, observer)
 
 watch('draft -submit> review', (e) => e.toData.reviewer) // `to` is 'review'
 watch('empty -cancel> draft', () => {}) // no such row: compile error
@@ -578,7 +585,7 @@ watch('empty -cancel> draft', () => {}) // no such row: compile error
 The caller of `watch` keeps everything a direct `observe` gives them: the dead
 pattern is rejected at the helper's own boundary, and the record is narrowed to
 the row the live one matched. Written without a pattern,
-`Listener<typeof publication>` covers every row the table can fire, which is
+`Observer<typeof publication>` covers every row the table can fire, which is
 what a helper that takes the whole union wants instead.
 
 ### Residency
@@ -605,7 +612,7 @@ residency and `observe` produce the same log for the same machine.
 Nothing here is a host feature: `observe(state, { run, restart })` is exactly
 the two-pattern recipe below, offered directly instead of assembled by hand.
 Observe `'draft -> *'` to tear down and `'* -> draft'` to set up. Register the
-exit listener first so a self-transition tears down before it sets up again, and
+exit observer first so a self-transition tears down before it sets up again, and
 run the setup once at registration if the host is already in the state.
 `persistent` is `if (e.to !== e.from)` in the exit handler; `keyed`
 compares a key computed from each end. The full recipe, with the argument for
@@ -615,28 +622,28 @@ and `tests/helpers.ts` carries it as working code.
 
 ### Commit ordering
 
-Three rules cover everything a listener sees:
+Three rules cover everything an observer sees:
 
 1. **One input yields at most one chain.** The input causes at most one
    transition, but arriving somewhere with immediate rows continues on hop after
    hop until the machine stops moving on its own.
-2. **Commit, then notify.** A listener always sees a fully committed machine, so
-   `e.to` and `doc.current` agree, for every listener, on every hop.
-3. **Listeners fire in registration order**, on every hop. The listener list is
-   snapshotted before the dispatch, so one unsubscribed by an earlier listener
+2. **Commit, then notify.** An observer always sees a fully committed machine, so
+   `e.to` and `doc.current` agree, for every observer, on every hop.
+3. **Observers fire in registration order**, on every hop. The observer list is
+   snapshotted before the dispatch, so one unsubscribed by an earlier observer
    still runs for the current transition, and one registered during a dispatch
    does not.
 
 Two more rules govern reentrancy. A send from inside a dispatch is queued across
 every host in the process. The queue drains first in, first out before the
 outermost `send` returns, never on a microtask and never nested. `send` returns
-nothing, including when it was queued. A listener is therefore never reentered,
+nothing, including when it was queued. An observer is therefore never reentered,
 and a queued send waits for the whole chain to settle rather than landing
 mid-hop. It is evaluated against the state at drain time and may find no row.
 
-A throwing listener ends the drain and discards what was queued, but the
+A throwing observer ends the drain and discards what was queued, but the
 transition stays committed and every host works normally afterwards. There is no
-`stop()`: disposal is unsubscribing your listeners and not sending any more, and
+`stop()`: disposal is unsubscribing your observers and not sending any more, and
 the host holds nothing else. The argument for all of it, the cross-host case
 included, is [rationale §11](docs/design-record.md#queue-not-stack).
 
@@ -715,7 +722,7 @@ The `running` action starts the request and returns its teardown. Sending anothe
 `run` takes the self-transition, aborts the old request, and starts a new one.
 The two `skip()` rows cover the race where an old promise settles despite being
 aborted. Its `id` no longer matches, so it does nothing. `e.toData.reason` is
-readable in the listener because the pattern pins the target to `failed`.
+readable in the observer because the pattern pins the target to `failed`.
 
 ## What the types check
 
