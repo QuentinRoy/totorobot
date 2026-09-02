@@ -134,7 +134,7 @@ through `observe`.
 - [What the types check](#what-the-types-check)
 - [Guarantees and absences](#guarantees-and-absences)
 - [The untyped path](#the-untyped-path)
-- [Beyond v1](#beyond-v1)
+- [Beyond this release](#beyond-this-release)
 - [Documentation](#documentation)
 - [Development](#development)
 - [Releasing](#releasing)
@@ -513,7 +513,7 @@ They are observers rather than listeners because of what they are handed. An
 observer is told that a transition committed, and reads the whole record of it.
 A listener is told that something happened, and reads whatever that something
 carried. Totorobot has no second kind yet, so the distinction costs nothing to
-follow today; a [declared output channel](#beyond-v1) would add one, and the
+follow today; a [declared output channel](#beyond-this-release) would add one, and the
 word is kept free for it.
 
 The observer receives the transition record,
@@ -806,7 +806,7 @@ other key can spell the same way twice; such a row is rejected the way a
 malformed key is. A declared vocabulary is untouched by this, since declaring
 an odd name by hand is deliberate in a way a doubled space never is.
 
-## Beyond v1
+## Beyond this release
 
 A declared `emit` channel and horizontal composition are sketched in
 [the roadmap](docs/roadmap.md), and neither is promised.
@@ -874,10 +874,11 @@ GitHub Actions to create and approve pull requests".
 
 ## Thanks
 
-To the libraries this one learned from:
+To the libraries and work this one learned from:
 [Robot3](https://thisrobot.life/),
-[XState](https://github.com/statelyai/xstate), and
-[yay-machine](https://yay-machine.js.org/).
+[XState](https://github.com/statelyai/xstate),
+[yay-machine](https://yay-machine.js.org/), and
+[SwingStates](https://perso.lisn.upsaclay.fr/appert/website/papers/SwingStates-spe.pdf).
 
 ## License
 
