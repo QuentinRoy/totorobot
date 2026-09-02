@@ -450,31 +450,31 @@ type Teardown = () => void
  */
 type Arrived<
 	States extends Vocab,
-	State extends string,
+	StateName extends string,
 	Extra extends object,
 > = Extra & {
 	readonly input: undefined
 	readonly inputData: undefined
 	readonly from: undefined
 	readonly fromData: undefined
-	readonly to: NoInfer<State>
-	readonly toData: NoInfer<Payload<States, State>>
+	readonly to: NoInfer<StateName>
+	readonly toData: NoInfer<Payload<States, StateName>>
 }
 
 /**
  * What a residency action and a residency observer for the same bare state
- * share: every declared row landing on `State`, correlated per row like any
- * other `Transition`, plus the arrival no transition caused (I31, I32).
+ * share: every declared row landing on `StateName`, correlated per row like
+ * any other `Transition`, plus the arrival no transition caused (I31, I32).
  */
 type Residency<
 	Inputs extends Vocab,
 	States extends Vocab,
 	Keys extends string,
-	State extends string,
+	StateName extends string,
 	Extra extends object = { readonly send: Send<Inputs> },
 > =
-	| Transition<Inputs, States, Keys, `* -> ${State}`, Extra>
-	| Arrived<States, State, Extra>
+	| Transition<Inputs, States, Keys, `* -> ${StateName}`, Extra>
+	| Arrived<States, StateName, Extra>
 
 /**
  * What a declared action sees on its own bare state, as opposed to what
@@ -491,21 +491,21 @@ type ActionArrival<
 	Keys extends string,
 	Outputs extends Vocab,
 	InitialState extends string,
-	State extends string,
-> = [State] extends [InitialState]
-	? Residency<Inputs, States, Keys, State, Capabilities<Inputs, Outputs>>
+	StateName extends string,
+> = [StateName] extends [InitialState]
+	? Residency<Inputs, States, Keys, StateName, Capabilities<Inputs, Outputs>>
 	: Transition<
 			Inputs,
 			States,
 			Keys,
-			`* -> ${State}`,
+			`* -> ${StateName}`,
 			Capabilities<Inputs, Outputs>
 		>
 
 /**
- * Fires on arrival at its state, by any route `* -> State` covers; the
+ * Fires on arrival at its state, by any route `* -> StateName` covers; the
  * teardown it returns runs on exit (§9 Actions). Generic in the argument
- * itself, rather than in `Inputs, States, Keys, State`, so `Actions` and
+ * itself, rather than in `Inputs, States, Keys, StateName`, so `Actions` and
  * `ObserveAction` can each hand it a differently-scoped arrival
  * (`ActionArrival`, `Residency`) without a second signature. The trailing
  * `| void` is not the bivariance hole it looks like — that only opens when a
@@ -514,8 +514,8 @@ type ActionArrival<
  * It is what lets a setup with nothing to tear down end in a plain statement
  * rather than an explicit `return undefined`.
  */
-type ResidencyAction<Argument> = (
-	arrival: NoInfer<Argument>,
+type ResidencyAction<ArrivalRecord> = (
+	arrival: NoInfer<ArrivalRecord>,
 ) => undefined | Teardown | void
 
 /**
@@ -566,13 +566,13 @@ type Restart<
 	Inputs extends Vocab,
 	States extends Vocab,
 	Keys extends string,
-	State extends string,
+	StateName extends string,
 > = {
 	readonly restart?:
 		| boolean
 		| ((
 				facts: NoInfer<
-					Transition<Inputs, States, Keys, `${State} -> ${State}`, {}>
+					Transition<Inputs, States, Keys, `${StateName} -> ${StateName}`, {}>
 				>,
 		  ) => boolean)
 }
@@ -581,19 +581,19 @@ type Restart<
  * A bare state name whose residency can actually run: `initial`, whose
  * synthetic arrival needs no incoming row (#100), or any other state with at
  * least one declared row landing on it
- * (`NoMatch<Keys, '* -> State'>` false). Named once rather than left inline
- * in `Actions`, the same question I35 already stated twice under different
- * names before it was unified — #117 built a second reader on top of this one
- * (completions for `actions`) and measured its cost too high to ship (I38),
- * but the question itself is asked here exactly once regardless.
+ * (`NoMatch<Keys, '* -> StateName'>` false). Named once rather than left
+ * inline in `Actions`, the same question I35 already stated twice under
+ * different names before it was unified — #117 built a second reader on top
+ * of this one (completions for `actions`) and measured its cost too high to
+ * ship (I38), but the question itself is asked here exactly once regardless.
  */
 type Eligible<
 	Keys extends string,
 	InitialState extends string,
-	State extends string,
-> = [State] extends [InitialState]
+	StateName extends string,
+> = [StateName] extends [InitialState]
 	? true
-	: NoMatch<Keys, `* -> ${State}`> extends true
+	: NoMatch<Keys, `* -> ${StateName}`> extends true
 		? false
 		: true
 
@@ -661,12 +661,12 @@ type ObserveAction<
 	Inputs extends Vocab,
 	States extends Vocab,
 	Keys extends string,
-	State extends string,
+	StateName extends string,
 > =
-	| ResidencyAction<Residency<Inputs, States, Keys, State>>
+	| ResidencyAction<Residency<Inputs, States, Keys, StateName>>
 	| ({
-			readonly run: ResidencyAction<Residency<Inputs, States, Keys, State>>
-	  } & Restart<Inputs, States, Keys, State>)
+			readonly run: ResidencyAction<Residency<Inputs, States, Keys, StateName>>
+	  } & Restart<Inputs, States, Keys, StateName>)
 
 /** The initial payload, omitted exactly when `send` would omit one (§5). */
 type Start<States extends Vocab, InitialState extends string> =
@@ -718,9 +718,9 @@ interface Host<
 				: PatternString & MatchedPattern<Inputs, States, Keys>,
 			observer: EdgeObserver<Inputs, States, Keys, PatternString>,
 		): () => void
-		<State extends Name<States>>(
-			pattern: State,
-			action: ObserveAction<Inputs, States, Keys, State>,
+		<StateName extends Name<States>>(
+			pattern: StateName,
+			action: ObserveAction<Inputs, States, Keys, StateName>,
 		): () => void
 	}
 }
@@ -775,17 +775,17 @@ export type StatesOf<MachineType> = Carried<MachineType>['states']
 /** The output vocabulary a machine was declared with. */
 export type OutputsOf<MachineType> = Carried<MachineType>['outputs']
 
-/** The inputs state `State` has rows for; `Exclude<…, ''>` drops immediate rows. */
-export type Handled<MachineType, State extends string> = Exclude<
+/** The inputs `StateName` has rows for; `Exclude<…, ''>` drops immediate rows. */
+export type Handled<MachineType, StateName extends string> = Exclude<
 	Label<
-		Extract<Carried<MachineType>['keys'], `${State} -${string}> ${string}`>
+		Extract<Carried<MachineType>['keys'], `${StateName} -${string}> ${string}`>
 	>,
 	''
 >
 
-/** The states that can reach `State`: the reverse index, from the same keys. */
-export type Sources<MachineType, State extends string> = From<
-	Extract<Carried<MachineType>['keys'], `${string} -${string}> ${State}`>
+/** The states that can reach `StateName`: the reverse index, from the same keys. */
+export type Sources<MachineType, StateName extends string> = From<
+	Extract<Carried<MachineType>['keys'], `${string} -${string}> ${StateName}`>
 >
 
 /**

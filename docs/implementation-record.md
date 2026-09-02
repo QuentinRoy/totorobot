@@ -526,8 +526,8 @@ and each rejection still fires.
 
 ### <a id="i28"></a>I28 — `restart`'s predicate parameter needs `NoInfer`
 
-`Restart<Inputs, States, State>`'s predicate takes one record of the hop's facts,
-`(facts: Transition<Inputs, States, "State -> State", {}>) => boolean`, contributed into
+`Restart<Inputs, States, StateName>`'s predicate takes one record of the hop's facts,
+`(facts: Transition<Inputs, States, "StateName -> StateName", {}>) => boolean`, contributed into
 `Actions<Inputs, States, TriggerKeys>`. Left bare, a block-bodied predicate —
 `restart: (facts) => { return facts.fromData.id !== facts.toData.id }` — makes
 that record an inference site: it is a mapped type over `keyof States`, which
@@ -594,7 +594,7 @@ An omitted pattern label matches any row's label, named or absent alike — the
 same rule the runtime's own comparison already used (`!input || input ===
 arrival.input`, in `fire`); a specific label matches only its own name. Residency and
 restart facts reuse `Transition` rather than widening their own coordinates
-(`Residency<Inputs, States, Keys, State>`, unioned with the arrival `Transition` never carries).
+(`Residency<Inputs, States, Keys, StateName>`, unioned with the arrival `Transition` never carries).
 
 **A hop no declared row supports resolves to `never`, not to a widened guess.**
 A `restart` predicate for a state with no self-transition row, or a residency
@@ -618,9 +618,9 @@ for it.
 
 ### <a id="i33"></a>I33 — A residency action's arrival member is live only on the initial state
 
-[I32](#i32)'s `Residency<Inputs, States, Keys, State>` — every declared row landing on `State`,
+[I32](#i32)'s `Residency<Inputs, States, Keys, StateName>` — every declared row landing on `StateName`,
 plus the arrival no transition caused — was shared unchanged between a
-residency action and a residency observer for the same bare state, `State`
+residency action and a residency observer for the same bare state, `StateName`
 noninitial included. That shared type is broader than what an action can ever
 actually receive: `enter` hands the synthetic arrival to `actions` exactly
 once, at startup, gated on `to === initial` (`src/totorobot.ts`, the
@@ -630,8 +630,8 @@ can `observe()` a bare key at any point in a running host's life and find
 that state already occupied, `initial` or not (the immediate-registration
 case in `Host.observe`).
 
-`ActionArrival<Inputs, States, Keys, InitialState, State>` narrows this per key: `Residency<Inputs, States, Keys,
-State>` where `State` is exactly `InitialState`, and a plain `Transition<Inputs, States, Keys, '* -> State'>`
+`ActionArrival<Inputs, States, Keys, InitialState, StateName>` narrows this per key: `Residency<Inputs, States, Keys,
+StateName>` where `StateName` is exactly `InitialState`, and a plain `Transition<Inputs, States, Keys, '* -> StateName'>`
 — real rows only, no arrival — everywhere else. `Actions` now takes `InitialState` as
 a fifth parameter to make this comparison, consumed rather than inferred a
 second time, the same guard [I20](#i20) already holds `Keys` to; `ObserveAction`

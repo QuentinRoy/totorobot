@@ -261,9 +261,9 @@ exists. Question D stops being a search and becomes an index. The price is the
 exact transpose: question B now requires reading every state's `from` block, and
 B is the question the research says dominates. Its idea was kept anyway: the
 reverse index is recoverable from any source-keyed layout **as a derived type**
-(`Sources<M, To>`, `Targets<M, From, On>`), which E's own prototype demonstrated.
-So the choice was never "which question do I want to be cheap": keep the layout
-that makes B a single block, and _derive_ the rest.
+(`Sources<MachineType, StateName>`, `Targets<M, From, On>`), which E's own
+prototype demonstrated. So the choice was never "which question do I want to be
+cheap": keep the layout that makes B a single block, and _derive_ the rest.
 
 **F — transition table.** Line-order priority instead of key-order, `keep`/
 `repeat` stop being reserved names, edges become values that factor. Two of those
@@ -592,16 +592,16 @@ combination of declared maps with one omitted. The fully typed case is
 
 1. **Constrained defaults.** `States extends Vocab = Vocab`, with
    `Vocab = Record<string, unknown>`. Widening then falls out of the constraint
-   (`keyof Vocab & string` is `string`, `Vocab[Keys]` is `unknown`), so nothing needs a
-   conditional to express "no vocabulary declared".
+   (`keyof Vocab & string` is `string`, `Vocab[MemberName]` is `unknown`), so nothing
+   needs a conditional to express "no vocabulary declared".
 2. **`NoInfer` on `initial`.** `keyof NoInfer<States> & string` leaves `states:` as the only
    inference site, so the default applies when it is omitted. `NoInfer` alone is not
    enough: wrapped inside a conditional (`States extends Vocab ? keyof States & string :
 string`) the reverse inference still happened. The constrained default is what makes
    the conditional unnecessary, and removing it is what lets `NoInfer` bite.
 3. **A bad key poisons its own value type**, mapping to an error-bearing string
-   literal instead of a handler signature: `Keys extends Key<States> ? Handler : "not a
-transition: 'Keys'"`. That reports on the offending line, where intersecting an extra
+   literal instead of a handler signature: `RowKey extends Key<States> ? Handler : "not a
+transition: 'RowKey'"`. That reports on the offending line, where intersecting an extra
    required property reports at the object level, because a missing property is an
    object-level error. It **replaces** the separate `Check<S, T>` helper, so the fix
    removes machinery rather than adding it.
@@ -994,7 +994,7 @@ Two findings are already recorded in that wrapper and carry over:
 
 - **An immediate contributes nothing to what a state _handles_.** It is typed
   `handles: never`, because it is not sendable, so it must not appear in
-  `Handled<MachineType, State>`.
+  `Handled<MachineType, StateName>`.
 - **robot3 reuses whatever event caused entry** as the immediate's event, which the
   wrapper calls "untyped rather than mistyped". This design avoids the question
   entirely: there is no input, so the handler has **no `input` binding**, and
