@@ -82,6 +82,12 @@ residency, per rule 2: something with a lifetime, scoped to the state that
 owns it. Interaction feedback, menu display, and selection/cancellation
 reporting are all external and stay `.observe()` observers.
 
+> **Note, 2026-09-02 — reporting could now be a declared output instead.**
+> The observers below name edges, which is the coupling
+> [Case 5](#case-5-a-declared-output-channel) exists to remove. This case is
+> left as written: it is the case that motivated the channel, and reading the
+> two side by side is the point.
+
 ### Required traces
 
 1. `down(p0)` from `idle` enters `startup(origin: p0, stroke: [p0])`, reports
@@ -166,6 +172,52 @@ Define states `s00` through `s19`. State `sNN` owns data
 This gives 20 states and 44 transitions without effects. It measures formatted
 source readability, target-data diagnostics, declaration size, type-checking,
 and editor responsiveness rather than runtime throughput.
+
+## Case 5: A declared output channel
+
+Case 1's reporting is done through `.observe()` on named edges: a consumer
+learns the menu opened by subscribing to `startup -dwellElapsed> novice`. That
+works, and it couples the consumer to the menu's topology — rename `novice`,
+split it in two, or reroute the edge, and the consumer breaks even though
+nothing it cares about changed.
+
+This case is the same reporting, expressed as a declared output vocabulary. A
+machine declares `outputs` beside `inputs` and `states`, an action reaches that
+vocabulary through `emit`, and a consumer subscribes by output name.
+
+Take a menu declaring `opened` (carrying a center point) and `ended` (carrying
+nothing). The residency on the opened state emits `opened`; the edge back to
+idle emits `ended`. A consumer calls `on('opened', …)` and never names a state.
+
+### Required traces
+
+1. Subscribing to `opened`, then driving the machine into the opened state,
+   calls the listener once with the output name, its payload, and the emitting
+   host's own `send`.
+2. An output declaring no payload is announced with `data` undefined and needs
+   no invented value at the `emit` call.
+3. Several listeners on one output fire in registration order. One registered
+   during an emit of that output does not run in that pass; one unsubscribed
+   during it still does.
+4. A listener's `send` is queued under the running drain, so the machine has
+   not moved when the listener returns, and a send into a second host runs
+   after the first host finishes notifying. This holds for an `emit` captured
+   by a residency action and called with no drain open, which is the only call
+   into the channel that reaches a listener from outside a dispatch: an
+   A → B → A cycle driven from there must let the first listener finish before
+   it runs again.
+5. An output with no listeners is a silent no-op. An output emitted while
+   `start()` is still running reaches nobody, and is not replayed to a listener
+   that subscribes afterwards.
+6. `current` and `observe` behave identically on a machine that declares
+   `outputs`. The channel is added; nothing is withdrawn.
+7. A listener that throws propagates out of the `emit` call. Where that `emit`
+   came from a residency action's setup, the action is interrupted before it
+   returns, so its teardown is never registered.
+
+The channel must be usable from plain JavaScript with no vocabulary declared,
+and unusable — a compile error at `emit` and at `on` — where a machine declares
+`inputs` or `states` and omits `outputs`.
 
 ## Live-runtime traces
 

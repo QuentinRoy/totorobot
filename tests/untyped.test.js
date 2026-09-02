@@ -197,4 +197,38 @@ describe('the untyped path', () => {
 			}
 		})
 	})
+
+	test('emit and on work with no outputs declared: any name, any payload', () => {
+		const untyped = machine({
+			initial: 'off',
+			transitions: {
+				'off -toggle> on': () => {},
+				'on -toggle> off': () => {},
+			},
+			actions: {
+				on: ({ emit }) => emit('lit', { brightness: 1 }),
+				'on -toggle> off': ({ emit }) => emit('dark'),
+			},
+		})
+
+		const host = untyped.start()
+		const lit = vi.fn()
+		const dark = vi.fn()
+		host.on('lit', lit)
+		host.on('dark', dark)
+
+		host.send('toggle')
+		expect(lit).toHaveBeenCalledExactlyOnceWith({
+			output: 'lit',
+			data: { brightness: 1 },
+			send: host.send,
+		})
+
+		host.send('toggle')
+		expect(dark).toHaveBeenCalledExactlyOnceWith({
+			output: 'dark',
+			data: undefined,
+			send: host.send,
+		})
+	})
 })

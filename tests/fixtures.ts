@@ -171,3 +171,24 @@ export function activity(setup: () => void, teardown: () => void) {
 		},
 	})
 }
+
+/**
+ * A machine that announces rather than exposing its topology: `opened` carries
+ * a payload and is emitted from a residency action, `ended` carries nothing and
+ * is emitted from an edge action. The smallest shape that exercises both output
+ * kinds from both action kinds.
+ */
+export const beacon = machine({
+	initial: 'idle',
+	inputs: type<{ open: { at: number }; close: undefined }>(),
+	states: type<{ idle: undefined; open: { at: number } }>(),
+	outputs: type<{ opened: { center: number }; ended: undefined }>(),
+	transitions: {
+		'idle -open> open': ({ inputData }) => ({ at: inputData.at }),
+		'open -close> idle': () => {},
+	},
+	actions: {
+		open: ({ toData, emit }) => emit('opened', { center: toData.at }),
+		'open -close> idle': ({ emit }) => emit('ended'),
+	},
+})

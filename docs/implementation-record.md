@@ -917,9 +917,14 @@ The type layer is erased: `pnpm size` reports 1,580 B raw, unchanged.
 
 ### <a id="i40"></a>I40 — The exported callback type is `Observer`, and `Listener` is reserved
 
+> **The reservation has since been spent.** `Listener<M, N>` is exported, on the
+> declared output channel this entry was holding the name for
+> ([design-record.md, §10](design-record.md#revision-what-the-channel-is-actually-made-of)).
+> The reasoning below is why the name went there and not to `observe`.
+
 `observe`'s callback was called a listener everywhere: the README, the source,
-the tests, and every record in `docs/`. That word is the one the roadmap's
-`emit` channel will want. [§5](design-record.md#inputs-not-events) argues the
+the tests, and every record in `docs/`. That word is the one the declared output
+channel will want. [§5](design-record.md#inputs-not-events) argues the
 difference without naming it — an event is something that happens to you, and
 what `observe` delivers is not an event but a transition record. A subscriber
 to a declared output would be told that something happened and would read what
@@ -943,3 +948,52 @@ that does not exist. The arguments themselves are untouched, under a note in
 `explorations/` keeps "listener" throughout, and should. Those prototypes
 implement other designs, several of them spelling the method `.on`, so their
 vocabulary is theirs rather than a stale copy of this one.
+
+### <a id="i41"></a>I41 — A vocabulary default can read its sibling parameters, and `outputs` needs to
+
+TypeScript 6.0.
+
+`inputs` and `states` each have a second inference site: an omitted one is read
+back off the `transitions` keys, so `InputsFromKeys<K>` and `StatesFromKeys<K>`
+recover the names the table itself mentions and widen only the payloads.
+`outputs` has no such site. Nothing in the table, or anywhere else in a
+definition, mentions an output name. An omitted `outputs` therefore has only a
+default to fall back on, and the obvious two are both wrong on their own.
+
+`AnyVocab` alone — `string` name, `unknown` payload — hands a fully typed
+machine a channel it never declared, and `emit('typo')` compiles. The empty
+vocabulary alone makes `Name<{}>` resolve to `never`, which is what is wanted
+there, but it also breaks the untyped path, where a plain-JavaScript caller
+declares nothing and still expects `emit` to work the way `send` already does.
+
+The default reads its siblings instead:
+
+```ts
+O extends Vocab = Declared<
+	RawO,
+	[RawI, RawS] extends [undefined, undefined] ? AnyVocab : {}
+>
+```
+
+`RawI` and `RawS` are the raw `inputs`/`states` parameters, both already
+inferred by the time this default resolves — the same "constrained default that
+reads a sibling, not the argument itself" construction
+[I19](#i19) established, one parameter further along. The tuple wrapper is
+required: `RawI extends undefined ? …` distributes over a union, and the pair
+has to be tested as a pair.
+
+The rejection this produces is by arity, not by name. `Emit<{}>` resolves its
+rest parameter through a mapped type over `never`, so its argument list is
+`never` and every call is rejected; `on`'s `N extends Name<O>` has no member to
+satisfy. The diagnostics name `never` rather than saying "this machine declares
+no outputs", which is worse than the `not a transition: '…'` and
+`no row matches '…'` messages elsewhere in the surface. Those work because a key
+is a string literal that a conditional can rewrite into a message; an argument
+list is not. Improving it would mean a fifth conditional arm on `emit` for the
+sole purpose of carrying a string, paid at every action declaration — the same
+trade [I38](#i38) measured too expensive for `actions` completions. Left as is,
+recorded so the next reader does not rediscover it as a bug.
+
+The same widening question does not arise for `Announcement`'s `data`, which
+indexes `O` by the subscribed name: under `AnyVocab` that is `unknown`, which is
+exactly what the untyped path should see.
