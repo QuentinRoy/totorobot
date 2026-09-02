@@ -120,10 +120,10 @@ async function measure(projectDir, anchors, cases, insert) {
 
 	function build(which, typed) {
 		const anchor = anchors[which]
-		const at = playground.indexOf(anchor)
-		if (at < 0)
+		const anchorAt = playground.indexOf(anchor)
+		if (anchorAt < 0)
 			throw new Error(`anchor not found for ${which} in ${projectDir}`)
-		const insertAt = at + anchor.length
+		const insertAt = anchorAt + anchor.length
 		const inserted = insert(typed)
 		const text =
 			playground.slice(0, insertAt) + inserted + playground.slice(insertAt)
@@ -139,7 +139,7 @@ async function measure(projectDir, anchors, cases, insert) {
 		stdio: ['pipe', 'pipe', 'pipe'],
 	})
 	const stderr = []
-	proc.stderr.on('data', (d) => stderr.push(d.toString()))
+	proc.stderr.on('data', (chunk) => stderr.push(chunk.toString()))
 
 	let buf = Buffer.alloc(0)
 	const pending = new Map()
@@ -237,17 +237,17 @@ async function measure(projectDir, anchors, cases, insert) {
 					position: { line, character },
 				})
 
-			const t0 = performance.now()
+			const coldStart = performance.now()
 			const first = await ask()
-			const cold = performance.now() - t0
+			const cold = performance.now() - coldStart
 			if (first.error)
 				throw new Error(`completion: ${JSON.stringify(first.error)}`)
 
 			const warm = []
 			for (let i = 0; i < 5; i++) {
-				const t = performance.now()
+				const warmStart = performance.now()
 				await ask()
-				warm.push(performance.now() - t)
+				warm.push(performance.now() - warmStart)
 			}
 			warm.sort((a, b) => a - b)
 

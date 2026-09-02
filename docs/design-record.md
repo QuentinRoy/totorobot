@@ -19,7 +19,7 @@
 > record `{ on, input, from, to }` rather than `{ input, from, to }`.
 > `observe`'s callback is one of the corrections: this record was written when it
 > was a listener, and calls it an observer throughout, after the exported
-> `Observer<M, P>` ([§11](#observation-observe-on-the-host-with-patterns)).
+> `Observer<MachineType, PatternString>` ([§11](#observation-observe-on-the-host-with-patterns)).
 >
 > **Only the API argument is here.** What the compiler does is in
 > [the implementation record](implementation-record.md): the findings about making
@@ -261,9 +261,9 @@ exists. Question D stops being a search and becomes an index. The price is the
 exact transpose: question B now requires reading every state's `from` block, and
 B is the question the research says dominates. Its idea was kept anyway: the
 reverse index is recoverable from any source-keyed layout **as a derived type**
-(`Sources<M, To>`, `Targets<M, From, On>`), which E's own prototype demonstrated.
-So the choice was never "which question do I want to be cheap": keep the layout
-that makes B a single block, and _derive_ the rest.
+(`Sources<MachineType, StateName>`, `Targets<M, From, On>`), which E's own
+prototype demonstrated. So the choice was never "which question do I want to be
+cheap": keep the layout that makes B a single block, and _derive_ the rest.
 
 **F — transition table.** Line-order priority instead of key-order, `keep`/
 `repeat` stop being reserved names, edges become values that factor. Two of those
@@ -490,7 +490,7 @@ any payload. A written `void` has **nothing to infer**. The bug is not fixed; it
 is unrepresentable.
 
 _The state-name inference cliff._ When every state was data-free and every
-handler a closure, `keyof S` collapsed to `string` and target names stopped being
+handler a closure, `keyof States` collapsed to `string` and target names stopped being
 checked, needing a compile-time guard whose error message was the fix. Names are
 now declared, so they cannot be recovered wrongly:
 [`n2-declared-types/check.ts`](../explorations/candidates/n2-declared-types/check.ts)
@@ -539,7 +539,7 @@ smallest possible runtime value and makes extraction a built-in,
 degradation to `null | T`). Two things decided against it: extraction reads better
 through a named helper anyway (`InputsOf<typeof publication>`, matching the
 `Handled`/`Sources` family), and `null | T` legalises a bare `inputs: null`, after
-which `keyof S & string` collapses to `never` and the failure surfaces somewhere else
+which `keyof States & string` collapses to `never` and the failure surfaces somewhere else
 as an obscure type-level message, the class P1.2 rules out by name.
 
 **Revision: `type()`'s own return type moved from `T | null` to `T | undefined`
@@ -553,24 +553,24 @@ still reads through `InputsOf`/`StatesOf` rather than through the marker's own t
 
 What newly had to be re-argued is a case the original text never faced, because
 `null` and `undefined` are not interchangeable at the type level the way they are at
-the value level. `inputs?: I | null` and `inputs?: I | undefined` behave differently
+the value level. `inputs?: Inputs | null` and `inputs?: Inputs | undefined` behave differently
 under `exactOptionalPropertyTypes`, and the second form is reachable two ways, by an
 omitted property and by one written explicitly as `undefined`. Both must resolve to
 the same default.
 
-Constraining the raw parameter to bare `Vocab` (`RawI extends Vocab =
-InputsFromKeys<K>`, the shape this section describes) makes those two call sites
+Constraining the raw parameter to bare `Vocab` (`RawInputs extends Vocab =
+InputsFromKeys<Keys>`, the shape this section describes) makes those two call sites
 diverge. `undefined` is not a valid `Vocab`, and TypeScript's fallback for an invalid
 candidate is the constraint itself, so an explicit `inputs: undefined` silently
 widened every name to `string` where the omitted form correctly inferred
-`InputsFromKeys<K>`.
+`InputsFromKeys<Keys>`.
 
 The fix widens the constraint one step further, to `Vocab | undefined`, making
 `undefined` a legal, non-widening candidate rather than a violation. The vocabulary
 then resolves through a small conditional applied after inference (`Declared<Raw,
 Default>` in `src/totorobot.ts`) rather than through the default position itself.
-That is why `RawI`/`RawS`, what `inputs`/`states` actually infer to, are separate
-type parameters from `I`/`S`, the resolved vocabularies used everywhere else in
+That is why `RawInputs`/`RawStates`, what `inputs`/`states` actually infer to, are separate
+type parameters from `Inputs`/`States`, the resolved vocabularies used everywhere else in
 `machine`'s signature.
 
 **Both markers are optional, which is P1.4 rather than a concession.** A JavaScript
@@ -579,8 +579,8 @@ should still get a usable, checked interface, with names and data read off
 `transitions` itself (see the revision note below) rather than `any`, and the key _grammar_ still
 enforced, since the grammar does not depend on the vocabulary.
 
-**It does not fall out for free.** A first attempt had `S` **reverse-inferred from
-`initial`**, so `initial: 'whatever'` produced `S = { whatever: any }`, after which
+**It does not fall out for free.** A first attempt had `States` **reverse-inferred from
+`initial`**, so `initial: 'whatever'` produced `States = { whatever: any }`, after which
 the only legal state was that bogus one, every real key was rejected, and the error
 moved off the offending line onto the whole `transitions` block. That fails P1.4 ("should
 not collapse into an unusable surface") and P1.2 (locality) at once.
@@ -590,18 +590,18 @@ not collapse into an unusable surface") and P1.2 (locality) at once.
 combination of declared maps with one omitted. The fully typed case is
 [`tests/vocabulary.test-d.ts`](../tests/vocabulary.test-d.ts):
 
-1. **Constrained defaults.** `S extends Vocab = Vocab`, with
+1. **Constrained defaults.** `States extends Vocab = Vocab`, with
    `Vocab = Record<string, unknown>`. Widening then falls out of the constraint
-   (`keyof Vocab & string` is `string`, `Vocab[K]` is `unknown`), so nothing needs a
-   conditional to express "no vocabulary declared".
-2. **`NoInfer` on `initial`.** `keyof NoInfer<S> & string` leaves `states:` as the only
+   (`keyof Vocab & string` is `string`, `Vocab[MemberName]` is `unknown`), so nothing
+   needs a conditional to express "no vocabulary declared".
+2. **`NoInfer` on `initial`.** `keyof NoInfer<States> & string` leaves `states:` as the only
    inference site, so the default applies when it is omitted. `NoInfer` alone is not
-   enough: wrapped inside a conditional (`S extends Vocab ? keyof S & string :
+   enough: wrapped inside a conditional (`States extends Vocab ? keyof States & string :
 string`) the reverse inference still happened. The constrained default is what makes
    the conditional unnecessary, and removing it is what lets `NoInfer` bite.
 3. **A bad key poisons its own value type**, mapping to an error-bearing string
-   literal instead of a handler signature: `K extends Key<S> ? Handler : "not a
-transition: 'K'"`. That reports on the offending line, where intersecting an extra
+   literal instead of a handler signature: `RowKey extends Key<States> ? Handler : "not a
+transition: 'RowKey'"`. That reports on the offending line, where intersecting an extra
    required property reports at the object level, because a missing property is an
    object-level error. It **replaces** the separate `Check<S, T>` helper, so the fix
    removes machinery rather than adding it.
@@ -613,13 +613,13 @@ not a fix.
 
 **Revision: the default's _names_ were later changed from `Vocab` to a table-derived
 vocabulary, its _data_ left at `unknown`.** Widening an omitted half's names to
-`string` gave up more than it needed to. `K`, the table's own keys, is already
+`string` gave up more than it needed to. `Keys`, the table's own keys, is already
 inferred cleanly by the same homomorphic-mapped-type mechanism as `Table` itself, so
-`From<K> | To<K>` and `Label<K>` recover the exact names `transitions` mentions. That
-does not repeat the `initial` cliff: the risk there was reverse-inferring `S` from a
+`From<Keys> | To<Keys>` and `Label<Keys>` recover the exact names `transitions` mentions. That
+does not repeat the `initial` cliff: the risk there was reverse-inferring `States` from a
 single field, not deriving it from a sibling parameter already resolved.
 
-`I`/`S` now default to `InputsFromKeys<K>`/`StatesFromKeys<K>`, each name mapped to
+`Inputs`/`States` now default to `InputsFromKeys<Keys>`/`StatesFromKeys<Keys>`, each name mapped to
 `unknown`, rather than to `Vocab`. An omitted half's _names_ therefore narrow to what
 the table says while its _data_ stays `unknown` exactly as before: nothing declares
 what an inferred name's data is, so assuming it absent would be a claim the table
@@ -628,15 +628,15 @@ superseded design for names. Points 2 and 3, `NoInfer` on `initial` and a bad ke
 poisoning its own value type, are unchanged and still what keep this safe.
 
 **Revision (#22): the inferred vocabulary excludes a name a key cannot round-trip.**
-`From<K> | To<K>` and `Label<K>` read every name a key mentions, including two a key
+`From<Keys> | To<Keys>` and `Label<Keys>` read every name a key mentions, including two a key
 should never have been able to mint. One is `*`, already how a pattern spells "any
 state" in the same coordinate. The other is a name padded by a leading or trailing
 space, which the grammar's own delimiters (` -`, `> `) quietly absorb rather than
 reject: `'a -x> b'` and `'a -x>  b'` differ only in a doubled space that reads as
 invisible in a diff, yet mint two different states.
 
-Both are excluded by remapping `From<K> | To<K>` and `Exclude<Label<K>, ''>` through
-a `RoundTrips<N>` filter before either mapped type is built (`src/totorobot.ts`), so
+Both are excluded by remapping `From<Keys> | To<Keys>` and `Exclude<Label<Keys>, ''>` through
+a `RoundTrips<CandidateName>` filter before either mapped type is built (`src/totorobot.ts`), so
 a key that mints one fails `Key` and is rejected on its own row. That needs no new
 diagnostic: it reuses the `not a transition: '…'` poisoning already built for a
 malformed key. **Declared vocabularies are left alone.** Filtering `Name` itself was
@@ -994,7 +994,7 @@ Two findings are already recorded in that wrapper and carry over:
 
 - **An immediate contributes nothing to what a state _handles_.** It is typed
   `handles: never`, because it is not sendable, so it must not appear in
-  `Handled<T, S>`.
+  `Handled<MachineType, StateName>`.
 - **robot3 reuses whatever event caused entry** as the immediate's event, which the
   wrapper calls "untyped rather than mistyped". This design avoids the question
   entirely: there is no input, so the handler has **no `input` binding**, and
@@ -1710,7 +1710,7 @@ returns, same as always. Pinned in `tests/queue.test.ts`, "actions fired by
 
 ### Closed: startup excludes edge actions
 
-The coverage above pinned residency at startup but left a gap: `enter(acts)`
+The coverage above pinned residency at startup but left a gap: `enter(hostActionRows)`
 also swept in a wildcard-source edge action, `* -> *` included, since a
 wildcard reads a missing `from` — the initial arrival, which no transition
 caused — the same as a real predecessor. Fixed by filtering that one `enter`
@@ -1722,7 +1722,7 @@ Pinned in `tests/actions.test.ts`, "startup invokes no edge action".
 
 `actions` offers no key completions, for the same reason `observe`'s pattern
 argument did not before it was fixed ([§11](#observation-observe-on-the-host-with-patterns)):
-`A` defaults to `never`, so with nothing typed the contextual type has no known
+`TriggerKeys` defaults to `never`, so with nothing typed the contextual type has no known
 members. The fix that worked for `observe` — intersect the checked type with a
 call-site-free union of the keys a declared table could actually match — was
 prototyped here too, `MatchedPattern` plus every eligible bare state name, and
@@ -1847,7 +1847,7 @@ actions: {
 ```
 
 `invoke`'s outcome map is what makes this typed rather than a bare closure: its
-values are checked against `Handled<T, 'loading'>`, so `loading` provably produces
+values are checked against `Handled<MachineType, 'loading'>`, so `loading` provably produces
 `loaded` or `failed` and nothing else.
 
 **Why it is credible.** `runAll` returns a **host of hosts**, not a machine: if it
@@ -2311,10 +2311,10 @@ make "who said this" unanswerable from the declaration.
 argument was built from the same parts. That shared shape widens for actions only:
 an action's record carries `emit`, an observer's does not. This is
 [§9's](#9-actions) settled shape — one argument for every action, not a bag per kind —
-so `run(transition, { emit })` is rejected. The exported `Observer<M, P>` is unchanged,
+so `run(transition, { emit })` is rejected. The exported `Observer<MachineType, PatternString>` is unchanged,
 and a machine that declares no `outputs` type-checks exactly as it did.
 
-#### `Emit<O>` is declared apart from `Send<I>`
+#### `Emit<Outputs>` is declared apart from `Send<Inputs>`
 
 The two are structurally identical today, conditional optional-payload rule and `void`
 return included. They are not aliased. `Send`'s meaning is a capability a state permits,
@@ -2547,7 +2547,7 @@ the initial data is an argument or lives in the definition beside `initial:`.
 >
 > **The callback followed the method.** This record called it a listener
 > throughout, written when the method was `.on` and the word fit. The exported
-> type is `Observer<M, P>`, and the prose here says observer to match. `Listener`
+> type is `Observer<MachineType, PatternString>`, and the prose here says observer to match. `Listener`
 > is exported by nothing, and is held for the output channel above, whose
 > subscribers would be told that something happened and read what it carried.
 > An observer is handed the record of a transition that committed, which is the
@@ -2953,7 +2953,7 @@ Every other section is about **writing** a machine. This one and
 ### What a "capability" is
 
 Concretely: **the input names of a state become method names, and the payload
-becomes the argument.** `Handled<T, 'draft'>`, which already exists in the
+becomes the argument.** `Handled<MachineType, 'draft'>`, which already exists in the
 prototype, reads the table's keys and yields `'revise' | 'submit' | 'cancel'`,
 and the capability type is one mapped type over it. So in `draft` you get exactly
 three members, `at.decide` is `TS2339`, `at.cancel()` takes no argument because
