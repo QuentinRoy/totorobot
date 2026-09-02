@@ -879,6 +879,12 @@ To the libraries this one learned from:
 [XState](https://github.com/statelyai/xstate), and
 [yay-machine](https://yay-machine.js.org/).
 
+And to Caroline Appert and Michel Beaudouin-Lafon's
+[SwingStates](https://perso.lisn.upsaclay.fr/appert/website/papers/SwingStates-spe.pdf),
+which the design record leans on more than any of them: for the evidence that
+state explosion stays manageable at this scale, and for peers over hierarchy as
+the way to combine machines.
+
 ## License
 
 [Blue Oak Model License 1.0.0](LICENSE).
