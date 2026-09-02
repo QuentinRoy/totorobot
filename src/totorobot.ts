@@ -774,7 +774,10 @@ type Snapshot = { readonly name: string; readonly data: unknown }
 type UncheckedEmit = (output: string, data?: unknown) => void
 
 /** One row of the listener store: the name subscribed to, and what to run. */
-type Subscription = readonly [output: string, run: (a: unknown) => void]
+type Subscription = readonly [
+	output: string,
+	run: (announcement: unknown) => void,
+]
 
 interface UncheckedHost {
 	readonly current: Snapshot
@@ -783,7 +786,10 @@ interface UncheckedHost {
 		pattern: string,
 		action: EdgeObserver | ActionItem,
 	) => () => void
-	readonly on: (output: string, listener: (a: unknown) => void) => () => void
+	readonly on: (
+		output: string,
+		listener: (announcement: unknown) => void,
+	) => () => void
 }
 
 /**
@@ -933,7 +939,7 @@ export let machine: <
 				// A fresh row per host: a teardown is written on the row itself, and
 				// `actionRows` belongs to the definition (§9 Actions). `observers` needs no
 				// copy; `observe` builds its rows host-local already.
-				let acts = actionRows.map((row) => [...row] as Registration)
+				let hostActionRows = actionRows.map((row) => [...row] as Registration)
 
 				// A teardown runs at most once: `void` blanks the slot in the same
 				// assignment that calls it (I16).
@@ -957,16 +963,16 @@ export let machine: <
 					// `emit`, passed in by the two sites that fire actions (§10
 					// Composition). Once per call, so the allocation stays off the path
 					// that runs most (I16).
-					let e: Arrival = { ...facts, send, ...capabilities }
+					let arrival: Arrival = { ...facts, send, ...capabilities }
 					for (let row of list) {
-						let [f, l, t, run, key] = row
+						let [from, input, to, run, key] = row
 						if (
-							(f === '*' || f === e.from) &&
-							(!l || l === e.input) &&
-							(t === '*' || t === e.to) &&
-							(key ? e.to !== e.from || row[7] : e.from)
+							(from === '*' || from === arrival.from) &&
+							(!input || input === arrival.input) &&
+							(to === '*' || to === arrival.to) &&
+							(key ? arrival.to !== arrival.from || row[7] : arrival.from)
 						) {
-							let teardown = run(e)
+							let teardown = run(arrival)
 							if (key) row[6] = teardown as Teardown | undefined
 						}
 					}
@@ -1029,7 +1035,7 @@ export let machine: <
 								// cheapest thing only a function has. `row[7]` banks that one decision
 								// for `fire` to reuse below, on that same row's setup, so a predicate
 								// the caller wrote once is asked once (§9 Actions).
-								for (let list of [acts, observers]) {
+								for (let list of [hostActionRows, observers]) {
 									for (let row of list.toReversed()) {
 										if (
 											row[4] === from &&
@@ -1048,7 +1054,7 @@ export let machine: <
 								current = { name: to, data: toData }
 
 								// Actions in declaration order, then observers (§9 Actions).
-								fire(acts, facts, actionCapabilities)
+								fire(hostActionRows, facts, actionCapabilities)
 								fire(observers, facts)
 								// One input yields at most one transition.
 								return true
@@ -1104,8 +1110,9 @@ export let machine: <
 				// listener propagates, like a throwing observer.
 				let emit: UncheckedEmit = (output, data) => {
 					dispatch(() => {
-						let a = { output, data, send }
-						for (let [name, run] of listeners) if (name === output) run(a)
+						let announcement = { output, data, send }
+						for (let [subscribedOutput, run] of listeners)
+							if (subscribedOutput === output) run(announcement)
 					})
 				}
 
@@ -1121,7 +1128,7 @@ export let machine: <
 				// remains the residency-only startup slice without allocating a filter
 				// result (I42; §9 Actions).
 				dispatch(() => {
-					enter(acts, actionCapabilities)
+					enter(hostActionRows, actionCapabilities)
 					settle()
 				})
 
@@ -1157,7 +1164,7 @@ export let machine: <
 					// like `observe`'s (§10 Composition).
 					on: (
 						output: string,
-						listener: (a: unknown) => void,
+						listener: (announcement: unknown) => void,
 					): (() => void) => {
 						let subscription: Subscription = [output, listener]
 						listeners = [...listeners, subscription]
