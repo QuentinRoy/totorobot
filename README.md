@@ -874,7 +874,7 @@ GitHub Actions to create and approve pull requests".
 
 ## Thanks
 
-To the libraries this one learned from:
+To the libraries and work this one learned from:
 [Robot3](https://thisrobot.life/),
 [XState](https://github.com/statelyai/xstate),
 [yay-machine](https://yay-machine.js.org/), and
