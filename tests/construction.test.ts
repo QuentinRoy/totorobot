@@ -163,7 +163,7 @@ describe('construction', () => {
 		expect(hostB.current.name).toBe('off')
 	})
 
-	test('two hosts from one definition share no listeners', () => {
+	test('two hosts from one definition share no observers', () => {
 		const hostA = toggle.start()
 		const hostB = toggle.start()
 

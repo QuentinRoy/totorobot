@@ -7,7 +7,7 @@
  * pending — so it is a `startup` residency: scheduled on entry, cancelled by
  * its teardown. Everything else the case asks for (interaction feedback, menu
  * display, selection and cancellation reporting) is external, and stays a
- * caller-side `.observe()` listener, same as the residency draws the
+ * caller-side `.observe()` observer, same as the residency draws the
  * internal/external line in the doc.
  *
  * Distance calculation, stroke append and the menu itself are ordinary

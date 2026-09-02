@@ -31,7 +31,7 @@ export const authMachine = machine({
 
 	transitions: {
 		// A blank username is not an attempt: the row declines, so nothing
-		// changes and no listener fires. Declining is an ordinary outcome.
+		// changes and no observer fires. Declining is an ordinary outcome.
 		'idle -login> authenticating': ({ fromData, inputData, skip }) =>
 			inputData.username.trim()
 				? {

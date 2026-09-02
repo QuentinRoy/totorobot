@@ -293,7 +293,7 @@ type PatternFacts<
 }[Select<From<P>, Name<S>>]
 
 /**
- * Three names and their three payloads, narrowed by the listener's own
+ * Three names and their three payloads, narrowed by the observer's own
  * pattern. One member per declared row `K` the pattern admits, filtered
  * against the table rather than built from the pattern's own wildcards, so a
  * source, an input or a destination this table never pairs cannot appear
@@ -325,7 +325,7 @@ type Transition<
 			}
 		}[MatchingRows<K, P>]
 
-type Listener<
+type EdgeObserver<
 	I extends Vocab = AnyVocab,
 	S extends Vocab = AnyVocab,
 	K extends string = string,
@@ -336,7 +336,7 @@ type Listener<
 // Actions
 //
 // Every action takes the same one argument, whichever kind of trigger fired it:
-// the transition record, `send` included, exactly what a matching listener
+// the transition record, `send` included, exactly what a matching observer
 // receives (§9 Actions). A residency trigger is an arrival, so its `to` is the
 // resident state; an edge trigger's is whatever its pattern targets. Edge and
 // residency share this shape with `observe` too, except that a residency
@@ -554,21 +554,30 @@ interface Host<
 > {
 	readonly current: Current<S>
 	readonly send: Send<I>
-	// Generic in the pattern, so a listener's record is narrowed by it. A
+	// Generic in the pattern, so an observer's record is narrowed by it. A
 	// name-valid edge pattern with no declared row it could ever fire from is
 	// rejected the same way `Table` rejects a malformed key — the pattern
-	// parameter's own type, not the listener's (#100). A bare state key is
+	// parameter's own type, not the observer's (#100). A bare state key is
 	// the second, overloaded form: always eligible, since a late registration
 	// can find any declared state already occupied, and takes the same record
 	// `actions` does for a residency, minus the array — call `observe` again
 	// for a second one — and minus the third-argument options form,
 	// deliberately not added (§11 The host).
 	readonly observe: {
+		// Accepts a matchable pattern without asking a conditional about it,
+		// so an unresolved type parameter satisfies this signature: a caller's
+		// own helper, generic in its pattern, can forward that pattern here
+		// (I39). A dead pattern fails the constraint instead, and falls to the
+		// signature below, which is what still rejects it by name.
+		<P extends MatchedPattern<I, S, K>>(
+			pattern: P,
+			observer: EdgeObserver<I, S, K, P>,
+		): () => void
 		<P extends Pattern<I, S>>(
 			pattern: NoMatch<K, P> extends true
 				? `no row matches '${P}'`
 				: P & MatchedPattern<I, S, K>,
-			listener: Listener<I, S, K, P>,
+			observer: EdgeObserver<I, S, K, P>,
 		): () => void
 		<N extends Name<S>>(
 			pattern: N,
@@ -632,6 +641,21 @@ export type Patterns<M> = MatchedPattern<
 	Carried<M>['keys']
 >
 
+/**
+ * What `observe` takes beside one of those patterns, for the same caller: the
+ * public face of `EdgeObserver`, which is module-local like the rest (I37).
+ * Three of that alias's four parameters live in `M`, so only the pattern is
+ * left, and omitting it covers every row the table can fire. Named for
+ * `observe` rather than called an observer, which the roadmap's `on` has the
+ * better claim to: this one is handed a transition record, not an event (I40).
+ */
+export type Observer<M, P extends Patterns<M> = Patterns<M>> = EdgeObserver<
+	Carried<M>['inputs'],
+	Carried<M>['states'],
+	Carried<M>['keys'],
+	P
+>
+
 // ---------------------------------------------------------------------------
 // The definition
 // ---------------------------------------------------------------------------
@@ -668,7 +692,7 @@ interface UncheckedHost {
 	readonly send: UncheckedSend
 	readonly observe: (
 		pattern: string,
-		action: Listener | ActionItem,
+		action: EdgeObserver | ActionItem,
 	) => () => void
 }
 
@@ -711,7 +735,7 @@ let dispatch = (work?: () => void): void => {
 		// empties the queue either way.
 		for (let run of queue) run()
 	} finally {
-		// In a `finally` so a throwing listener leaves every host usable; the queue is
+		// In a `finally` so a throwing observer leaves every host usable; the queue is
 		// abandoned, not drained, and what committed stays committed.
 		queue.length = draining = 0
 	}
@@ -793,7 +817,7 @@ export let machine: <
 		}
 
 		// Residency on `N` is stored as the pattern `* -> N`, the teardown key alone
-		// telling the two kinds apart, so one loop matches both and listeners
+		// telling the two kinds apart, so one loop matches both and observers
 		// besides (I16). A bare key naming nothing declared is a silent no-op, as
 		// everywhere else; an arrow goes through `parse`, which throws on a
 		// malformed one. An array is unwrapped to one row per element (§9 Actions).
@@ -812,10 +836,10 @@ export let machine: <
 
 				// Copy-on-write at registration, iteration at dispatch: allocation lands on
 				// the path that runs least, and it measures smaller (I16).
-				let listeners: Registration[] = []
+				let observers: Registration[] = []
 
 				// A fresh row per host: a teardown is written on the row itself, and
-				// `actionRows` belongs to the definition (§9 Actions). `listeners` needs no
+				// `actionRows` belongs to the definition (§9 Actions). `observers` needs no
 				// copy; `observe` builds its rows host-local already.
 				let acts = actionRows.map((row) => [...row] as Registration)
 
@@ -823,7 +847,7 @@ export let machine: <
 				// assignment that calls it (I16).
 				let clear = (row: Registration) => (row[6] = void row[6]?.())
 
-				// The wildcard rules once, for actions, residencies and listeners alike:
+				// The wildcard rules once, for actions, residencies and observers alike:
 				// `*` and `''` stand for any, and a missing `from` — an arrival no
 				// transition caused — matches no edge row, so that case needs no branch
 				// of its own (§9 Actions). Only a residency has a teardown key, stores
@@ -888,7 +912,7 @@ export let machine: <
 							}
 
 							// The residency being left tears down before the commit, actions
-							// before listeners, each in reverse declaration order, so several on
+							// before observers, each in reverse declaration order, so several on
 							// one trigger unwind like a stack. A throw here abandons the hop with
 							// nothing committed and the later teardowns unrun (§9 Actions). `false`
 							// survives, a predicate decides from the transition's own facts,
@@ -896,7 +920,7 @@ export let machine: <
 							// cheapest thing only a function has. `row[7]` banks that one decision
 							// for `fire` to reuse below, on that same row's setup, so a predicate
 							// the caller wrote once is asked once (§9 Actions).
-							for (let list of [acts, listeners]) {
+							for (let list of [acts, observers]) {
 								for (let row of list.toReversed()) {
 									if (
 										row[4] === from &&
@@ -910,13 +934,13 @@ export let machine: <
 								}
 							}
 
-							// Commit, then notify, so every listener sees a machine that agrees
+							// Commit, then notify, so every observer sees a machine that agrees
 							// with the record. The payload is stored exactly as returned (§5).
 							current = { name: to, data: toData }
 
-							// Actions in declaration order, then listeners (§9 Actions).
+							// Actions in declaration order, then observers (§9 Actions).
 							fire(acts, facts)
-							fire(listeners, facts)
+							fire(observers, facts)
 							// One input yields at most one transition.
 							return true
 						}
@@ -975,13 +999,13 @@ export let machine: <
 
 					observe: (
 						pattern: string,
-						action: Listener | ActionItem,
+						action: EdgeObserver | ActionItem,
 					): (() => void) => {
 						// `toRow` reads a bare `pattern` as residency on that state, the same
 						// as a bare key in `actions`, so the two share one parser (§11 The
 						// host).
 						let registration = toRow(pattern, action as UncheckedItem)
-						listeners = [...listeners, registration]
+						observers = [...observers, registration]
 						// Already resident when observed: no arrival will announce it, so it runs
 						// once here instead, registration order never deciding whether a
 						// residency fires (§11 The host). The teardown key is the residency
@@ -990,7 +1014,7 @@ export let machine: <
 						// Idempotent (§11 The host), and a residency in flight tears down on
 						// the way out.
 						return () => {
-							listeners = listeners.filter((other) => other != registration)
+							observers = observers.filter((other) => other != registration)
 							clear(registration)
 						}
 					},
@@ -1009,7 +1033,7 @@ export let machine: <
 type Arrival = UncheckedFacts & { readonly send: UncheckedSend }
 
 /**
- * One row shape for a listener, an edge action and a residency action alike: a
+ * One row shape for an observer, an edge action and a residency action alike: a
  * parsed pattern and what to run. `key` is the state a residency is on, absent
  * on the other two, and the only thing telling them apart, which is what lets
  * `fire` serve all three (I16). `teardown` is a residency's own return, read

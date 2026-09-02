@@ -262,7 +262,7 @@ since; treat it as the reason the shape was chosen, not as a current number.
   mutates.** The assigned property comes out larger: mutating a bound object costs
   more than a getter closing over a local, and the getter needs no identifier for
   the object itself.
-- **Listeners copy-on-write at registration, not a mutable list.** Mutating with
+- **Observers copy-on-write at registration, not a mutable list.** Mutating with
   `push`/`splice` and snapshotting with `slice` per dispatch is 20 B larger
   (29 raw, 14 gzip), and it allocates on the path that runs most. Observable
   behaviour is identical under both.
@@ -305,10 +305,10 @@ since; treat it as the reason the shape was chosen, not as a current number.
   pattern, 15 B; a shared module-level helper doing the same, 26 B; attaching
   `send` inside `fire` costs 10 B, and 1 B if it is attached per matching row
   instead of per call. The per-row form is not taken: it moves an allocation onto
-  the notify path, which is the same trade the listener list is copy-on-write to
+  the notify path, which is the same trade the observer list is copy-on-write to
   avoid. Attaching lazily, so nothing is allocated when no row matches, spends the
   saving again on reading the coordinates off the other object (16 B).
-- **The departure loop over `[acts, listeners]`, not a `leave` helper called
+- **The departure loop over `[acts, observers]`, not a `leave` helper called
   twice.** The two-element array literal plus one nested loop measures smaller
   than factoring the row scan into a named function and calling it once per row
   array (1,790 B vs 1,810 B raw, pre-golf).
@@ -685,7 +685,7 @@ its own default, reachable or not.
 ### <a id="i35"></a>I35 — Registration eligibility is a second check, layered on `ActionArrival`'s own `Init` comparison
 
 #100 needs a noninitial residency action naming a state with no incoming row
-rejected outright: unlike a listener, whose argument merely narrows to
+rejected outright: unlike an observer, whose argument merely narrows to
 `never` and stays perfectly legal to declare ([I32](#i32)), a callback
 argument's type cannot itself make the _declaration_ an error — a function
 typed to take `never` still accepts any implementation, by contravariance.
@@ -764,12 +764,20 @@ the conditional's own shape, so [I36](#i36)'s repro and every existing
 acceptance/rejection case (`tests/patterns.test-d.ts`) needed no update.
 
 This settles #116's own experiment in favor of the non-breaking shape: the
-type parameter's constraint, `P extends Pattern<I, S>`, is untouched, so a
-caller's helper generic over it keeps compiling. `Patterns<M>`, `Carried<M>`
-applied to `MatchedPattern`, ships as the convenience the issue's other
-branch would have made mandatory — a public constraint matching what
-`observe` accepts, for a caller who cannot otherwise name `Pattern` or
-`Host` (both module-local).
+type parameter's constraint, `P extends Pattern<I, S>`, is untouched, so
+existing code keeps compiling. `Patterns<M>`, `Carried<M>` applied to
+`MatchedPattern`, ships as the convenience the issue's other branch would
+have made mandatory — a public constraint matching what `observe` accepts,
+for a caller who cannot otherwise name `Pattern` or `Host` (both
+module-local). `Observer<M, P>` is the same move on the second argument:
+`EdgeObserver`'s four parameters collapse to two, since `Carried<M>` supplies
+three of them, and `P` defaults to the whole `Patterns<M>` union, which
+`Matches` admits every row against.
+
+This entry claimed, until [I39](#i39), that a caller's helper _generic over
+`P`_ keeps compiling. That was true of the constraint and false of the call:
+forwarding an unresolved `P` to `observe` was rejected, and nobody had measured
+it against one. I39 is that measurement, and the signature it adds.
 
 A genuinely widened `K` (`string extends K`) falls back to `Pattern<I, S>`
 unfiltered, the same gate [I34](#i34)'s `Transition` fallback and
@@ -853,3 +861,85 @@ had; only the eligibility rule itself was extracted into `Eligible`
 still offers no completions.
 
 The type layer is erased: `pnpm size` reports 1,580 B raw, unchanged.
+
+### <a id="i39"></a>I39 — A conditional parameter type cannot be forwarded a type parameter; a second signature beside it can
+
+[I37](#i37) put `observe`'s pattern behind a conditional on that pattern, and
+[I36](#i36) is why: the rejection for a dead pattern is the parameter's own
+type, produced by whichever branch `NoMatch<K, P>` selects. A conditional on
+`P` stays deferred while `P` is unresolved, and an unresolved type parameter is
+assignable to a deferred conditional only when it is assignable to both
+branches. It is not assignable to `` `no row matches '${P}'` ``. So a caller's
+helper, generic in its own pattern, could not pass that pattern to `observe` at
+all: resolution moved on to the bare state key signature and rejected the
+pattern against `Name<S>`.
+
+Measured before the fix on a helper taking a pattern and nothing else, so that
+neither `Patterns<M>` nor `Observer<M, P>` is implicated in the failure:
+
+```
+Argument of type '"* -> *" | ... | "empty -open> draft"'
+  is not assignable to parameter of type 'Name<States>'.
+```
+
+The fix is a second signature ahead of it, taking a matchable pattern directly:
+
+```ts
+<P extends MatchedPattern<I, S, K>>(
+	pattern: P,
+	observer: EdgeObserver<I, S, K, P>,
+): () => void
+```
+
+Nothing in it is conditional on `P`, so an unresolved one satisfies it through
+its constraint and arrives at `EdgeObserver` as itself: a caller of the helper
+keeps the narrowed record rather than the whole union. A dead literal fails
+this signature's constraint instead of matching it, falls through to I37's, and
+is rejected there as before. The diagnostic is identical in both arrangements,
+byte for byte. The bare state key signature is untouched.
+
+Measured (`scripts/measure-completions.mjs` and `tsc --extendedDiagnostics`,
+TypeScript 7.0.2, the twenty-state, forty-four-row `observe-machine` fixture):
+
+|        | entries | response | warm | instantiations | check time |
+| ------ | ------- | -------- | ---- | -------------- | ---------- |
+| before | 219     | 55 KB    | 7 ms | 12 336         | 0.167 s    |
+| after  | 219     | 55 KB    | 5 ms | 12 519         | 0.168 s    |
+
+Completions do not move, which is what [I37](#i37) constrains: the new
+signature's parameter is `MatchedPattern<I, S, K>` by its constraint, the same
+set I37's intersection offers. The 183 extra instantiations are paid once per
+host type rather than per `observe` call — the count is the same with the
+fixture's two calls deleted — so this is not [I38](#i38)'s shape, where the
+cost landed on every declaration whether or not a caller used the feature.
+
+The type layer is erased: `pnpm size` reports 1,580 B raw, unchanged.
+
+### <a id="i40"></a>I40 — The exported callback type is `Observer`, and `Listener` is reserved
+
+`observe`'s callback was called a listener everywhere: the README, the source,
+the tests, and every record in `docs/`. That word is the one the roadmap's
+`emit` channel will want. [§5](design-record.md#inputs-not-events) argues the
+difference without naming it — an event is something that happens to you, and
+what `observe` delivers is not an event but a transition record. A subscriber
+to a declared output would be told that something happened and would read what
+it carried, which is a listener in the ordinary sense.
+
+So the exported type is `Observer<M, P>`, named for the method that takes it,
+and the module-local alias beside it is `EdgeObserver`. `Listener` is exported
+by nothing, which keeps it for the channel with the better claim rather than
+spending it on the weaker one and paying a breaking rename later.
+
+The word moves everywhere the shipped API is described: `README.md`, `src/`,
+the tests, and the records in `docs/`, two headings in `design-record.md`
+included, with the links into them. Leaving the records in the old word was
+considered and dropped, because sixty-six uses of "listener" against an API
+that exports no such name is the confusion the rename exists to prevent, and
+`design-record.md`'s own preamble already sets the policy: a later rename is
+corrected in place where it would otherwise leave a reader expecting something
+that does not exist. The arguments themselves are untouched, under a note in
+§11 saying which word was current when the sections were written.
+
+`explorations/` keeps "listener" throughout, and should. Those prototypes
+implement other designs, several of them spelling the method `.on`, so their
+vocabulary is theirs rather than a stale copy of this one.

@@ -22,7 +22,13 @@ actions: {
 A named output vocabulary, reached from `actions` the way `send` reaches inputs.
 Subscribers name an output rather than an internal state, so a topology refactor
 stops breaking them. `observe` would still see every transition: nothing hidden, a
-channel added. The spelling above is illustrative: no property name, shape, or
+channel added.
+
+Such a subscriber would be a listener in the ordinary sense: told that something
+happened, reading what it carried. `observe`'s callback is not that, since it is
+handed the record of a transition that committed, and so the shipped type for it
+is `Observer<M, P>`. The name `Listener` is unused, and reserved for a channel
+that would earn it. The spelling above is illustrative: no property name, shape, or
 syntax is claimed ahead of the design that would justify it.
 
 _Argued in: [rationale §10](design-record.md#revision-the-composition-boundary)._

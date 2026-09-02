@@ -53,7 +53,7 @@ describe('the untyped path', () => {
 		expect(observer).not.toHaveBeenCalled()
 	})
 
-	test('a bad state name in a listener pattern does not throw and never fires', () => {
+	test('a bad state name in an observer pattern does not throw and never fires', () => {
 		const untyped = machine({
 			initial: 'off',
 			transitions: {

@@ -126,7 +126,7 @@ test('a residency action declared on the initial state remains valid with no inc
 	})
 })
 
-test("an edge trigger's argument narrows the transition exactly the way a listener's pattern narrows its record — same type, not a second bag around it", () => {
+test("an edge trigger's argument narrows the transition exactly the way an observer's pattern narrows its record — same type, not a second bag around it", () => {
 	machine({
 		initial: 'off',
 		inputs: type<Inputs>(),
@@ -149,7 +149,7 @@ test("an edge trigger's argument narrows the transition exactly the way a listen
 	})
 })
 
-test('an action and a listener for the same edge pattern narrow to the same facts and sending capability (#99)', () => {
+test('an action and an observer for the same edge pattern narrow to the same facts and sending capability (#99)', () => {
 	const doc = machine({
 		initial: 'off',
 		inputs: type<Inputs>(),

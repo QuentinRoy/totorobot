@@ -3,7 +3,7 @@
 ---
 
 A pattern or trigger that matches no declared row is now a type error instead
-of a listener typed with `never`.
+of an observer typed with `never`.
 
 This is a breaking type change. Add the missing row, or remove the
 registration. It checks table membership, not reachability, so a row that is

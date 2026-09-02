@@ -78,7 +78,7 @@ describe('sending', () => {
 		}
 	})
 
-	test('a handled input commits, and every listener whose pattern matches fires', () => {
+	test('a handled input commits, and every observer whose pattern matches fires', () => {
 		const host = editor.start()
 		const broad = vi.fn()
 		const narrow = vi.fn()
@@ -95,7 +95,7 @@ describe('sending', () => {
 		expect(narrow).toHaveBeenCalledOnce()
 	})
 
-	test('an input no row matches changes nothing and fires no listener', () => {
+	test('an input no row matches changes nothing and fires no observer', () => {
 		const host = editor.start()
 		const before = host.current
 		const observer = vi.fn()
@@ -110,7 +110,7 @@ describe('sending', () => {
 
 	// Deliberately mirrors the no-match test above: the all-decline case must be
 	// externally indistinguishable from it.
-	test('an input whose every candidate row declines changes nothing and fires no listener', () => {
+	test('an input whose every candidate row declines changes nothing and fires no observer', () => {
 		const host = editor.start()
 		host.send('open', { text: 'hello' })
 		const before = host.current
@@ -388,7 +388,7 @@ describe('sending', () => {
 
 		const queued = vi.fn()
 		const off = host.observe('idle -> draft', () => {
-			// A send from inside a listener is queued rather than run nested;
+			// A send from inside an observer is queued rather than run nested;
 			// it still returns nothing to its caller.
 			queued(host.send('touch'))
 		})
