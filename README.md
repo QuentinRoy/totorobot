@@ -514,11 +514,9 @@ later (from a timer, or from a subscription it opened), including after its own
 teardown has run, exactly as it can with `send`.
 
 Two places do not get `emit`. A `transitions` handler cannot emit, because a
-transition is pure. It neither performs nor schedules anything, and `emit` is
-a side effect. A handler may also `skip()`, and declaration order is priority
-order, so an emitting handler would sometimes announce a hop that then loses.
-An `observe` callback cannot emit either, because it is outside the machine
-and this channel is the machine speaking for itself. Both are compile errors.
+transition is pure. An `observe` callback cannot emit either, because it is
+outside the machine and this channel is the machine speaking for itself. Both
+are compile errors.
 
 If you declare `inputs` or `states` and leave `outputs` out, `emit` and `on`
 accept no name at all: a channel you never declared is not usable by accident.
