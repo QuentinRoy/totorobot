@@ -561,23 +561,25 @@ This checks table membership only, never reachability: a row unreachable from
 Completion in an editor offers only matchable patterns — the row keys
 themselves and their wildcard generalizations — instead of every name-valid
 combination. `Patterns<typeof publication>` names that set, and
-`Listener<typeof publication>` names what goes beside it, so a helper wrapping
-`observe` can type both of its arguments:
+`Listener<typeof publication, P>` names what goes beside it, so a helper
+wrapping `observe` can type both of its arguments and stay generic in the
+pattern:
 
 ```ts
-const watch = (
-	pattern: Patterns<typeof publication>,
-	listener: Listener<typeof publication>,
+const watch = <P extends Patterns<typeof publication>>(
+	pattern: P,
+	listener: Listener<typeof publication, P>,
 ) => doc.observe(pattern, listener)
+
+watch('draft -submit> review', (e) => e.toData.reviewer) // `to` is 'review'
+watch('empty -cancel> draft', () => {}) // no such row: compile error
 ```
 
-Given a pattern, `Listener<typeof publication, 'draft -submit> review'>` narrows
-the record to that row's facts, the way `observe` narrows it from the pattern
-you pass. Written without one, the listener takes every row the table can fire,
-which is what a helper like `watch` needs. A wrapper cannot do better than the
-union: `observe`'s pattern parameter is a conditional on the pattern itself,
-which an unresolved type parameter does not satisfy, so a helper generic in `P`
-cannot forward that `P` to `observe`.
+The caller of `watch` keeps everything a direct `observe` gives them: the dead
+pattern is rejected at the helper's own boundary, and the record is narrowed to
+the row the live one matched. Written without a pattern,
+`Listener<typeof publication>` covers every row the table can fire, which is
+what a helper that takes the whole union wants instead.
 
 ### Residency
 

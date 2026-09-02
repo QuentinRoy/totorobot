@@ -564,6 +564,15 @@ interface Host<
 	// for a second one — and minus the third-argument options form,
 	// deliberately not added (§11 The host).
 	readonly observe: {
+		// Accepts a matchable pattern without asking a conditional about it,
+		// so an unresolved type parameter satisfies this signature: a caller's
+		// own helper, generic in its pattern, can forward that pattern here
+		// (I39). A dead pattern fails the constraint instead, and falls to the
+		// signature below, which is what still rejects it by name.
+		<P extends MatchedPattern<I, S, K>>(
+			pattern: P,
+			listener: EdgeListener<I, S, K, P>,
+		): () => void
 		<P extends Pattern<I, S>>(
 			pattern: NoMatch<K, P> extends true
 				? `no row matches '${P}'`

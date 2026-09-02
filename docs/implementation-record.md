@@ -774,19 +774,10 @@ module-local). `Listener<M, P>` is the same move on the second argument:
 three of them, and `P` defaults to the whole `Patterns<M>` union, which
 `Matches` admits every row against.
 
-An earlier draft of this entry claimed that a caller's helper _generic over
-`P`_ keeps compiling. It does not, and never did — the claim was about the
-constraint, and was never measured against a forwarding call. `observe`'s
-edge overload takes a deferred conditional on `P` ([I36](#i36)); an
-unresolved type parameter satisfies neither branch, so the call falls through
-to the bare state key overload and is rejected against `Name<S>`. Adding
-`Listener<M, P>` does not change this, and neither alias caused it: a helper
-generic in its pattern cannot forward that pattern to `observe` with or
-without them. A wrapper compiles by taking the unions instead
-(`Patterns<M>`, `Listener<M>`), which costs the per-pattern narrowing at the
-wrapper boundary but not inside a listener written for one pattern. Both the
-working shape and the rejected one are asserted in
-`tests/patterns.test-d.ts`.
+This entry claimed, until [I39](#i39), that a caller's helper _generic over
+`P`_ keeps compiling. That was true of the constraint and false of the call:
+forwarding an unresolved `P` to `observe` was rejected, and nobody had measured
+it against one. I39 is that measurement, and the signature it adds.
 
 A genuinely widened `K` (`string extends K`) falls back to `Pattern<I, S>`
 unfiltered, the same gate [I34](#i34)'s `Transition` fallback and
@@ -868,5 +859,58 @@ had; only the eligibility rule itself was extracted into `Eligible`
 ([I35](#i35)), read by `Actions` alone, with no measurable cost either way (12
 097 → 12 097, 14 241 → 14 241, prefactor against unchanged `src/`). `actions`
 still offers no completions.
+
+The type layer is erased: `pnpm size` reports 1,580 B raw, unchanged.
+
+### <a id="i39"></a>I39 — A conditional parameter type cannot be forwarded a type parameter; a second signature beside it can
+
+[I37](#i37) put `observe`'s pattern behind a conditional on that pattern, and
+[I36](#i36) is why: the rejection for a dead pattern is the parameter's own
+type, produced by whichever branch `NoMatch<K, P>` selects. A conditional on
+`P` stays deferred while `P` is unresolved, and an unresolved type parameter is
+assignable to a deferred conditional only when it is assignable to both
+branches. It is not assignable to `` `no row matches '${P}'` ``. So a caller's
+helper, generic in its own pattern, could not pass that pattern to `observe` at
+all: resolution moved on to the bare state key signature and rejected the
+pattern against `Name<S>`.
+
+Measured before the fix on a helper taking a pattern and nothing else, so that
+neither `Patterns<M>` nor `Listener<M, P>` is implicated in the failure:
+
+```
+Argument of type '"* -> *" | ... | "empty -open> draft"'
+  is not assignable to parameter of type 'Name<States>'.
+```
+
+The fix is a second signature ahead of it, taking a matchable pattern directly:
+
+```ts
+<P extends MatchedPattern<I, S, K>>(
+	pattern: P,
+	listener: EdgeListener<I, S, K, P>,
+): () => void
+```
+
+Nothing in it is conditional on `P`, so an unresolved one satisfies it through
+its constraint and arrives at `EdgeListener` as itself: a caller of the helper
+keeps the narrowed record rather than the whole union. A dead literal fails
+this signature's constraint instead of matching it, falls through to I37's, and
+is rejected there as before. The diagnostic is identical in both arrangements,
+byte for byte. The bare state key signature is untouched.
+
+Measured (`scripts/measure-completions.mjs` and `tsc --extendedDiagnostics`,
+TypeScript 7.0.2, the twenty-state, forty-four-row `observe-machine` fixture):
+
+|        | entries | response | warm | instantiations | check time |
+| ------ | ------- | -------- | ---- | -------------- | ---------- |
+| before | 219     | 55 KB    | 7 ms | 12 336         | 0.167 s    |
+| after  | 219     | 55 KB    | 5 ms | 12 519         | 0.168 s    |
+
+Completions do not move, which is what [I37](#i37) constrains: the new
+signature's parameter is `MatchedPattern<I, S, K>` by its constraint, the same
+set I37's intersection offers. The 183 extra instantiations are paid once per
+host type rather than per `observe` call — the count is the same with the
+fixture's two calls deleted — so this is not [I38](#i38)'s shape, where the
+cost landed on every declaration whether or not a caller used the feature.
 
 The type layer is erased: `pnpm size` reports 1,580 B raw, unchanged.

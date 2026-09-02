@@ -467,19 +467,25 @@ test('a helper wrapping `observe` types both arguments with the two aliases (#11
 	watch(doc.start(), 'empty -cancel> draft', () => {})
 })
 
-test('a wrapper generic in its pattern cannot forward it to `observe`, with or without the listener alias (#116)', () => {
-	// A limitation of `observe` itself, not of either alias. Its edge overload
-	// takes a deferred conditional on `P` (I36), which an unresolved type
-	// parameter does not satisfy, so the call falls through to the bare state
-	// key overload and is rejected there. The helper above pays for compiling
-	// by taking the whole union, which costs the per-pattern narrowing.
+test('a wrapper generic in its pattern forwards it, and its caller keeps the narrowed record (#116)', () => {
+	// What the union-typed helper above gives up. `observe`'s first signature
+	// takes a matchable pattern directly rather than through a conditional, so
+	// an unresolved `P` satisfies it and reaches the listener as itself (I39).
 	const watch = <P extends Patterns<typeof doc>>(
 		host: ReturnType<typeof doc.start>,
 		pattern: P,
 		listener: Listener<typeof doc, P>,
-		// @ts-expect-error - `P` is not assignable to either overload's pattern
 	) => host.observe(pattern, listener)
-	void watch
+
+	watch(doc.start(), 'draft -submit> review', (e) => {
+		expectTypeOf(e.to).toEqualTypeOf<'review'>()
+		expectTypeOf(e.toData).toEqualTypeOf<{ text: string; reviewer: string }>()
+		expectTypeOf(e.from).toEqualTypeOf<'draft'>()
+	})
+
+	// The constraint rejects a dead pattern at the helper's own boundary.
+	// @ts-expect-error - no row matches 'empty -cancel> draft'
+	watch(doc.start(), 'empty -cancel> draft', () => {})
 })
 
 test('the listener callback still infers its argument with no parameter annotation (#116)', () => {
