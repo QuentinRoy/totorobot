@@ -241,11 +241,12 @@ since; treat it as the reason the shape was chosen, not as a current number.
   Rejected on behaviour, not on size.
 - **One shared `skip` function, not a closure per call.** The sentinel carries no
   per-call information, so a fresh closure would capture nothing.
-- **An index built once, not a prefix scan per dispatch.** Within 1.6% of each
-  other — not a basis for choosing. The index wins on behaviour: dispatch is a
-  lookup rather than a scan, and a malformed key arriving from untyped code cannot
-  accidentally prefix-match.
-- **The index key encodes both boundaries and input presence.** Names are
+- **An index built once, not a prefix scan per dispatch.** Superseded by
+  [I42](#i42). This measurement compared the index with a scan of raw key
+  prefixes. The parsed-row scan in I42 has neither the prefix bug nor the
+  index's runtime weight.
+- **The index key encodes both boundaries and input presence.** Retired with the
+  index by [I42](#i42). Names are
   arbitrary strings, so a separator cannot divide them: `'a\0b' -c>` and
   `a -b\0c>` join alike. The source length makes that boundary unambiguous. An
   immediate transition has no input; `''` is a supplied input name. The key must
@@ -253,8 +254,9 @@ since; treat it as the reason the shape was chosen, not as a current number.
 - **Patterns parsed at registration, not matched by generation.** Generating the
   eight patterns a transition could answer to and testing membership: 4.8% larger,
   plus a `Set` allocated per transition. Parsing at registration also shares
-  `parse` with the index build, which is part of why it compresses better.
-- **Null-prototype index.** 4 B golfed (17 raw, 15 gzip), the whole cost of an
+  `parse` with the transition row build, which is part of why it compresses better.
+- **Null-prototype index.** Retired with the index by [I42](#i42). It cost 4 B
+  golfed (17 raw, 15 gzip), the whole cost of an
   untyped `send('toString')` finding nothing rather than finding
   `Object.prototype`'s method and calling it as a handler. Was +10 B over two
   levels pre-golf; the keyspace is flat now, so the prototype is bought once.
@@ -283,9 +285,9 @@ since; treat it as the reason the shape was chosen, not as a current number.
   iterator re-reads `length` each step, so both pick up work queued by running
   work; the `finally` empties the queue under either.
 - **`draining` as a counter, not a boolean.** A tie on brotli, 4 B on raw and 2 on
-  gzip. `draining++` raises the flag in the expression that tests it, and
-  `queue.length = draining = 0` puts it back down in the assignment that empties
-  the queue, so the counter is two statements shorter for the same behaviour.
+  gzip. `draining++` raises the flag in the expression that tests it. The build
+  measured here reset it while clearing `queue`; [I42](#i42) keeps the counter
+  but makes rebinding `queue` smaller than clearing it.
 - **`machine` as an annotated `let`, not an overloaded `function`.** The overload
   pair — declared signature, then an implementation one taking `unknown` — is 5 B
   larger golfed (7 raw). The annotated binding states the caller-facing type once
@@ -997,3 +999,59 @@ recorded so the next reader does not rediscover it as a bug.
 The same widening question does not arise for `Announcement`'s `data`, which
 indexes `O` by the subscribed name: under `AnyVocab` that is `unknown`, which is
 exactly what the untyped path should see.
+
+### <a id="i42"></a>I42 — Parsed rows beat the encoded transition index
+
+The output channel changed the compression context enough to reopen I16's
+largest architectural choice. A full pass started from a 1,751 B raw, 935 B
+gzip, 865 B brotli bundle and measured the complete built file after each
+change. The result is 1,633 B raw, 881 B gzip, and 818 B brotli:
+
+| build                    |     raw |  gzip | brotli |
+| ------------------------ | ------: | ----: | -----: |
+| encoded transition index | 1,751 B | 935 B |  865 B |
+| parsed transition rows   | 1,633 B | 881 B |  818 B |
+| change                   |  -118 B | -54 B |  -47 B |
+
+`machine()` now stores each transition as `[handler, parse(key)]` and `step()`
+scans those rows for exact source and input equality. This is not I16's rejected
+raw-prefix scan. Every key is still parsed when the definition is built, so a
+malformed key still throws before `start()`. The row list also snapshots the
+keys and handler values, keeps declaration order among competing handlers, and
+returns after the first handler that does not call `skip()`.
+
+`parse()` changes the empty middle slot of an immediate arrow to `undefined`.
+That gives the scan an exact runtime distinction between an immediate transition
+and `send('')`. Pattern rows reuse the same value as their absent-label wildcard,
+so actions and observers keep their existing matching rules. Reusing the split
+array as the coordinate tuple was smaller than allocating another array. Storing
+the handler before that tuple compressed one brotli byte smaller than the reverse
+order at the point where the two forms were compared.
+
+The scan trades constant-time lookup for work proportional to the number of
+declared transitions. That cost is deliberate: machines normally have small
+tables, while every consumer downloads the index builder and key encoding whether
+or not a lookup saves meaningful time. A source-keyed index reached 1,674 B raw,
+907 B gzip, and 855 B brotli on an intermediate build. Keeping raw keys and
+parsing them during dispatch reached 1,656 B, 892 B, and 835 B. Neither recovered
+the bytes removed by parsed flat rows, and the latter also moved parsing onto the
+hot path.
+
+Four smaller changes became possible or profitable around the new layout:
+
+- Startup passes all action rows to `fire()` instead of allocating a filtered
+  array. A synthetic arrival has no `from`, and `fire()` admits such an arrival
+  only for a row with a residency teardown key, so edge actions still do not run.
+- `dispatch()` resets by rebinding `queue` to a new empty array. A completed
+  dispatch no longer needs the old array, and a failed dispatch must abandon its
+  remaining work; rebinding has the same behavior as setting its length to zero.
+- `emit()` builds its announcement inside the dispatch closure. This compressed
+  one brotli byte smaller in the final layout without changing when listeners run.
+- Terser emits single-quoted strings, and a final build hook removes its one
+  trailing semicolon. Automatic semicolon insertion makes the end-of-file byte
+  unnecessary. Other Terser pass counts and unsafe transforms did not improve the
+  result. Oxc produced 2,606 B raw, 1,116 B gzip, and 1,036 B brotli.
+
+The type surface stays readable and the declaration output keeps the same public
+API. Runtime-only helper types describe the parsed representation and disappear
+from the JavaScript bundle.

@@ -34,17 +34,23 @@ let skip = (): Skip => SKIP
 
 /**
  * Both separators carry their space, which is what fixes the spelling and what
- * leaves an unlabelled arrow's label empty: hence `''` as the label wildcard.
- * Shared by `machine()` and `observe()`, so the two cannot drift.
+ * initially leaves an unlabeled arrow's label empty. Normalizing that slot to
+ * `undefined` lets transition dispatch distinguish an immediate row from
+ * `send('')`; pattern matching still reads an absent label as its wildcard.
+ * Shared by `machine()` and `observe()`, so the two cannot drift. The
+ * exclusive-or check is zero only when the split has exactly three parts
+ * (I42).
  */
+type Coordinates = [from: string, input: string | undefined, to: string]
+
 let parse = (
 	key: string,
-	parts = key.split(/ -|> /),
-): [from: string, input: string, to: string] => {
-	if (parts.length !== 3 || !parts[0] || !parts[2]) {
+	parts: (string | undefined)[] = key.split(/ -|> /),
+): Coordinates => {
+	if (parts.length ^ 3 || !parts[0] || !parts[2]) {
 		throw SyntaxError(`not a transition: '${key}'`)
 	}
-	return parts as [string, string, string]
+	return ((parts[1] ||= undefined), parts) as Coordinates
 }
 
 // ---------------------------------------------------------------------------
@@ -759,7 +765,8 @@ type UncheckedHandler = (
 	args: UncheckedSource & { readonly skip: () => Skip },
 ) => unknown
 
-type Row = readonly [to: string, handler: UncheckedHandler]
+/** A transition handler beside its once-parsed coordinates; see I42. */
+type Row = readonly [handler: UncheckedHandler, coordinates: Coordinates]
 
 /** The snapshot, unchecked: the name dispatch keys on, and what it carries. */
 type Snapshot = { readonly name: string; readonly data: unknown }
@@ -778,13 +785,6 @@ interface UncheckedHost {
 	) => () => void
 	readonly on: (output: string, listener: (a: unknown) => void) => () => void
 }
-
-/**
- * Every row of the table, in order, under the pair that reaches it. A marker
- * separates named inputs from immediate rows. One flat, null-prototype map, so
- * `send('toString')` finds nothing to call (I16).
- */
-type Index = Record<string, Row[] | undefined>
 
 /**
  * Carries a vocabulary at the type level and returns `undefined`, all a caller
@@ -820,7 +820,8 @@ let dispatch = (work?: () => void): void => {
 	} finally {
 		// In a `finally` so a throwing observer leaves every host usable; the queue is
 		// abandoned, not drained, and what committed stays committed.
-		queue.length = draining = 0
+		queue = []
+		draining = 0
 	}
 }
 
@@ -830,19 +831,23 @@ let dispatch = (work?: () => void): void => {
  * parse identically (§11 The host). `item.run ?? item` reads both item shapes
  * at once: a plain function has no `run`, and a value carrying one is a record
  * that happens to be callable, not the reverse. An arrow row stops at its
- * handler, `key` and `restart` meaning nothing on one (I16).
+ * handler, `key` and `restart` meaning nothing on one. A residency leaves its
+ * input slot empty: reading the hole yields `undefined` without making the
+ * bundle spell that value (I42).
  */
 let toRow = (key: string, item: UncheckedItem): Registration => {
 	let run = item.run ?? item
 	return / -|> /.test(key)
 		? ([...parse(key), run] as Registration)
-		: (['*', '', key, run, key, item.restart] as Registration)
+		: (['*', , key, run, key, item.restart] as unknown as Registration)
 }
 
 /**
- * Declare a machine. The result is inert data: the index lives in a closure,
- * the configuration object is never touched, and only `start` is exposed. Keys
- * are parsed once, so dispatch is a lookup rather than a scan (I16).
+ * Declare a machine. The result is inert data: a parsed row snapshot lives in a
+ * closure, the configuration object is never touched, and only `start` is
+ * exposed. Keys are parsed once and exact coordinates are scanned at dispatch;
+ * this replaced the larger encoded index after the full architecture pass
+ * (I42).
  *
  * `inputs` and `states` are the vocabulary's only inference sites, both optional
  * — omitting one keeps the names `transitions` mentions and widens only their
@@ -897,19 +902,11 @@ export let machine: <
 				Record<string, ActionItem | readonly ActionItem[]>
 			>
 		}
-		let index: Index = Object.create(null)
+		let rows: Row[] = []
 
-		// One flat keyspace for both kinds of row. The source length separates the
-		// source from its input; a marker distinguishes a named input from no input.
-		// Spelled out at all three sites rather than shared, which measures smaller
-		// (I16).
-		for (let key in transitions) {
-			let [from, input, to] = parse(key)
-			;(index[from.length + '\0' + from + (input && 1 + input)] ??= []).push([
-				to,
-				transitions[key]!,
-			])
-		}
+		// Snapshot keys and handlers while rejecting malformed keys at construction.
+		// Either order behaves the same; handler first compressed one byte smaller.
+		for (let key in transitions) rows.push([transitions[key]!, parse(key)])
 
 		// Residency on `N` is stored as the pattern `* -> N`, the teardown key alone
 		// telling the two kinds apart, so one loop matches both and observers
@@ -943,7 +940,7 @@ export let machine: <
 				let clear = (row: Registration) => (row[6] = void row[6]?.())
 
 				// The wildcard rules once, for actions, residencies and observers alike:
-				// `*` and `''` stand for any, and a missing `from` — an arrival no
+				// `*` and an absent label stand for any, and a missing `from` — an arrival no
 				// transition caused — matches no edge row, so that case needs no branch
 				// of its own (§9 Actions). Only a residency has a teardown key, stores
 				// what it returns, and gates setup on a self-transition by `row[7]`, the
@@ -965,9 +962,9 @@ export let machine: <
 						let [f, l, t, run, key] = row
 						if (
 							(f === '*' || f === e.from) &&
-							(l === '' || l === e.input) &&
+							(!l || l === e.input) &&
 							(t === '*' || t === e.to) &&
-							(!key || e.to !== e.from || row[7])
+							(key ? e.to !== e.from || row[7] : e.from)
 						) {
 							let teardown = run(e)
 							if (key) row[6] = teardown as Teardown | undefined
@@ -992,62 +989,70 @@ export let machine: <
 				// that does not decline, report whether the machine moved. Fusing it with
 				// the chain below, or splitting a `commit` out of it, measured larger (I16).
 				let step = (
-					rows: Row[] = [],
 					input?: UncheckedFacts['input'],
 					inputData?: unknown,
 				): boolean => {
 					// The source, read once for the whole scan: only a commit moves the
 					// machine, and a commit returns.
 					let { name: from, data: fromData } = current
-					for (let [to, handler] of rows) {
-						let toData = handler({ input, inputData, from, fromData, to, skip })
-						// Declining is ordinary and silent: try the next row for this pair.
-						if (toData !== SKIP) {
-							// The hop's own facts, built before the commit so a restart
-							// predicate sees what it is deciding about, and carrying no `send`:
-							// a pure decision is one at runtime too, not only in the types (§9
-							// Actions).
-							let facts: UncheckedFacts = {
+					for (let [handler, [source, label, to]] of rows) {
+						if (source === from && label === input) {
+							let toData = handler({
 								input,
 								inputData,
 								from,
 								fromData,
 								to,
-								toData,
-							}
+								skip,
+							})
+							// Declining is ordinary and silent: try the next row for this pair.
+							if (toData !== SKIP) {
+								// The hop's own facts, built before the commit so a restart
+								// predicate sees what it is deciding about, and carrying no `send`:
+								// a pure decision is one at runtime too, not only in the types (§9
+								// Actions).
+								let facts: UncheckedFacts = {
+									input,
+									inputData,
+									from,
+									fromData,
+									to,
+									toData,
+								}
 
-							// The residency being left tears down before the commit, actions
-							// before observers, each in reverse declaration order, so several on
-							// one trigger unwind like a stack. A throw here abandons the hop with
-							// nothing committed and the later teardowns unrun (§9 Actions). `false`
-							// survives, a predicate decides from the transition's own facts,
-							// anything else restarts, an omitted `restart` included; `.call` is the
-							// cheapest thing only a function has. `row[7]` banks that one decision
-							// for `fire` to reuse below, on that same row's setup, so a predicate
-							// the caller wrote once is asked once (§9 Actions).
-							for (let list of [acts, observers]) {
-								for (let row of list.toReversed()) {
-									if (
-										row[4] === from &&
-										(to !== from ||
-											(row[7] = (row[5] as Predicate)?.call
-												? (row[5] as Predicate)(facts)
-												: row[5] !== false))
-									) {
-										clear(row)
+								// The residency being left tears down before the commit, actions
+								// before observers, each in reverse declaration order, so several on
+								// one trigger unwind like a stack. A throw here abandons the hop with
+								// nothing committed and the later teardowns unrun (§9 Actions). `false`
+								// survives, a predicate decides from the transition's own facts,
+								// anything else restarts, an omitted `restart` included; `.call` is the
+								// cheapest thing only a function has. `row[7]` banks that one decision
+								// for `fire` to reuse below, on that same row's setup, so a predicate
+								// the caller wrote once is asked once (§9 Actions).
+								for (let list of [acts, observers]) {
+									for (let row of list.toReversed()) {
+										if (
+											row[4] === from &&
+											(to !== from ||
+												(row[7] = (row[5] as Predicate)?.call
+													? (row[5] as Predicate)(facts)
+													: row[5] !== false))
+										) {
+											clear(row)
+										}
 									}
 								}
+
+								// Commit, then notify, so every observer sees a machine that agrees
+								// with the record. The payload is stored exactly as returned (§5).
+								current = { name: to, data: toData }
+
+								// Actions in declaration order, then observers (§9 Actions).
+								fire(acts, facts, actionCapabilities)
+								fire(observers, facts)
+								// One input yields at most one transition.
+								return true
 							}
-
-							// Commit, then notify, so every observer sees a machine that agrees
-							// with the record. The payload is stored exactly as returned (§5).
-							current = { name: to, data: toData }
-
-							// Actions in declaration order, then observers (§9 Actions).
-							fire(acts, facts, actionCapabilities)
-							fire(observers, facts)
-							// One input yields at most one transition.
-							return true
 						}
 					}
 					return false
@@ -1057,7 +1062,7 @@ export let machine: <
 				// per call, so settling the initial state does not spend the first send's.
 				let settle = (): void => {
 					let hops = 1e5
-					while (step(index[current.name.length + '\0' + current.name])) {
+					while (step()) {
 						// Counted down rather than up: the budget is the whole test. Far above
 						// any real chain, and `'a -> a'` rewriting its own data terminates.
 						if (!hops--) {
@@ -1074,14 +1079,7 @@ export let machine: <
 				let send: UncheckedSend = (input, inputData) => {
 					queue.push(() => {
 						// Read at drain time, so a queued send may correctly find no row.
-						if (
-							step(
-								index[current.name.length + '\0' + current.name + 1 + input],
-								input,
-								inputData,
-							)
-						)
-							settle()
+						if (step(input, inputData)) settle()
 					})
 					dispatch()
 				}
@@ -1105,8 +1103,8 @@ export let machine: <
 				// listener's own frame and re-enter it (§10 Composition). A throwing
 				// listener propagates, like a throwing observer.
 				let emit: UncheckedEmit = (output, data) => {
-					let a = { output, data, send }
 					dispatch(() => {
+						let a = { output, data, send }
 						for (let [name, run] of listeners) if (name === output) run(a)
 					})
 				}
@@ -1117,15 +1115,13 @@ export let machine: <
 
 				// Under the drain `send` takes, so a send from one of these hops runs after
 				// the chain settles (§11 The host, "`start` settles under the drain").
-				// Entering `initial` is not a transition, so no `from` — which is what an
-				// edge row, wildcard source included, needs to fire (§9 Actions, "the
-				// startup slice"); `row[4]` is the teardown key only a residency row has,
-				// so filtering on it is what keeps startup residency-only.
+				// Entering `initial` is not a transition, so no `from`. `fire`'s final
+				// clause admits a row on that synthetic arrival only when it has the
+				// teardown key unique to a residency; passing the whole list therefore
+				// remains the residency-only startup slice without allocating a filter
+				// result (I42; §9 Actions).
 				dispatch(() => {
-					enter(
-						acts.filter((row) => row[4]),
-						actionCapabilities,
-					)
+					enter(acts, actionCapabilities)
 					settle()
 				})
 
@@ -1201,7 +1197,7 @@ type Arrival = UncheckedFacts & {
  */
 type Registration = [
 	from: string,
-	input: string,
+	input: string | undefined,
 	to: string,
 	run: (arrival: Arrival) => unknown,
 	key?: string,
