@@ -649,14 +649,12 @@ export type Patterns<M> = MatchedPattern<
  * `observe` rather than called an observer, which the roadmap's `on` has the
  * better claim to: this one is handed a transition record, not an event (I40).
  */
-export type Observer<M, P extends Patterns<M> = Patterns<M>> = (
-	transition: Transition<
-		Carried<M>['inputs'],
-		Carried<M>['states'],
-		Carried<M>['keys'],
-		P
-	>,
-) => void
+export type Observer<M, P extends Patterns<M> = Patterns<M>> = EdgeObserver<
+	Carried<M>['inputs'],
+	Carried<M>['states'],
+	Carried<M>['keys'],
+	P
+>
 
 // ---------------------------------------------------------------------------
 // The definition
