@@ -68,6 +68,8 @@ export const publication = machine({
 		published: { text: string; revision: number }
 	}>(),
 
+	outputs: type<{ reviewRequested: { reviewer: string } }>(),
+
 	initial: 'empty',
 
 	transitions: {
@@ -91,7 +93,8 @@ export const publication = machine({
 	},
 
 	actions: {
-		review: ({ send }) => {
+		review: ({ toData, send, emit }) => {
+			emit('reviewRequested', { reviewer: toData.reviewer })
 			const timer = setTimeout(() => send('expireReview'), 30_000)
 			return () => clearTimeout(timer)
 		},
@@ -99,16 +102,22 @@ export const publication = machine({
 })
 
 const doc = publication.start()
-doc.observe('* -> published', (e) => notify(e.toData))
+doc.observe('draft -submit> review', (e) => console.log(e))
+doc.on('reviewRequested', ({ data }) => notifyReviewer(data.reviewer))
 doc.send('open', { text: 'hello' })
 doc.send('submit', { reviewer: 'Quentin' })
 ```
 
 `reviewer` exists only on `review`. `draft` does not have it yet, `published` no
 longer needs it, and neither carries a nullable placeholder. While the document
-is in review, the action schedules an input on the same host. Its teardown clears
-the timer if review ends first. The caller registers publication notifications
-through `observe`.
+is in review, the action schedules an input on the same host and emits
+`reviewRequested`; its teardown clears the timer if review ends first.
+
+The two subscriptions cover different ground.
+`observe('draft -submit> review', ...)` names the source, the input, and the
+target to get the whole transition record back. [`on`](#on-on-the-host) needs
+only the output's name: `reviewRequested` says what happened without saying
+which edge caused it.
 
 ## Contents
 
