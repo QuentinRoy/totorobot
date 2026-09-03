@@ -346,10 +346,9 @@ that would otherwise apply to its own arrival opts out by declining, the same
 way any row opts out of a source it does not want.
 
 The handler's `from` and `fromData` correlate the way `current.name` and
-`current.data` do: checking `from` narrows `fromData` to that state's own
-payload. That is what makes the opt-out above a plain condition rather than a
-cast — `from === 'idle'` narrows `fromData` to `idle`'s payload on that branch,
-and to the rest of the vocabulary's on the other.
+`current.data` do, so `from === 'idle'` narrows `fromData` to `idle`'s payload
+on that branch and to the rest of the vocabulary's on the other. That is what
+makes the opt-out above a plain condition rather than a cast.
 
 A wildcard row is an ordinary row. Rows are tried in declaration order and
 `skip()` falls through to the next one exactly as it does anywhere else — there
