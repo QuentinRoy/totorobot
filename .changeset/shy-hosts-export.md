@@ -2,14 +2,11 @@
 'totorobot': patch
 ---
 
-`Machine` and `Host` are now exported: `Machine` is what `machine()` returns,
-`Host` is what its `start()` method returns. Before this, `export const m =
-machine({...})` — the pattern the README's own example uses — failed a plain
-`tsc --declaration` build with `TS4023`: the type of `m` existed but could not
-be named outside the package.
+`Machine` and `Host` (what `machine()` and its `start()` method return) are
+now exported, so a consumer can name them. Before this, exporting a machine
+(`export const m = machine({...})`, the pattern the README's example uses)
+failed a `tsc --declaration` build with `TS4023`.
 
-`--isolatedDeclarations` still refuses to infer an exported value's type at
-all, so a machine exported under that flag still needs its type spelled out by
-hand: `export const m: Machine<Inputs, States, Keys, InitialState, Outputs> =
-machine({...})`. That was already true; only the ability to name `Machine` and
-`Host` in the first place is new.
+A machine's type is always inferred, so `--isolatedDeclarations` still
+requires writing it out by hand: `const m: Machine<Inputs, States, Keys,
+InitialState, Outputs> = machine({...})`.
