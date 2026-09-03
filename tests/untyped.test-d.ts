@@ -299,18 +299,21 @@ test('declaring states and omitting inputs checks states and infers inputs from 
 	expectTypeOf(host.send).parameter(0).toEqualTypeOf<'toggle'>()
 })
 
-test('`*` in a key position is rejected rather than joining the inferred vocabulary (#22)', () => {
+test("`*` is legal only as a row's own source; a target or an input position still rejects it (#22, #142)", () => {
 	// Every row here parses fine at runtime — `*` is a well-formed name to the
-	// grammar `parse` enforces — so nothing throws. The rejection is entirely
-	// the type layer's: `*` never joins `StatesFromKeys`, so `Key` never
-	// matches these rows and `Table` poisons each on its own line.
+	// grammar `parse` enforces — so nothing throws. `'* -go> on2'` is accepted:
+	// a wildcard source is a declaration in its own right since #142, and
+	// contributes nothing to the inferred vocabulary itself (`on2` is inferred
+	// from being a target, not from the row's source). The other two rejections
+	// are entirely the type layer's: `*` never joins `StatesFromKeys` as a
+	// target, and never joins `InputsFromKeys` at all, so `Key` does not match
+	// those rows and `Table` poisons each on its own line.
 	machine({
 		initial: 'off',
 		transitions: {
 			'off -go> on': () => {},
-			// @ts-expect-error - '*' is the wildcard, not an inferable state name
 			'* -go> on2': () => {},
-			// @ts-expect-error - '*' is the wildcard, not an inferable state name
+			// @ts-expect-error - '*' is the wildcard; a row's target stays a single named state
 			'on -back> *': () => {},
 			// @ts-expect-error - '*' is the wildcard, not an inferable input name
 			'off -*> on': () => {},
@@ -325,8 +328,8 @@ test('`initial: "*"` is rejected once `*` is excluded from the inferred states (
 		initial: '*',
 		transitions: {
 			'off -go> on': () => {},
-			// @ts-expect-error - '*' is the wildcard, not an inferable state name
-			'* -back> off': () => {},
+			// @ts-expect-error - '*' is the wildcard; a row's target stays a single named state
+			'on -back> *': () => {},
 		},
 	})
 })

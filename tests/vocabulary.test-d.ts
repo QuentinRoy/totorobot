@@ -214,3 +214,37 @@ test('Handled excludes an immediate row; Sources includes an immediate source', 
 	expectTypeOf<Sources<M, 'draft'>>().not.toBeAny()
 	expectTypeOf<Sources<M, 'draft'>>().toEqualTypeOf<'empty'>()
 })
+
+test('a wildcard-sourced row counts for `Handled`, and `Sources` expands it to every declared state rather than reporting `*` (#142)', () => {
+	const nav = machine({
+		initial: 'empty',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: {
+			'empty -open> draft': ({ inputData }) => ({
+				text: inputData.text,
+				revision: 0,
+			}),
+			'* -cancel> empty': () => {},
+		},
+	})
+
+	type M = typeof nav
+
+	// "cancel" reaches "empty" from every declared state, "empty" and "draft"
+	// alike, through the one wildcard row — "cancel" is therefore something
+	// "empty" itself handles too, beside its own "open".
+	expectTypeOf<Handled<M, 'empty'>>().not.toBeAny()
+	expectTypeOf<Handled<M, 'empty'>>().toEqualTypeOf<'open' | 'cancel'>()
+	expectTypeOf<Handled<M, 'draft'>>().not.toBeAny()
+	expectTypeOf<Handled<M, 'draft'>>().toEqualTypeOf<'cancel'>()
+
+	// The reverse index never names the wildcard token itself.
+	expectTypeOf<Sources<M, 'empty'>>().not.toBeAny()
+	expectTypeOf<Sources<M, 'empty'>>().toEqualTypeOf<'empty' | 'draft'>()
+
+	// A wildcard row reaches every *declared* state, not literally any string:
+	// a name the machine never declares still resolves to `never`, the same
+	// as it did with no wildcard row in the table at all.
+	expectTypeOf<Handled<M, 'notAState'>>().toEqualTypeOf<never>()
+})

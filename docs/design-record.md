@@ -656,6 +656,36 @@ property but needs the double call, because TypeScript has no partial
 type-argument inference (microsoft/TypeScript#53999). `()()` reads worse than one
 extra property.
 
+**Revision (#141): a declared vocabulary may not name `*` or a name carrying a
+space, reversing "declared vocabularies are left alone" above.** That position held
+only as long as nothing read a declared `*` differently from any other name.
+[§6](#6-immediate-transitions)'s own revision gives a transitions row's source
+position a second meaning for `*` — "every declared state" rather than "the
+state literally named `*`" — so a table that declared a state called `*` would
+make `'* -submit> review'` ambiguous between the two, decided by nothing in the
+row itself. The choice was between shadowing the declared name and forbidding
+it; shadowing would leave one token meaning two things depending on a
+declaration elsewhere in the file, which is the same objection this section
+already raised against filtering `Name` itself. Forbidding it keeps the two
+meanings from ever colliding, at the declared site the way inference is
+already filtered above.
+
+A padded name is reversed alongside it, on the same reasoning inference already
+used: the grammar's own delimiters (` -`, `> `) absorb a leading or trailing
+space silently, so a state called `' b'` mints a key no reader can tell apart
+from a doubled space typo. `type<{ ' b': void }>()` no longer keeps working —
+the sentence above describing it, in the paragraph this revision reverses, is
+superseded here.
+
+The check attaches to the same `VocabMap` gate this section already built,
+rather than becoming a fourth thing a caller can trip over: each of `inputs`,
+`states` and `outputs` passes through it, and a name failing either rule
+poisons its own key with a message naming the offender and which of the three
+vocabularies it is in, the same `not a transition: '…'`-style diagnostic this
+section used for `Table`'s own rows. A name that merely contains `*`, such as
+`a*b`, is untouched — only the exact token collides with the wildcard, so only
+the exact token is taken.
+
 ### `inputs`, not `events`
 
 The minority word in JavaScript and the majority word in the formal literature.
@@ -1018,6 +1048,18 @@ There is **one** key language. What differs is what a key is being used _for_:
 - **Matching**, in `observe()` — the key _selects_ edges. A coordinate may be left
   unconstrained.
 
+**Revision (#142): the source coordinate is the one exception.** "Every
+coordinate must be concrete" held for all three positions until #142 gave `*`
+in the source position a declaring meaning of its own: not "an edge with an
+unspecified input" — the target and the input stay exactly as concrete as the
+bullet above says — but "this edge, from every state the machine has." A
+declared row already has to name a real target and, unless it is immediate, a
+real input; only the source was ever a place a table repeated itself once per
+state for one edge, and that repetition is what `*` now removes. The two uses
+still agree on what `*` in the source position means — "every declared
+state" — the declaring reading is just no longer empty there the way it stays
+empty for the other two.
+
 An omitted input position reads identically in both: **no input is named.** A
 declaration has to be complete, so that means the edge has none: it is immediate. A
 pattern does not, so it means the input is unconstrained, and an immediate
@@ -1032,8 +1074,10 @@ when declared and "any input" when matched. It does not. The key rule discrimina
 **state from edge** (`'review'` against `'* -submit> *'`), and `'a -> b'` has an
 arrow, so it is an edge in both uses and the rule answers identically. How
 _completely_ an edge's coordinates are filled in is a different axis, one the rule
-never spoke to. If it did, `*` would already be a violation, since `*` is legal in a
-pattern and meaningless in a declaration.
+never spoke to. When this was written, `*` would already have been a violation of
+that axis too, since `*` was legal in a pattern and meaningless in a declaration
+everywhere. #142's revision above narrows that to the target and the input
+positions; the observation stands for both.
 
 ### `*` requires an input; an omitted position does not
 
@@ -1078,6 +1122,76 @@ makes its source transient**, so there is usually nobody in that state to send i
 input, and both patterns then have the same edges to choose between. The exception is
 the case §10 records: if every immediate candidate calls `skip()`, you stay, and
 input edges out of that state (`'loading.ok -cancel> empty'`) become meaningful.
+
+### `*` as a row's own source
+
+The repetition #142 answers: an edge that applies from every state has to be
+written once per state, and adding a state means remembering to add the row
+again everywhere the same edge applies. `observe` and `actions` already accept
+`*` in the source position; only `transitions` refused it, on the ground the
+revision above overturned. The fix is symmetrical with that finding — spend
+the same token the matching side already uses, rather than inventing a second
+one.
+
+**The wildcard covers every state the machine knows, including the row's own
+target.** No carve-out for a self-transition. Excluding the target would make
+the token mean one thing when a reader reads it and another when the runtime
+runs it — precisely the "one wildcard, one meaning" ground [§4](#4-layout)
+already stands on. A row that would otherwise fire on its own arrival opts out
+the ordinary way: `skip()`. For a source no concrete row names, the wildcard
+row is the only candidate, so declining it declines the input exactly as
+before the row existed — nothing new, just `skip()`'s existing meaning applied
+to a row that happens to be broader.
+
+**A wildcard row is an ordinary row**, scanned in declaration order with every
+other row for the same input, `skip()` falling through the same way. This was
+weighed against two alternatives and both were declined. Sealing a state off
+from the wildcard row once a concrete row exists for it would make declining
+mean two different things depending on which tier a row sits in — the same
+kind of double meaning the revision above was written to avoid. A second
+terminator that halts candidate search outright would be a new concept for a
+problem `skip()` already solves; "special case, otherwise the general rule" is
+already expressible by declaring the concrete row first and letting the
+wildcard row decline for what it already handled.
+
+**The handler argument is a discriminated union of source and source
+payload**, not `from: string` with `fromData: unknown`. One member per
+declared state, built the same way [§5](#5-the-declared-vocabulary)'s own
+`Current` is: checking `from` narrows `fromData` beside it, so the opt-out
+above is a plain condition rather than a cast, and reading a field only some
+states carry, before that check, is a compile error rather than a silent
+`any`. A row with a concrete source keeps exactly the argument it had before
+this section — a discriminated union of one member reduces to a plain object.
+
+**Pattern matching has to learn that a row can hold a wildcard too.** The
+matching rule behind `observe`'s registration check (#100, implementation record
+[I32](implementation-record.md#i32), [I36](implementation-record.md#i36))
+was written when only a pattern's own source could be `*`; a pattern naming a
+concrete state was rejected as matching no row, because no row's source equalled
+the pattern's, even when a wildcard row plainly fires from that state at
+runtime. The fix adds the second arm: a row whose own source is `*` matches
+any pattern naming a concrete one, alongside the existing arm where the
+pattern's source is `*`. Left unfixed, this is exactly the failure #100 was
+written to catch, in the opposite direction — not a pattern the table cannot
+fire accepted anyway, but a pattern the table _can_ fire rejected because the
+pattern language could not yet describe how. The transition record `observe`
+builds from a matched wildcard row names the pattern's own concrete source
+when the pattern has one, never the `*` token; when the pattern is itself
+broad, the record still discriminates every state the row covers, the same
+construction the handler argument above uses.
+
+**What it costs, corrected rather than left standing:** the README's own
+["what the table gives you for free"](../README.md#what-the-table-gives-you-for-free)
+sold the transitions table as greppable — `'draft -'` answers "what can I do in `draft`?" as an
+exact text search. A wildcard row breaks that promise for exactly the rows it
+creates: it makes an edge real from every state, `draft` included, without the
+string `draft` appearing anywhere in the table. `Handled` and `Sources`, the derived
+types the same section already offers as the typed alternative to the search,
+answer correctly regardless — they read a row's actual reach, not its
+spelling — so the cost is borne by the eyeball search, not by the type layer.
+Shipping this trades that search property for removing a repetition the table
+otherwise forces; not shipping means keeping the repetition and the exception
+`transitions` alone carried against `observe` and `actions`.
 
 ### What it forces open
 
@@ -3286,6 +3400,11 @@ how policy is spelled closed in [§9](#restart-and-how-the-policy-is-spelled) as
   [I28](implementation-record.md#i28) are separate inference gaps in the same
   code, closed the way `Table` and a handler's `state` already close them.
   Wildcard triggers survived, so the cost this bullet recorded was never paid.
+  #142 closes the matching half of this same question for `transitions`
+  itself: a wildcard source was rejected there for an unrelated reason
+  ([§6](#6-immediate-transitions)'s revision), never for the inference
+  collapse this bullet worried about, and #142's own row-mapped `Table` does
+  not collapse a wildcard row's argument either.
 
 ## Where the code is
 

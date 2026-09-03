@@ -138,6 +138,7 @@ which edge caused it.
   - [The key language](#the-key-language)
   - [The handler decides and projects](#the-handler-decides-and-projects)
   - [Declining, and row precedence](#declining-and-row-precedence)
+  - [A wildcard source: one row for every state](#a-wildcard-source-one-row-for-every-state)
   - [Immediate transitions: an edge with no input](#immediate-transitions-an-edge-with-no-input)
   - [What the table gives you for free](#what-the-table-gives-you-for-free)
 - [`actions`: lifetime-scoped work](#actions-lifetime-scoped-work)
@@ -188,6 +189,11 @@ no data. A payload may be a primitive, function, `Map`, or object with its own
 `name` or `type` property. Totorobot stores the value unchanged; it does not
 spread, clone, freeze, or validate it. Mutating an object is therefore visible
 through earlier snapshots.
+
+A name may not be `*` — reserved for the pattern wildcard — or contain a space
+anywhere; either is a compile error naming the offending key. The same rule
+applies to `outputs`, below. Inference already keeps both out of a vocabulary it
+reads off `transitions`, so this only matters for a name you declare by hand.
 
 `type<T>()` only carries `T`. It returns `undefined`, and nothing reads it.
 Either vocabulary can be named, exported, imported, generated, or declared
@@ -262,6 +268,8 @@ The input is the arrow's label, and three rules govern the spelling:
   [immediate transition](#immediate-transitions-an-edge-with-no-input)**:
   `'checking -> allowed'`. That edge has no input at all. A pattern's unlabeled
   arrow means something different: there, the input is unconstrained.
+- **The source may be `*`**: [one row, every state](#a-wildcard-source-one-row-for-every-state).
+  The target is always a single named state; only the source widens.
 
 A malformed key is reported at compile time as `not a transition: '…'`, on its
 own line. The grammar is enforced at runtime too: `machine()` throws
@@ -321,6 +329,38 @@ A row that always declines under some condition is an ordinary way to express
 That row is also a self-transition, a row whose target is its source. It
 commits and notifies like any other row.
 
+### A wildcard source: one row for every state
+
+An edge that applies from every state has to be written once per state, unless
+the source is `*`:
+
+```ts
+'* -up> idle': ({ from, fromData, skip }) =>
+	from === 'idle' ? skip() : { deps: fromData.deps },
+```
+
+One row now says "this input, from wherever the machine is, lands here",
+instead of one row per source state. It covers every state the machine knows,
+including its own target: there is no carve-out for a self-transition, so a row
+that would otherwise apply to its own arrival opts out by declining, the same
+way any row opts out of a source it does not want.
+
+The handler's `from` and `fromData` correlate the way `current.name` and
+`current.data` do, so `from === 'idle'` narrows `fromData` to `idle`'s payload
+on that branch and to the rest of the vocabulary's on the other. That is what
+makes the opt-out above a plain condition rather than a cast.
+
+A wildcard row is an ordinary row. Rows are tried in declaration order and
+`skip()` falls through to the next one exactly as it does anywhere else — there
+is no rule that a concrete row seals its state off from a wildcard row
+declared elsewhere in the table, and no special precedence tier. A pattern
+naming one of the states a wildcard row covers matches it, so
+`observe('startup -up> idle', …)` is legal even though no row spells that edge
+with `startup` as its literal source — only the wildcard row does. `Handled`
+and `Sources` agree with what the row actually does too: a wildcard row counts
+for `Handled`, and `Sources` reports the states it reaches by name, never the
+`*` token itself.
+
 ### Immediate transitions: an edge with no input
 
 A row whose arrow carries no label fires on entering its source state, tried
@@ -356,6 +396,21 @@ A chain that never settles throws. After 100,000 consecutive hops the machine
 raises `RangeError`, naming a state inside the cycle. There is no rollback:
 observers keep every hop that committed, and the host stays usable.
 
+The unlabelled form combines with a
+[wildcard source](#a-wildcard-source-one-row-for-every-state) too:
+`'* -> checking'` is immediate from every state. Left unguarded, it never
+settles — its own target is one of the states it applies to, so landing there
+fires it again, forever, until the hop budget throws. Guard it exactly as any
+immediate row guards itself, by declining on its own target:
+
+```ts
+'* -> checking': ({ from, skip }) => (from === 'checking' ? skip() : undefined),
+```
+
+That is not a special rule for this combination; it is the same opt-out
+[the wildcard source section](#a-wildcard-source-one-row-for-every-state)
+already describes, applied to a row that also happens to have no input.
+
 `.start()` settles the initial state's immediates too, chain and all, before
 the host is handed back, so those hops are unobservable: nobody has subscribed
 yet. If you need to observe an arrival, do not make it the initial state. The
@@ -376,6 +431,13 @@ an exact text search:
 
 Two of the three are derivable as types as well: `Handled<MachineType, 'draft'>` and
 `Sources<MachineType, 'review'>`, so the reverse index never has to be maintained by hand.
+
+A [wildcard-sourced row](#a-wildcard-source-one-row-for-every-state) is the one
+gap in the search story: `'draft -'` will not find a `'* -submit> review'` row
+that applies to `draft` along with every other state, because the text `draft`
+never appears in it. `Handled` and `Sources` still answer correctly — they read
+the row's actual reach, not its spelling — so reach for those where a wildcard
+row might be in play.
 
 ## `actions`: lifetime-scoped work
 
@@ -737,6 +799,12 @@ input-driven edges and
 [immediate transitions](#immediate-transitions-an-edge-with-no-input), which
 have no input at all. A labeled pattern never matches an immediate. A bare key
 is legal too, but means something else entirely: [residency](#residency), next.
+
+A [wildcard-sourced row](#a-wildcard-source-one-row-for-every-state) matches a
+pattern naming one of the concrete states it reaches, not only a pattern that
+is itself broad — the row and the pattern language agree on what the table can
+fire. The record `observe` hands back always names the real source the machine
+left, never the `*` token.
 
 A pattern built from declared state and input names but naming no declared row
 — exact or broad — is a compile error, not an observer typed with `never`:

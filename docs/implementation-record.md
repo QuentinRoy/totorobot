@@ -1055,3 +1055,82 @@ Four smaller changes became possible or profitable around the new layout:
 The type surface stays readable and the declaration output keeps the same public
 API. Runtime-only helper types describe the parsed representation and disappear
 from the JavaScript bundle.
+
+### <a id="i43"></a>I43 — A per-key diagnostic on a vocabulary gate is a mapped type, not an intersected `never`
+
+#141 needed `states`, `inputs` and `outputs` to reject a declared `*` or a
+name carrying a space, one message naming the offending key rather than one
+opaque failure for the whole map — the same improvement `Table` already gives
+a malformed transition key over a bare unassignability. `VocabMap`'s existing
+gate resolves the _whole_ vocabulary to `unknown` or `never`; intersecting
+that outcome onto the parameter (`RawInputs & VocabMap<...>`) is what already
+lets `RawInputs` stay an ordinary inference site while the gate also
+constrains it.
+
+The fix keeps that shape and only changes what a passing shape check resolves
+to: instead of bare `unknown`, a mapped type over the vocabulary's own keys,
+each mapped to `unknown` unless the key is `*` or contains a space, in which
+case it maps to a template-literal message
+(`` `reserved ${Noun} name: '${MemberName}' contains a space` ``). Intersected
+with `RawInputs` as before, an offending key's required type becomes
+`RawInputs[key] & "reserved ..."`; since the declared payload for that key is
+never itself that literal string, the intersection is unsatisfiable and the
+error surfaces on that property rather than on the vocabulary as a whole.
+`Noun` is a second type parameter (`'input' | 'state' | 'output'`) so one
+helper, parameterized at each of the three call sites, produces a message
+naming which vocabulary is wrong — the same "one helper, three call sites"
+shape the vocabulary gate already had.
+
+No runtime change: the check is erased with the rest of the type layer, and
+`pnpm size` is byte-identical before and after. `tests/keys.test-d.ts`
+rewrites the prior positive assertion (a declared `*` or padded name
+compiling) into the negative one this reverses; `tests/untyped.test-d.ts`'s
+own `*`-in-a-key-position tests are narrowed to the two positions that still
+reject it, since #142 ([I44](#i44)) makes a row's own source position legal.
+
+### <a id="i44"></a>I44 — A wildcard source reopens `SourceFacts`, a per-coordinate `Select` scoped to one field pair
+
+#142 allows `*` in a transitions row's own source position. [I32](#i32)
+replaced `Transition`'s per-coordinate `Select` widening ([I31](#i31)) with a
+mapped type over the declared row union, on the finding that a row's own
+three coordinates already pin down a single record with no widening needed.
+That finding assumed a row's source was always one concrete name; #142 breaks
+it for exactly the source coordinate, so this reopens I31's construction —
+but only for that one field pair, not the whole record I32 already correlates
+correctly for every other case.
+
+`SourceFacts<States, Available>` is `Current`'s own construction
+(`{ [K in Available]: { from: K; fromData: States[K] } }[Available]`), applied
+to a set of source names rather than to the whole vocabulary. `Select<Coordinate,
+All>` — the widening helper I31 introduced and I32 mostly retired — decides what
+that set is: `All` when `Coordinate` is `*` (or, for a label, empty), the
+coordinate itself otherwise. `Table` uses `SourceFacts<States, Select<From<RowKey>,
+Name<States>>>` for a row's own handler argument: a concrete row's `Select`
+collapses to one name, so its argument is unchanged from before this entry.
+`Transition` nests the same two coordinates — `Select<From<PatternString>,
+Select<From<RowKey>, Name<States>>>` — so a concrete pattern matched against a
+wildcard row narrows to the pattern's own state (never the `*` token), and a
+broad pattern against a wildcard row still discriminates every state the row
+covers.
+
+`Matches` gains the row-side arm `From<RowKey> extends '*' ? true : ...`,
+alongside the existing pattern-side one, or a pattern naming a concrete source
+would be rejected as matching no row while the runtime table plainly fires it —
+the pattern language and the table have to agree on what exists.
+`Handled<MachineType, StateName>` additionally extracts
+`` `* -${string}> ${string}` `` rows: a wildcard row is something the state
+does, not only something spelled under it. `Sources<MachineType, StateName>`
+maps each matched row through `Select<From<RowKey>, Name<States>>` before
+unioning, distributing over the matched-row union the same way `MatchingRows`
+already does, so a wildcard row expands to every declared state rather than
+leaking the `*` token into a type meant to name states alone.
+
+At runtime, `step()`'s row scan gains one clause: `source === from || source
+=== '*'`, matching `fire()`'s own registration comparison, which already read
+`*` this way for `observe` and `actions`. No other runtime change — `from`,
+`fromData`, `to` and `toData` passed to a handler, an action or an observer
+were already the machine's real current state, never the declared row's own
+coordinates, so nothing downstream of `step()` needed to learn a new
+vocabulary. Measured: 1,644 B raw / 885 B gzip / 822 B brotli, against
+[I42](#i42)'s 1,633 B / 881 B / 818 B baseline — the one added runtime
+comparison, not the type layer, which is erased.

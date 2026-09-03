@@ -284,3 +284,35 @@ test('a fourth vocabulary is additive at this scale, not another cross-product',
 	// @ts-expect-error - not a declared output, at forty-four rows as at two
 	host.on('s01', () => {})
 })
+
+test('a wildcard-sourced row expands over twenty states with no annotation forced onto a sibling row (#142)', () => {
+	// A tripwire, not an assertion about the exact inferred shape: the failure
+	// mode to watch for is contextual typing arriving too late, which would
+	// show up here as `fromData`/`inputData` on the untouched `next` row
+	// silently widening to `any` rather than as a compile error.
+	const withWildcard = machine({
+		initial: 's00',
+		inputs: type<Inputs>(),
+		states: type<States>(),
+		transitions: {
+			's00 -next> s01': ({ fromData, inputData }) => {
+				expectTypeOf(fromData).not.toBeAny()
+				expectTypeOf(fromData).toEqualTypeOf<{
+					visits: number
+					owner: 's00'
+				}>()
+				expectTypeOf(inputData).not.toBeAny()
+				return { visits: fromData.visits + inputData.delta, owner: 's01' }
+			},
+			'* -reset> s00': ({ from, fromData, skip }) => {
+				expectTypeOf(from).not.toBeAny()
+				if (from === 's00') return skip()
+				return { visits: fromData.visits, owner: 's00' as const }
+			},
+		},
+	})
+
+	type M = typeof withWildcard
+	expectTypeOf<Handled<M, 's01'>>().not.toBeAny()
+	expectTypeOf<Handled<M, 's01'>>().toEqualTypeOf<'reset'>()
+})
