@@ -1021,10 +1021,6 @@ export const publication: Machine<
 })
 ```
 
-Each handler needs its own annotations too: `keyof typeof transitions` reads
-`transitions`'s type directly, not through `machine()`'s inference. `Host`
-follows the same rule for a function returning `publication.start()`.
-
 ## Beyond this release
 
 Horizontal composition is sketched in [the roadmap](docs/roadmap.md), and it is
