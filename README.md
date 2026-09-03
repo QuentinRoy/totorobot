@@ -5,7 +5,7 @@
 <h1 align="center">Totorobot</h1>
 
 <p align="center">
-  Dead-simple state machines. Big sound. Tiny amp. Hardcore typing.
+  Dead-simple state machines with hardcore typing. Big sound. Tiny amp.
 </p>
 
 <br>
