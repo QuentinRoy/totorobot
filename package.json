@@ -1,6 +1,6 @@
 {
 	"name": "totorobot",
-	"version": "2.1.0",
+	"version": "2.1.1",
 	"description": "Experimental type-safe finite state machines with per-state context",
 	"license": "BlueOak-1.0.0",
 	"author": "Quentin Roy <quentin@quentinroy.fr>",
