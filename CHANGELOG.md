@@ -1,5 +1,32 @@
 # totorobot
 
+## 3.0.0
+
+### Size
+
+`dist/totorobot.js` — brotli 822 B (+4 B, +0.5% vs 2.1.1), gzip 885 B, raw 1,644 B
+
+### Major Changes
+
+- [#143](https://github.com/QuentinRoy/totorobot/pull/143) [`29d2f94`](https://github.com/QuentinRoy/totorobot/commit/29d2f94b95c48615c21403c84fe7608be10f5e4b) - `inputs`, `states`, and `outputs` no longer accept a declared name of `*`, or a name containing a space.
+
+  Rename offending states, inputs, and outputs.
+
+### Minor Changes
+
+- [#143](https://github.com/QuentinRoy/totorobot/pull/143) [`29d2f94`](https://github.com/QuentinRoy/totorobot/commit/29d2f94b95c48615c21403c84fe7608be10f5e4b) - A transitions row's source can now be `*`, meaning "from wherever the machine is, lands here":
+
+  ```ts
+  transitions: {
+  	'* -up> idle': ({ from, fromData, skip }) =>
+  		from === 'idle' ? skip() : { deps: fromData.deps },
+  },
+  ```
+
+  One row now covers every declared state, including its own target. A state that should not move may opt out with `skip()`, albeit it should remain limited to a very few at the cost of readability.
+
+  A wildcard row is an ordinary row: declaration order and `skip()` still decide between it and a concrete row for the same input.
+
 ## 2.1.1
 
 ### Size
