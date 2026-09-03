@@ -5,7 +5,7 @@
 <h1 align="center">Totorobot</h1>
 
 <p align="center">
-  Dead-simple state machines. Hard-core typing. No bloat.
+  Dead-simple state machines. Hardcore types. Tiny amp.
 </p>
 
 <br>
@@ -14,6 +14,13 @@
   <a href="https://www.npmjs.com/package/totorobot"><img src="https://img.shields.io/npm/v/totorobot?label=" alt="npm version"></a>
   <a href="https://bundlejs.com/?q=totorobot"><img src="https://deno.bundlejs.com/?q=totorobot&badge" alt="Bundle size"></a>
 </p>
+
+- **Graphs** you can read
+- **Per-state data** that doesn’t lie
+- **Actions** that die when their state does
+- **Outputs** that speak loud and clear
+- **Hardcore types** that catch wrong notes
+- **Tiny runtime.** Zero dependencies. No dead weight.
 
 Totorobot combines clean, readable definitions with precise types. Its API reads
 like a transition graph, and TypeScript checks the details around it.
