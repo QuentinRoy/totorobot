@@ -18,7 +18,7 @@
 - **Graphs** you can read
 - **Per-state data** that doesn’t lie
 - **Actions** that die when their state does
-- **Outputs** that speak loud and clear
+- **Outputs** that roar loud and clear
 - **Hardcore types** that catch wrong notes
 - **Tiny runtime.** Zero dependencies. No dead weight.
 
