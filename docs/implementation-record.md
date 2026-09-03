@@ -770,8 +770,8 @@ type parameter's constraint, `PatternString extends Pattern<Inputs, States>`, is
 existing code keeps compiling. `Patterns<MachineType>`, `Carried<MachineType>` applied to
 `MatchedPattern`, ships as the convenience the issue's other branch would
 have made mandatory — a public constraint matching what `observe` accepts,
-for a caller who cannot otherwise name `Pattern` or `Host` (both
-module-local). `Observer<MachineType, PatternString>` is the same move on the second argument:
+for a caller who cannot otherwise name `Pattern`, which stays module-local.
+`Observer<MachineType, PatternString>` is the same move on the second argument:
 `EdgeObserver`'s four parameters collapse to two, since `Carried<MachineType>` supplies
 three of them, and `PatternString` defaults to the whole `Patterns<MachineType>` union, which
 `Matches` admits every row against.

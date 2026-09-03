@@ -675,7 +675,7 @@ type Start<States extends Vocab, InitialState extends string> =
 		: [data: Payload<States, InitialState>]
 
 /** A running machine: the only mutable thing in the design. */
-interface Host<
+export interface Host<
 	Inputs extends Vocab = AnyVocab,
 	States extends Vocab = AnyVocab,
 	Keys extends string = string,
@@ -739,7 +739,7 @@ interface Vocabulary<
 }
 
 /** A declared machine. Inert, shareable, and never mutated by running one. */
-interface Machine<
+export interface Machine<
 	Inputs extends Vocab = AnyVocab,
 	States extends Vocab = AnyVocab,
 	Keys extends string = string,
@@ -791,7 +791,7 @@ export type Sources<MachineType, StateName extends string> = From<
 /**
  * The patterns `observe` accepts on `MachineType`: the public face of
  * `MatchedPattern`, for a caller wrapping `observe` who wants the same
- * constraint on their own pattern argument — neither `Pattern` nor `Host` is
+ * constraint on their own pattern argument — `Pattern` itself is not
  * exported to name directly (I37).
  */
 export type Patterns<MachineType> = MatchedPattern<
