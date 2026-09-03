@@ -17,6 +17,14 @@ type States = { empty: undefined; draft: { text: string; revision: number } }
 type SkipInputs = { revise: { text: string }; cancel: undefined }
 type SkipStates = { draft: { text: string }; empty: undefined }
 
+type NavInputs = { up: undefined; move: undefined }
+type NavStates = {
+	startup: { stroke: number[] }
+	expert: { stroke: number[] }
+	novice: { stroke: number[] }
+	idle: undefined
+}
+
 test('a handler returning the wrong shape for its target state is rejected', () => {
 	machine({
 		initial: 'empty',
@@ -181,23 +189,53 @@ test('skip() is returnable from a handler for every target shape, including a pa
 	expectTypeOf<Skip>().not.toBeAny()
 })
 
-test('a declared vocabulary may still name `*` or a padded name explicitly (#22)', () => {
-	// The exclusion in `StatesFromKeys`/`InputsFromKeys` only narrows what an
-	// *omitted* half infers from the table. A vocabulary declared through
-	// `type<T>()` is a different inference site entirely, and declaring ' b'
-	// or '*' by hand is deliberate in a way a doubled space in a key never is
-	// — so neither is filtered here.
-	type OddStates = { off: undefined; '*': undefined; ' padded': undefined }
-	type OddInputs = { go: undefined }
+test('a declared vocabulary may not name `*` or a name carrying a space (#141)', () => {
+	// Reversed from #22: back then, the exclusion in
+	// `StatesFromKeys`/`InputsFromKeys` was read as narrowing only what an
+	// *omitted* half infers from the table, leaving a hand-declared `'*'` or
+	// padded name alone. #141 closes that gap too — the wildcard row #142
+	// adds gives a declared `'*'` state a second, colliding meaning, so the
+	// declared site now agrees with what inference already refused.
+	machine({
+		initial: 'off',
+		inputs: type<{ go: undefined }>(),
+		// @ts-expect-error - reserved state name: '*' is the pattern wildcard
+		states: type<{ off: undefined; '*': undefined }>(),
+		transitions: { 'off -go> off': () => {} },
+	})
 
 	machine({
 		initial: 'off',
-		inputs: type<OddInputs>(),
-		states: type<OddStates>(),
-		transitions: {
-			'off -go> *': () => {},
-			'* -go>  padded': () => {},
-		},
+		inputs: type<{ go: undefined }>(),
+		// @ts-expect-error - reserved state name: ' padded' contains a space
+		states: type<{ off: undefined; ' padded': undefined }>(),
+		transitions: { 'off -go> off': () => {} },
+	})
+
+	machine({
+		initial: 'off',
+		// @ts-expect-error - reserved input name: '*' is the pattern wildcard
+		inputs: type<{ go: undefined; '*': undefined }>(),
+		states: type<{ off: undefined }>(),
+		transitions: { 'off -go> off': () => {} },
+	})
+
+	machine({
+		initial: 'off',
+		inputs: type<{ go: undefined }>(),
+		states: type<{ off: undefined }>(),
+		// @ts-expect-error - reserved output name: 'a b' contains a space
+		outputs: type<{ 'a b': undefined }>(),
+		transitions: { 'off -go> off': () => {} },
+	})
+
+	// A name that merely contains `*`, or one with no space anywhere, is
+	// untouched.
+	machine({
+		initial: 'off',
+		inputs: type<{ go: undefined }>(),
+		states: type<{ off: undefined; 'a*b': undefined }>(),
+		transitions: { 'off -go> off': () => {} },
 	})
 })
 
@@ -213,6 +251,69 @@ test('a wrong-shaped return is still rejected on a row that could also skip()', 
 			'draft -cancel> empty': ({ skip }) =>
 				// @ts-expect-error - empty carries no payload; a handler may return skip() or nothing, not data
 				Math.random() > 0.5 ? skip() : { text: 'x' },
+		},
+	})
+})
+
+test("`*` is legal as a row's own source; the target stays a single named state (#142)", () => {
+	machine({
+		initial: 'startup',
+		inputs: type<NavInputs>(),
+		states: type<NavStates>(),
+		transitions: {
+			'* -up> idle': () => {},
+			// @ts-expect-error - "*" is not a legal input name: only the source position widens
+			'startup -*> idle': () => {},
+			// @ts-expect-error - a row's target stays a single named state
+			'startup -up> *': () => {},
+		},
+	})
+})
+
+test('the unlabelled wildcard form is legal: an immediate that applies from every state', () => {
+	machine({
+		initial: 'startup',
+		inputs: type<NavInputs>(),
+		states: type<NavStates>(),
+		transitions: {
+			'* -> idle': ({ from, skip }) => (from === 'idle' ? skip() : undefined),
+		},
+	})
+})
+
+test("a wildcard row's handler reads a discriminated union of source and source payload: checking `from` narrows `fromData` beside it", () => {
+	machine({
+		initial: 'startup',
+		inputs: type<NavInputs>(),
+		states: type<NavStates>(),
+		transitions: {
+			'* -up> idle': ({ from, fromData, skip }) => {
+				expectTypeOf(from).toEqualTypeOf<
+					'startup' | 'expert' | 'novice' | 'idle'
+				>()
+				// Unnarrowed, `fromData` is not simply one shape: "idle" carries
+				// nothing, the other three carry a stroke.
+				if (from === 'idle') {
+					expectTypeOf(fromData).toEqualTypeOf<undefined>()
+					return skip()
+				}
+				expectTypeOf(fromData).toEqualTypeOf<{ stroke: number[] }>()
+				return undefined
+			},
+		},
+	})
+})
+
+test('reading a field only some states carry, before narrowing `from`, is rejected', () => {
+	machine({
+		initial: 'startup',
+		inputs: type<NavInputs>(),
+		states: type<NavStates>(),
+		transitions: {
+			'* -up> expert': ({ fromData }) => ({
+				// @ts-expect-error - `fromData` is not narrowed yet; "idle" carries no `.stroke`
+				stroke: fromData.stroke,
+			}),
 		},
 	})
 })

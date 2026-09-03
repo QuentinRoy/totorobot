@@ -53,6 +53,25 @@ describe('the untyped path', () => {
 		expect(observer).not.toHaveBeenCalled()
 	})
 
+	test('a wildcard-sourced row fires from every state with no vocabulary declared (#142)', () => {
+		const untyped = machine({
+			initial: 'startup',
+			transitions: {
+				'* -up> idle': ({ from, skip }) => (from === 'idle' ? skip() : {}),
+			},
+		})
+
+		const host = untyped.start()
+		expect(host.current.name).toBe('startup')
+
+		host.send('up')
+		expect(host.current.name).toBe('idle')
+
+		// Declines for its own target: stays put, does not throw.
+		host.send('up')
+		expect(host.current.name).toBe('idle')
+	})
+
 	test('a bad state name in an observer pattern does not throw and never fires', () => {
 		const untyped = machine({
 			initial: 'off',

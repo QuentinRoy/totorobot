@@ -69,14 +69,28 @@ type IsUnion<T, Whole = T> = T extends Whole
 		: true
 	: never
 
-/** `object` admits interfaces; this check rejects non-map shapes (I30). */
-type VocabMap<SomeVocab extends Vocab> =
+/**
+ * `object` admits interfaces; this check rejects non-map shapes (I30). Once
+ * the shape itself is sound, it also rejects `*` and a name carrying a space
+ * on any declared member — the same two names `RoundTrips`, below, already
+ * excludes from a table-derived vocabulary, now refused at the declared site
+ * too, one message per offending key rather than one failure for the whole
+ * map (I43). `Noun` names the vocabulary the message reports, so a
+ * definition declaring more than one knows which is wrong.
+ */
+type VocabMap<SomeVocab extends Vocab, Noun extends string> =
 	true extends IsUnion<SomeVocab>
 		? never
 		: SomeVocab extends readonly unknown[] | Function
 			? never
 			: Exclude<keyof SomeVocab, string> extends never
-				? unknown
+				? {
+						[MemberName in keyof SomeVocab & string]: MemberName extends '*'
+							? `reserved ${Noun} name: '*' is the pattern wildcard`
+							: MemberName extends `${string} ${string}`
+								? `reserved ${Noun} name: '${MemberName}' contains a space`
+								: unknown
+					}
 				: never
 
 /**
@@ -98,14 +112,20 @@ type Payload<
 // The key grammar, at the type level
 // ---------------------------------------------------------------------------
 
+/** No `-*>`: the unlabelled arrow is the broad form, and a bare key is not one. */
+type Wildcard<States extends Vocab> = Name<States> | '*'
+
 /**
  * A union, not a validating conditional, because a union is what an editor
  * offers as completions — |states|² × |inputs| of them, priced in §12 Sending
- * inputs.
+ * inputs. The source position also admits `*`: one row can say "this input,
+ * from wherever the machine is, lands here" rather than repeating itself once
+ * per source (#142). The target stays a single named state: widening the
+ * source is the whole feature, and a row still says exactly where it lands.
  */
 type Key<Inputs extends Vocab, States extends Vocab> =
-	| `${Name<States>} -${Name<Inputs>}> ${Name<States>}`
-	| `${Name<States>} -> ${Name<States>}`
+	| `${Wildcard<States>} -${Name<Inputs>}> ${Name<States>}`
+	| `${Wildcard<States>} -> ${Name<States>}`
 
 /** A leading `infer` stops at the first separator, so these agree with `parse`. */
 type From<KeyString> =
@@ -137,16 +157,50 @@ type InputsFromKeys<Keys extends string> = {
 	[InputName in RoundTrips<Exclude<Label<Keys>, ''>>]: unknown
 }
 
-/** The same for state names, read off both ends of every key. */
+/**
+ * The same for state names, read off both ends of every key. A wildcard
+ * source contributes nothing here: `RoundTrips`, just above, already drops
+ * `*`, so a table naming a state only through a wildcard row's target still
+ * needs that state spelled out on some other row, or declared by hand
+ * (#142).
+ */
 type StatesFromKeys<Keys extends string> = {
 	[StateName in RoundTrips<From<Keys> | To<Keys>>]: unknown
 }
 
-/** No `-*>`: the unlabelled arrow is the broad form, and a bare key is not one. */
-type Wildcard<States extends Vocab> = Name<States> | '*'
 type Pattern<Inputs extends Vocab = AnyVocab, States extends Vocab = AnyVocab> =
 	| `${Wildcard<States>} -${Name<Inputs>}> ${Wildcard<States>}`
 	| `${Wildcard<States>} -> ${Wildcard<States>}`
+
+/**
+ * The wildcard rules of the runtime's own comparison, at the type level:
+ * `*` (or, for a label, an absent one) stands for every name `All` carries,
+ * a concrete coordinate for just itself. Shared by a declaration's own
+ * source (`SourceFacts`, `Table`), a pattern's facts (`PatternFacts`), and
+ * `Sources`' reverse index — every place a `*` coordinate has to expand into
+ * the set of names it stands for, as opposed to `Handled`, which only asks
+ * whether a wildcard row exists at all and needs no such expansion.
+ */
+type Select<Coordinate extends string, All extends string> = [
+	Coordinate,
+] extends ['*' | '']
+	? All
+	: Coordinate & All
+
+/**
+ * One name from `Available` paired with its own payload, one union member
+ * per name — the same construction `Current` uses below, so checking `from`
+ * narrows `fromData` beside it (§5 The declared vocabulary, #142).
+ * `Available` collapsing to a single name collapses this to one plain
+ * object, which is a concrete row's argument exactly as it read before a
+ * row could wildcard its source.
+ */
+type SourceFacts<States extends Vocab, Available extends string> = {
+	[FromState in Available]: {
+		readonly from: FromState
+		readonly fromData: Payload<States, FromState>
+	}
+}[Available]
 
 // ---------------------------------------------------------------------------
 // The table
@@ -161,24 +215,30 @@ type Pattern<Inputs extends Vocab = AnyVocab, States extends Vocab = AnyVocab> =
  * declared vocabulary). The `void` arm accepts an empty body, and only where the
  * payload already admits `undefined`, so a destination that carries something
  * still rejects a handler that returns nothing (I27). `NoInfer` guards the
- * parameters (I14).
+ * parameters (I14). A wildcard source widens `from`/`fromData` to
+ * `SourceFacts` over every declared state, so checking `from` is what
+ * narrows `fromData` rather than a cast — the opt-out for a source the row
+ * does not apply to is `skip()` on that condition, the same decline every
+ * other row already spells (#142).
  */
 type Table<Inputs extends Vocab, States extends Vocab, Keys extends string> = {
 	readonly [RowKey in Keys]: RowKey extends Key<Inputs, States>
-		? (args: {
-				readonly input: NoInfer<
-					[Label<RowKey>] extends [''] ? undefined : Label<RowKey>
-				>
-				readonly inputData: NoInfer<
-					[Label<RowKey>] extends ['']
-						? undefined
-						: Payload<Inputs, Label<RowKey>>
-				>
-				readonly from: From<RowKey>
-				readonly fromData: NoInfer<Payload<States, From<RowKey>>>
-				readonly to: To<RowKey>
-				readonly skip: () => Skip
-			}) =>
+		? (
+				args: NoInfer<
+					SourceFacts<States, Select<From<RowKey>, Name<States>>>
+				> & {
+					readonly input: NoInfer<
+						[Label<RowKey>] extends [''] ? undefined : Label<RowKey>
+					>
+					readonly inputData: NoInfer<
+						[Label<RowKey>] extends ['']
+							? undefined
+							: Payload<Inputs, Label<RowKey>>
+					>
+					readonly to: To<RowKey>
+					readonly skip: () => Skip
+				},
+			) =>
 				| (undefined extends States[To<RowKey> & keyof States]
 						? States[To<RowKey> & keyof States] | void
 						: States[To<RowKey> & keyof States])
@@ -264,16 +324,21 @@ type Announcement<
 
 /**
  * A declared row matches a pattern when every coordinate agrees: `*` in a
- * pattern's state position admits any name; a pattern's label position has no
- * wildcard spelling (line 127) — the omitted, unlabelled form is the broad one
- * already, so it admits a row's label, named or absent alike (I31, I32).
+ * pattern's state position admits any name; `*` in a row's own source
+ * position admits any pattern naming a concrete one — a wildcard row applies
+ * from everywhere, so a pattern asking about one of those states has to find
+ * it (#142). A pattern's label position has no wildcard spelling — `Pattern`,
+ * above, gives it none — so the omitted, unlabelled form is the broad one
+ * already, and admits a row's label, named or absent alike (I31, I32).
  */
 type Matches<RowKey extends string, PatternString extends string> = (
 	From<PatternString> extends '*'
 		? true
-		: From<RowKey> extends From<PatternString>
+		: From<RowKey> extends '*'
 			? true
-			: false
+			: From<RowKey> extends From<PatternString>
+				? true
+				: false
 ) extends true
 	? (
 			Label<PatternString> extends ''
@@ -338,13 +403,6 @@ type MatchedPattern<
 				: PatternString
 		}[Pattern<Inputs, States>]
 
-/** The wildcard rules of the runtime's own comparison, at the type level. */
-type Select<Coordinate extends string, All extends string> = [
-	Coordinate,
-] extends ['*' | '']
-	? All
-	: Coordinate & All
-
 /**
  * The pattern-only construction `Transition` built before #99 (I31): the
  * fallback for a widened `Keys`, where the exact row keys are unavailable
@@ -392,6 +450,14 @@ type PatternFacts<
  * a widened `Keys`, which would otherwise collapse every field to `never`
  * (I34). `Extra` is what the record carries beyond the facts — `send` for a
  * committed transition, nothing for a restart decision (§9 Actions).
+ *
+ * `from`/`fromData` go through `SourceFacts`, narrowed by whichever of the
+ * row's own source and the pattern's is concrete: a wildcard row matched by
+ * a concrete pattern (`observe('idle -up> X', …)` against a row declared
+ * `'* -up> X'`) reports the pattern's own state, never the `*` token a
+ * reader would have to already know means "every declared state" (#142); a
+ * wildcard row matched by a wildcard pattern still reports every state,
+ * discriminated the same way `Current` is.
  */
 type Transition<
 	Inputs extends Vocab = AnyVocab,
@@ -402,16 +468,20 @@ type Transition<
 > = string extends Keys
 	? PatternFacts<Inputs, States, PatternString, Extra>
 	: {
-			[RowKey in MatchingRows<Keys, PatternString>]: Extra & {
-				readonly input: [Label<RowKey>] extends [''] ? undefined : Label<RowKey>
-				readonly inputData: [Label<RowKey>] extends ['']
-					? undefined
-					: Payload<Inputs, Label<RowKey>>
-				readonly from: From<RowKey>
-				readonly fromData: Payload<States, From<RowKey>>
-				readonly to: To<RowKey>
-				readonly toData: Payload<States, To<RowKey>>
-			}
+			[RowKey in MatchingRows<Keys, PatternString>]: SourceFacts<
+				States,
+				Select<From<PatternString>, Select<From<RowKey>, Name<States>>>
+			> &
+				Extra & {
+					readonly input: [Label<RowKey>] extends ['']
+						? undefined
+						: Label<RowKey>
+					readonly inputData: [Label<RowKey>] extends ['']
+						? undefined
+						: Payload<Inputs, Label<RowKey>>
+					readonly to: To<RowKey>
+					readonly toData: Payload<States, To<RowKey>>
+				}
 		}[MatchingRows<Keys, PatternString>]
 
 type EdgeObserver<
@@ -775,18 +845,42 @@ export type StatesOf<MachineType> = Carried<MachineType>['states']
 /** The output vocabulary a machine was declared with. */
 export type OutputsOf<MachineType> = Carried<MachineType>['outputs']
 
-/** The inputs `StateName` has rows for; `Exclude<…, ''>` drops immediate rows. */
+/**
+ * The inputs `StateName` has rows for; `Exclude<…, ''>` drops immediate rows.
+ * A wildcard-source row reaches `StateName` the same as one naming it, so it
+ * counts here too — but only when `StateName` is one of the states the
+ * machine actually declares. Without that guard, `Handled<MachineType,
+ * 'notAState'>` would report a wildcard row's inputs for a name nothing
+ * declares, the same way it used to fall out to `never` for one (#142).
+ */
 export type Handled<MachineType, StateName extends string> = Exclude<
 	Label<
-		Extract<Carried<MachineType>['keys'], `${StateName} -${string}> ${string}`>
+		Extract<
+			Carried<MachineType>['keys'],
+			| `${StateName} -${string}> ${string}`
+			| (StateName extends Name<Carried<MachineType>['states']>
+					? `* -${string}> ${string}`
+					: never)
+		>
 	>,
 	''
 >
 
-/** The states that can reach `StateName`: the reverse index, from the same keys. */
-export type Sources<MachineType, StateName extends string> = From<
-	Extract<Carried<MachineType>['keys'], `${string} -${string}> ${StateName}`>
->
+/**
+ * The states that can reach `StateName`: the reverse index, from the same
+ * keys. A matched row may itself be wildcard-sourced; `Select` expands that
+ * one to every declared state rather than reporting the `*` token itself —
+ * a list of states stays a list of states (#142).
+ */
+export type Sources<MachineType, StateName extends string> =
+	Extract<
+		Carried<MachineType>['keys'],
+		`${string} -${string}> ${StateName}`
+	> extends infer RowKey extends string
+		? RowKey extends unknown
+			? Select<From<RowKey>, Name<Carried<MachineType>['states']>>
+			: never
+		: never
 
 /**
  * The patterns `observe` accepts on `MachineType`: the public face of
@@ -994,11 +1088,12 @@ export let machine: <
 	// `| undefined` is what `type()` returns, and inference subtracts it. Spelled
 	// out because `exactOptionalPropertyTypes` makes `?:` a different thing.
 	readonly inputs?:
-		(RawInputs & VocabMap<Exclude<RawInputs, undefined>>) | undefined
+		(RawInputs & VocabMap<Exclude<RawInputs, undefined>, 'input'>) | undefined
 	readonly states?:
-		(RawStates & VocabMap<Exclude<RawStates, undefined>>) | undefined
+		(RawStates & VocabMap<Exclude<RawStates, undefined>, 'state'>) | undefined
 	readonly outputs?:
-		(RawOutputs & VocabMap<Exclude<RawOutputs, undefined>>) | undefined
+		| (RawOutputs & VocabMap<Exclude<RawOutputs, undefined>, 'output'>)
+		| undefined
 	readonly transitions: Table<Inputs, States, Keys>
 	readonly actions?:
 		| Actions<Inputs, States, Keys, Outputs, InitialState, TriggerKeys>
@@ -1109,7 +1204,10 @@ export let machine: <
 					// machine, and a commit returns.
 					let { name: from, data: fromData } = current
 					for (let [handler, [source, label, to]] of rows) {
-						if (source === from && label === input) {
+						// A wildcard source is the row saying it applies from wherever the
+						// machine is (#142); `fire`'s own registrations already read `*` this
+						// way, so this is the declared table catching up to that rule.
+						if ((source === from || source === '*') && label === input) {
 							let toData = handler({
 								input,
 								inputData,

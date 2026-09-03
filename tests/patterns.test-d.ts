@@ -41,6 +41,22 @@ const doc = machine({
 	},
 })
 
+type NavInputs = { up: undefined }
+type NavStates = {
+	startup: { stroke: number[] }
+	expert: { stroke: number[] }
+	idle: undefined
+}
+
+const nav = machine({
+	initial: 'startup',
+	inputs: type<NavInputs>(),
+	states: type<NavStates>(),
+	transitions: {
+		'* -up> idle': ({ from, skip }) => (from === 'idle' ? skip() : undefined),
+	},
+})
+
 // Observation is a property of a running machine: `.observe()` lives on the host and
 // not on the definition, so that an imported definition stays inert. Every
 // pattern assertion below therefore goes through `start()`.
@@ -494,5 +510,30 @@ test('the observer callback still infers its argument with no parameter annotati
 	host.observe('draft -submit> review', (e) => {
 		expectTypeOf(e.to).toEqualTypeOf<'review'>()
 		expectTypeOf(e.toData).toEqualTypeOf<{ text: string; reviewer: string }>()
+	})
+})
+
+test('a concrete pattern matches a row declared with a wildcard source: the row and the pattern language agree on what exists (#142)', () => {
+	const host = nav.start({ stroke: [] })
+
+	// Only the wildcard row exists, yet a pattern naming one of the states it
+	// covers is not "no row matches" — the table admits it.
+	host.observe('startup -up> idle', (e) => {
+		expectTypeOf(e.from).toEqualTypeOf<'startup'>()
+		expectTypeOf(e.fromData).toEqualTypeOf<{ stroke: number[] }>()
+	})
+})
+
+test('a wildcard pattern against a wildcard row still discriminates every declared source, `*` itself never among them (#142)', () => {
+	const host = nav.start({ stroke: [] })
+
+	host.observe('* -up> idle', (e) => {
+		expectTypeOf(e.from).toEqualTypeOf<'startup' | 'expert' | 'idle'>()
+		if (e.from === 'startup') {
+			expectTypeOf(e.fromData).toEqualTypeOf<{ stroke: number[] }>()
+		}
+		if (e.from === 'idle') {
+			expectTypeOf(e.fromData).toEqualTypeOf<undefined>()
+		}
 	})
 })
