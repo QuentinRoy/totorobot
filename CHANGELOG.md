@@ -1,5 +1,17 @@
 # totorobot
 
+## 2.1.1
+
+### Size
+
+`dist/totorobot.js` — brotli 818 B (no change vs 2.1.0), gzip 881 B, raw 1,633 B
+
+### Patch Changes
+
+- [#137](https://github.com/QuentinRoy/totorobot/pull/137) [`a419306`](https://github.com/QuentinRoy/totorobot/commit/a41930639044bac4f93b9237d6eaeeb34eff91e5) - `Machine` and `Host` (what `machine()` and its `start()` method return) are now exported, so a consumer can name them. Before this, exporting a machine (`export const m = machine({...})`) failed a `tsc --declaration` build with `TS4023`.
+
+  `--isolatedDeclarations` still requires writing it out by hand: `const m: Machine<Inputs, States, Keys, InitialState, Outputs> = machine({...})`.
+
 ## 2.1.0
 
 ### Size
