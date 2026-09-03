@@ -5,7 +5,7 @@
 <h1 align="center">Totorobot</h1>
 
 <p align="center">
-  Dead-simple state machines. Hardcore types. Tiny amp.
+  Dead-simple state machines. Hardcore types. Serious sound. Tiny amp.
 </p>
 
 <br>
