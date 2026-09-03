@@ -1,0 +1,16 @@
+{
+	/* Overrides the root config's `noEmit`, and points `totorobot` at the built
+     declarations rather than source — `tests/tsconfig.dist.json` does the
+     same for the same reason: the bundler's declaration rollup, not just the
+     source types, is what has to survive. */
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"noEmit": false,
+		"declaration": true,
+		"emitDeclarationOnly": true,
+		"paths": {
+			"totorobot": ["../../dist/totorobot.d.ts"]
+		}
+	},
+	"include": ["."]
+}

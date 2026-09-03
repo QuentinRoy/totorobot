@@ -199,6 +199,22 @@ typestates.
 > and runtime, has been built and measured — see the correction in
 > [design-record.md](design-record.md).
 
+> **Amended 2026-09-03 — TS4023 is closed; TS9010 keeps its explicit-model
+> answer.** `Machine` and `Host` are now exported from the package's public
+> entry, so a consumer can name them. Exporting a machine now survives a
+> plain `tsc --declaration` build, closing TS4023. TS2742 is untouched — it
+> is about package layout, not this fix.
+>
+> TS9010 stays open by design: `--isolatedDeclarations` refuses to infer an
+> exported value's type under any circumstance, and a machine's type is
+> always inferred. The explicit-model path [note
+> 06](research/06-typescript-type-engineering.md) called for turns out to be
+> `Machine`/`Host` themselves, now that they can be named. A consumer under
+> that flag writes the machine's type by hand instead of exporting it
+> directly. No further library change closes this: doing so would mean no
+> longer inferring a distinct type per machine, which is this project's
+> reason to exist.
+
 ### P0.4 — Keep type narrowing truthful over time
 
 If TypeScript narrows an observed value to state `S`, later machine activity
