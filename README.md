@@ -124,7 +124,6 @@ which edge caused it.
 - [Install](#install)
 - [Example](#example)
 - [The surface](#the-surface)
-- [Exporting a machine](#exporting-a-machine)
 - [`inputs` and `states`: the vocabulary](#inputs-and-states-the-vocabulary)
   - [Migrating from the tagged shape](#migrating-from-the-tagged-shape)
 - [`initial`: where a host starts](#initial-where-a-host-starts)
@@ -150,6 +149,7 @@ which edge caused it.
 - [What the types check](#what-the-types-check)
 - [Guarantees and absences](#guarantees-and-absences)
 - [The untyped path](#the-untyped-path)
+- [Exporting a machine](#exporting-a-machine)
 - [Beyond this release](#beyond-this-release)
 - [Documentation](#documentation)
 - [Development](#development)
@@ -161,63 +161,13 @@ which edge caused it.
 
 Everything the package exports:
 
-| export                                                                                                                                                                                                                                          | is                                                                                                                                 |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `machine({ inputs?, states?, outputs?, initial, transitions, actions? })`                                                                                                                                                                       | a definition: inert data, never mutated                                                                                            |
-| `type<T>()`                                                                                                                                                                                                                                     | a declaration carrying `T`; returns `undefined` at runtime                                                                         |
-| `InputsOf<MachineType>` `StatesOf<MachineType>` `OutputsOf<MachineType>` `Handled<MachineType, StateName>` `Sources<MachineType, StateName>` `Patterns<MachineType>` `Observer<MachineType, PatternString>` `Listener<MachineType, OutputName>` | derived types, over `MachineType = typeof publication`                                                                             |
-| `Machine<Inputs, States, Keys, InitialState, Outputs>` `Host<Inputs, States, Keys, Outputs>`                                                                                                                                                    | what `machine()` and `.start()` return; write these by hand only where TypeScript cannot infer them, [below](#exporting-a-machine) |
-| `Skip`                                                                                                                                                                                                                                          | what `skip()` returns; it appears in every handler's return type                                                                   |
-
-## Exporting a machine
-
-`export const publication = machine({...})`, from the [example](#example) above,
-already works with a plain `tsc --declaration` build: `machine()` returns a
-`Machine`, `.start()` returns a `Host`, and both types are exported from
-`totorobot`, so TypeScript can write out `publication`'s declaration without
-your help.
-
-`--isolatedDeclarations` asks for more: it never infers an exported value's
-type, and a machine's type is always inferred, so an exported machine needs an
-explicit annotation under that flag. Naming `Machine`'s type parameters by hand
-means retyping the input and state vocabularies, plus the string union of every
-transition key. Move `transitions` into its own `const` and read that last part
-back out with `keyof typeof transitions`, instead of retyping it:
-
-```ts
-import { machine, type, type Machine } from 'totorobot'
-
-type Inputs = { open: { text: string }; cancel: undefined }
-type States = { empty: undefined; draft: { text: string } }
-
-const transitions = {
-	'empty -open> draft': ({
-		inputData,
-	}: {
-		inputData: { text: string }
-	}): { text: string } => ({ text: inputData.text }),
-	'draft -cancel> empty': (): void => {},
-}
-
-export const publication: Machine<
-	Inputs,
-	States,
-	keyof typeof transitions & string,
-	'empty'
-> = machine({
-	inputs: type<Inputs>(),
-	states: type<States>(),
-	initial: 'empty',
-	transitions,
-})
-```
-
-Each handler now needs its own parameter and return type: `keyof typeof
-transitions` reads the type of `transitions` directly, so it can no longer lean
-on `machine()`'s contextual inference for the handlers inside it. A machine
-that declares `outputs` adds a fifth type argument the same way. `Host` follows
-the same rule for a function that hands one back, such as one returning
-`publication.start()`.
+| export                                                                                                                                                                                                                                          | is                                                                                                                                                |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `machine({ inputs?, states?, outputs?, initial, transitions, actions? })`                                                                                                                                                                       | a definition: inert data, never mutated                                                                                                           |
+| `type<T>()`                                                                                                                                                                                                                                     | a declaration carrying `T`; returns `undefined` at runtime                                                                                        |
+| `InputsOf<MachineType>` `StatesOf<MachineType>` `OutputsOf<MachineType>` `Handled<MachineType, StateName>` `Sources<MachineType, StateName>` `Patterns<MachineType>` `Observer<MachineType, PatternString>` `Listener<MachineType, OutputName>` | derived types, over `MachineType = typeof publication`                                                                                            |
+| `Machine<Inputs, States, Keys, InitialState, Outputs>` `Host<Inputs, States, Keys, Outputs>`                                                                                                                                                    | what `machine()` and `.start()` return; write these by hand only where TypeScript cannot infer them ([Exporting a machine](#exporting-a-machine)) |
+| `Skip`                                                                                                                                                                                                                                          | what `skip()` returns; it appears in every handler's return type                                                                                  |
 
 ## `inputs` and `states`: the vocabulary
 
@@ -1033,6 +983,47 @@ is the grammar's own delimiter, so `'a -x>  b'` would quietly mint a state no
 other key can spell the same way twice; such a row is rejected the way a
 malformed key is. A declared vocabulary is untouched by this, since declaring
 an odd name by hand is deliberate in a way a doubled space never is.
+
+## Exporting a machine
+
+`machine()` returns a `Machine` and `.start()` returns a `Host`, both exported,
+so `export const publication = machine({...})` survives a plain `tsc
+--declaration` build unaided. `--isolatedDeclarations` is stricter and never
+infers an exported value's type, so the same line needs an explicit
+annotation there. Move `transitions` into its own `const` and derive `Keys`
+from it, rather than retyping the transition-key union by hand:
+
+```ts
+import { machine, type, type Machine } from 'totorobot'
+
+type Inputs = { open: { text: string }; cancel: undefined }
+type States = { empty: undefined; draft: { text: string } }
+
+const transitions = {
+	'empty -open> draft': ({
+		inputData,
+	}: {
+		inputData: { text: string }
+	}): { text: string } => ({ text: inputData.text }),
+	'draft -cancel> empty': (): void => {},
+}
+
+export const publication: Machine<
+	Inputs,
+	States,
+	keyof typeof transitions & string,
+	'empty'
+> = machine({
+	inputs: type<Inputs>(),
+	states: type<States>(),
+	initial: 'empty',
+	transitions,
+})
+```
+
+Each handler needs its own annotations too: `keyof typeof transitions` reads
+`transitions`'s type directly, not through `machine()`'s inference. `Host`
+follows the same rule for a function returning `publication.start()`.
 
 ## Beyond this release
 
