@@ -20,7 +20,7 @@
 - **Actions** that die when their state does
 - **Outputs** that roar loud and clear
 - **Hardcore types** that catch wrong notes
-- **Tiny runtime.** Zero dependencies. No dead weight.
+- **Tiny runtime**, zero dependencies, no dead weight
 
 Totorobot combines clean, readable definitions with precise types. Its API reads
 like a transition graph, and TypeScript checks the details around it.
